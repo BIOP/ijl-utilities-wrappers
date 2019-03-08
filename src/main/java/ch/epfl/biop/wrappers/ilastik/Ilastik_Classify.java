@@ -49,5 +49,10 @@ public class Ilastik_Classify implements Command {
         System.out.println(outputFileName);
         image_out = new ImagePlus(outputFileName);
         image_out.setTitle(FilenameUtils.removeExtension(image_in.getTitle())+"_"+FilenameUtils.removeExtension(FilenameUtils.getName(ilastikProjectFile.getAbsolutePath()))+"_"+it.export_source);
+        if ((new File(outputFileName)).delete()) {
+            // Temp file correctly deleted
+        } else {
+            System.err.println("Error, couldn't delete temp file"+outputFileName);
+        }
     }
 }
