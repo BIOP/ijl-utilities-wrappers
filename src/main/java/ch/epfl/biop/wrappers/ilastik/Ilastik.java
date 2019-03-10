@@ -15,7 +15,12 @@ public class Ilastik {
     public static String exePath = Prefs.get(keyPrefix+"exePath",defaultExePath);
 
     public static void setExePath(File f) {
-        exePath = "\""+f.getAbsolutePath()+"\""; //avoids Program Files path problem with space
+        String path = f.getAbsolutePath();
+        if (path.contains("Program Files")) {
+            exePath = "\"" + f.getAbsolutePath() + "\""; //avoids Program Files path problem with space
+        } else {
+            exePath = f.getAbsolutePath();
+        }
         Prefs.set(keyPrefix + "exePath", exePath);
     }
 
