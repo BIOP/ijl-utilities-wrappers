@@ -12,10 +12,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -23,6 +20,7 @@ import java.util.zip.ZipOutputStream;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.process.ImageProcessor;
+import net.imglib2.RealPoint;
 import org.apache.commons.io.FileUtils;
 import org.w3c.dom.svg.SVGDocument;
 
@@ -36,6 +34,7 @@ import ij.io.RoiEncoder;
 import ij.plugin.frame.RoiManager;
 import ij.process.FloatPolygon;
 import ij.process.FloatProcessor;
+import java.awt.Point;
 
 /**
  * Converters for various forms of ROI
@@ -201,6 +200,38 @@ public class ConvertibleRois extends ConvertibleObject{
 			rois.add(roisArray[i]);
 		}
         return rois;
+	}
+
+	@Converter
+	public RealPointList roiArrayToRealPointList(ArrayList<Roi> rois) {
+		List<RealPoint> out = new ArrayList<>();
+		local=rois; // needs to be stores locally to retrieve 'metadata' rois informations
+		for (Roi roi: rois) {
+			for (Point p : roi) {
+				out.add(new RealPoint(new double[] {p.getX(), p.getY()}));
+			}
+		}
+		return new RealPointList(out);
+	}
+
+	@Converter
+	public ArrayList<Roi> realPointListToRoiArray(RealPointList list) {
+		if (this.local == null) {
+			return null;
+		} else {
+			ArrayList<Roi> out = new ArrayList<>();
+			Iterator<RealPoint> itRP = list.ptList.iterator();
+			local.forEach(roi -> {
+				Roi cvtRoi = (Roi) roi.clone();
+				for (Point p: cvtRoi) {
+					assert itRP.hasNext();
+					RealPoint rp = itRP.next();
+					p.setLocation(rp.getDoublePosition(0), rp.getDoublePosition(1));
+				}
+				out.add(cvtRoi);
+			});
+			return out;
+		}
 	}
 	
 	@Converter
@@ -389,6 +420,78 @@ public class ConvertibleRois extends ConvertibleObject{
 		});
 		return roiArray;
 	}
+
+	@Converter
+	public static TransformixInputRoisFile realPointListToTransformixFile(RealPointList rpl) {
+		BufferedWriter writer = null;
+		try {
+			File temp = File.createTempFile("tpts", ".txt");
+			temp.deleteOnExit();
+			TransformixInputRoisFile erf = new TransformixInputRoisFile(temp);
+			writer = new BufferedWriter(new FileWriter(temp));
+			writer.write("point");
+			writer.newLine();
+			writer.write(Integer.toString(rpl.ptList.size()));
+			writer.newLine();
+
+			for (RealPoint pt:rpl.ptList) {
+				for (int i = 0; i <pt.numDimensions();i++) {
+					writer.write(Double.toString(pt.getDoublePosition(i)));
+					if (i != pt.numDimensions()-1) {
+						writer.write("\t");
+					}
+				}
+				writer.newLine();
+			}
+			writer.close();
+			return erf;
+		} catch (IOException e) {
+			e.printStackTrace();
+			return null;
+		} finally {
+			try {
+				// Close the writer regardless of what happens...
+				writer.close();
+			} catch (Exception e) {
+			}
+		}
+	}
+
+	@Converter
+	public static RealPointList transformixFileToRealPointList(TransformixOutputRoisFile erf) {
+		BufferedReader reader = null;
+		{
+			try {
+				reader = new BufferedReader(new FileReader(erf.f));
+				List<RealPoint> out = new ArrayList<>();String line;
+				String[] parts;
+				String part[];
+				while ((line = reader.readLine())!=null) {
+					parts = line.split(";");//\\d\\s+");
+					part = parts[4].split("[\\s]");
+					int nDim = part.length-3;
+					RealPoint rp = new RealPoint();
+					double[] coords = new double [nDim];
+					for (int d=0;d<nDim;d++) {
+						coords[d]=Double.valueOf(part[4+d].trim());
+					}
+					rp.setPosition(coords);
+					out.add(rp);
+				}
+				reader.close();
+				return new RealPointList(out);
+			} catch (IOException e) {
+				e.printStackTrace();
+				return null;
+			} finally {
+				try {
+					// Close the reader regardless of what happens...
+					reader.close();
+				} catch (Exception e) {
+				}
+			}
+		}
+	}
 	
 	public static ArrayList<Roi> convertRoisToPolygonRois(ArrayList<Roi> arrayIn) {
 		ArrayList<Roi> arrayOut = new ArrayList<>();
@@ -403,6 +506,8 @@ public class ConvertibleRois extends ConvertibleObject{
 		});
 		return arrayOut;
 	}
+
+
 
 }
 
