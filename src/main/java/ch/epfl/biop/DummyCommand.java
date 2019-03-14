@@ -55,13 +55,15 @@ public class DummyCommand {
 
             roiManager.addRoi(roi);
 
-            CompositeFloatPoly cfp = shapeRoiList.roiscvt.get(0);
-            ArrayList<Point2D> cvtPts = new ArrayList<Point2D>();
-            cfp.getControlPoints().forEach(pt -> {
-                cvtPts.add(new Point2D.Double(pt.getY(), pt.getX()));
+            shapeRoiList.transform((pt) -> {
+                double npx = Math.sqrt(pt.getX()*40)*1.5;
+                double npy = Math.sqrt(pt.getY()*40)*1.5;
+                pt.setLocation(npx,npy);
+                return pt;
             });
-            cfp.setControlPoints(cvtPts);
-            roiManager.addRoi(cfp.getRoi());
+            for (CompositeFloatPoly cfp:shapeRoiList.roiscvt) {
+                roiManager.addRoi(cfp.getRoi());
+            }
 
 
         }

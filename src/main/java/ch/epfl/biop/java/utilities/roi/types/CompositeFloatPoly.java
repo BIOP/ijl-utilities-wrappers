@@ -48,6 +48,9 @@ import java.util.stream.Collectors;
  */
 
 public class CompositeFloatPoly {
+    public int getNumberOfCtrlPts() {
+        return polys.stream().mapToInt(fp -> fp.npoints).sum();
+    }
 
     public ArrayList<Point2D> getControlPoints() {
         ArrayList<Point2D> list = new ArrayList<>();
@@ -59,7 +62,7 @@ public class CompositeFloatPoly {
         return list;
     }
 
-    public void setControlPoints(ArrayList<Point2D> pts) {
+    public void setControlPoints(List<Point2D> pts) {
         int ptsIndex = 0;
         for (FloatPolygon fp:this.polys) {
             for (int i=0;i<fp.npoints;i++) {
