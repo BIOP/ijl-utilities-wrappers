@@ -19,13 +19,57 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Code mainly taken from ShapeRoi (see @package ij.gui.ShapeROI). Trying to solve these issues in order to not non regid transformations:
+ * Class representing an AREA, a list of floatpolygon
+ * depending on the polygon orientation (cw or ccw), the polygons are recombined
+ * when the function getRoi() is called
+ *  PointROI or Line ROI  (non area) are only supported if there are not part of a ShapeROI
+ *  calibration unsupported
+ *  curves unsupported
+ *
+ *  the control points do not include any relative positioning  ? to check, maybe basex and base y are important
+ *
+ * The list of floatpolygon is generated from the constructor, which depending on the ROI class:
+ * - if it is something else than ShapeROI, then the ROI is stored as is
+ * - if it is a ShapeROI, it is splitted into several float polygons
+ *  - the splitting functions (getiterator) are copied and modified from the original ShapeRoi function in order to avoid precision loss (int)
+ *  - however the recombination is loosing the precision (why ?)
+ * A significant amount of the code is taken from ShapeRoi (see @package ij.gui.ShapeROI). Trying to solve these issues in order to not non regid transformations:
  * - removes integer coordinates conversion when getting rois path list
  * - being able to retrieve a list of control points
  * - being able to set new shapes based on a list of control points
+ *
+ * TODO :
+ * - check whether the polygon is repeating
+ * - check whether ROIs are representing areas
+ *     - for the moment : write an error message
+ *     - later plan, depending on use, is to handle correctly these non AREA rois
+ * - manage to do a getRoi() function keeping the float precision in the reconstruction ShapeRoi
+ *
  */
 
 public class CompositeFloatPoly {
+
+    public ArrayList<Point2D> getControlPoints() {
+        ArrayList<Point2D> list = new ArrayList<>();
+        polys.forEach( fp -> {
+            for (int i=0;i<fp.npoints;i++) {
+                list.add(new Point2D.Double(fp.xpoints[i],fp.ypoints[i]));
+            }
+        });
+        return list;
+    }
+
+    public void setControlPoints(ArrayList<Point2D> pts) {
+        int ptsIndex = 0;
+        for (FloatPolygon fp:this.polys) {
+            for (int i=0;i<fp.npoints;i++) {
+                Point2D pt = pts.get(ptsIndex);
+                fp.xpoints[i]= (float) pt.getX();
+                fp.ypoints[i]= (float) pt.getY();
+                ptsIndex++;
+            }
+        }
+    }
 
     private static final double SHAPE_TO_ROI=-1.0;
 
@@ -164,39 +208,13 @@ public class CompositeFloatPoly {
             Roi r = new PolygonRoi(((Polygon)shape).xpoints, ((Polygon)shape).ypoints, ((Polygon)shape).npoints, Roi.POLYGON);
             rois.addElement(r);
         } else if (shape instanceof GeneralPath) {
-            PathIterator pIter;
-            //if (flatten)
-            //    pIter = getFlatteningPathIterator(shape,flatness);
-            //else
+            PathIterator pIter; // assume never flatten
             pIter = shape.getPathIterator(new AffineTransform());
             parsePath(pIter, null, null, rois, null);
         }
         Roi[] array = new Roi[rois.size()];
         rois.copyInto((Roi[])array);
         return array;
-    }
-
-    public ArrayList<Point2D> getControlPoints() {
-        ArrayList<Point2D> list = new ArrayList<>();
-        polys.forEach( fp -> {
-            for (int i=0;i<fp.npoints;i++) {
-                list.add(new Point2D.Double(fp.xpoints[i],fp.ypoints[i]));
-            }
-        });
-        return list;
-    }
-
-    public void setControlPoints(ArrayList<Point2D> pts) {
-        int ptsIndex = 0;
-        for (FloatPolygon fp:this.polys) {
-            for (int i=0;i<fp.npoints;i++) {
-                //list.add(new Point2D.Double(fp.xpoints[i],fp.ypoints[i]));
-                Point2D pt = pts.get(ptsIndex);
-                fp.xpoints[i]= (float) pt.getX();
-                fp.ypoints[i]= (float) pt.getY();
-                ptsIndex++;
-            }
-        }
     }
 
     boolean parsePath(PathIterator pIter, double[] params, Vector segments, Vector rois, Vector handles) {
@@ -421,7 +439,7 @@ public class CompositeFloatPoly {
         double width = 0;
         double height = 0;
         switch(roiType) {
-            //case NO_TYPE: roi = this; break;
+            //case NO_TYPE: roi = this; break; // I do not understand
             case Roi.COMPOSITE: System.err.println("Unsupported createRoi operation!"); break;//roi = this; break; // hmmm.....!!!???
             case Roi.OVAL:
                 startX = xPoints[xPoints.length-4];
@@ -443,16 +461,14 @@ public class CompositeFloatPoly {
                 roi = new PolygonRoi(toFloatArray(xPoints), toFloatArray(yPoints), n, roiType);
                 if (roiType==Roi.FREEROI) {
                     double length = roi.getLength();
-                    double mag = 1.0;//ic!=null?ic.getMagnification():1.0;
+                    double mag = 1.0;
                     length *= mag;
-                    //IJ.log("createRoi: "+length/n+" "+mag);
                     if (length/n>=15.0) {
                         roi = new PolygonRoi(toFloatArray(xPoints), toFloatArray(yPoints), n, Roi.POLYGON);
                     }
                 }
                 break;
         }
-        //if(roi!=null && imp!=null) roi.setImage(imp);
         return roi;
     }
 
@@ -467,28 +483,28 @@ public class CompositeFloatPoly {
         return ret;
     }
 
-    /**Returns the element with the smallest value in the array argument.*/
+    /** Returns the element with the smallest value in the array argument.*/
     private int min(int[] array) {
         int val = array[0];
         for (int i=1; i<array.length; i++) val = Math.min(val,array[i]);
         return val;
     }
 
-    /**Returns the element with the largest value in the array argument.*/
+    /** Returns the element with the largest value in the array argument.*/
     private int max(int[] array) {
         int val = array[0];
         for (int i=1; i<array.length; i++) val = Math.max(val,array[i]);
         return val;
     }
 
-    /**Returns the element with the smallest value in the array argument.*/
+    /** Returns the element with the smallest value in the array argument.*/
     private double min(double[] array) {
         double val = array[0];
         for (int i=1; i<array.length; i++) val = Math.min(val,array[i]);
         return val;
     }
 
-    /**Returns the element with the largest value in the array argument.*/
+    /** Returns the element with the largest value in the array argument.*/
     private double max(double[] array) {
         double val = array[0];
         for (int i=1; i<array.length; i++) val = Math.max(val,array[i]);
