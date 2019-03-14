@@ -29,10 +29,10 @@ public class VectorizeLabelImage implements Command {
 	
 	@Override
 	public void run() {
-		ArrayList<Roi> out = ConvertibleRois.labelImageToRoiArrayVectorize(imgLabel);
+		/*ArrayList<Roi> out = ConvertibleRois.labelImageToRoiArrayVectorize(imgLabel);
 		cr = new ConvertibleRois();
 		cr.set(out);
-		if (putInRoiManager) cr.to(RoiManager.class);
+		if (putInRoiManager) cr.to(RoiManager.class);*/
 	}
 
 }

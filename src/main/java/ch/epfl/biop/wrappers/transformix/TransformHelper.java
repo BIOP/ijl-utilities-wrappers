@@ -11,8 +11,8 @@ import java.util.function.Supplier;
 import ch.epfl.biop.java.utilities.TempDirectory;
 import ch.epfl.biop.java.utilities.image.ConvertibleImage;
 import ch.epfl.biop.java.utilities.roi.ConvertibleRois;
-import ch.epfl.biop.java.utilities.roi.TransformixInputRoisFile;
-import ch.epfl.biop.java.utilities.roi.TransformixOutputRoisFile;
+import ch.epfl.biop.java.utilities.roi.types.TransformixInputRoisFile;
+import ch.epfl.biop.java.utilities.roi.types.TransformixOutputRoisFile;
 
 public class TransformHelper {
 

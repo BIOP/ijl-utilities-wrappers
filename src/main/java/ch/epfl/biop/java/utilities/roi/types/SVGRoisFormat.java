@@ -1,4 +1,4 @@
-package ch.epfl.biop.java.utilities.roi;
+package ch.epfl.biop.java.utilities.roi.types;
 
 import java.io.File;
 import java.io.IOException;

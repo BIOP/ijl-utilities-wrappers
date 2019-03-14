@@ -1,4 +1,4 @@
-package ch.epfl.biop.java.utilities.roi;
+package ch.epfl.biop.java.utilities.roi.types;
 
 import java.io.File;
 
@@ -8,6 +8,7 @@ import java.io.File;
  */
 
 public class TransformixInputRoisFile {
+	public IJShapeRoiArray shapeRoiList;
 	public File f;
 	public TransformixInputRoisFile(File f) {
 		this.f=f;
