@@ -53,7 +53,7 @@ public class Transformix_TransformROIs implements Command {
 		//}
 		th.transform();
 		cr_out = th.getTransformedRois();
-		cr_out.setInitialArrayList((ArrayList<Roi>) cr_in.to(ArrayList.class));
+		//cr_out.setInitialArrayList((ArrayList<Roi>) cr_in.to(ArrayList.class));
 		if (os!=null) {
 			os.addObject(cr_out);
 		} else {

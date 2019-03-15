@@ -1,5 +1,6 @@
 package ch.epfl.biop.java.utilities.roi;
 
+import java.awt.geom.Point2D;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -12,6 +13,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -87,7 +89,7 @@ public class ConvertibleRois extends ConvertibleObject{
 			ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(temp)));
 			out = new DataOutputStream(new BufferedOutputStream(zos));
 			RoiEncoder re = new RoiEncoder(out);
-			rois.roiscvt.stream().map(compositeFloatPoly -> compositeFloatPoly.getRoi()).forEach(roi -> {
+			rois.rois.stream().map(compositeFloatPoly -> compositeFloatPoly.getRoi()).forEach(roi -> {
 				if (roi!=null) {
 					String label = roi.getName();
 					if (avoidDuplicates.containsKey(label)) {
@@ -106,20 +108,6 @@ public class ConvertibleRois extends ConvertibleObject{
 					}
 				}
 			});
-			/*for (Roi roi: rois.rois) {
-				if (roi==null) continue;
-				String label = roi.getName();
-				if (avoidDuplicates.containsKey(label)) {
-					avoidDuplicates.put(label,avoidDuplicates.get(label)+1);
-					label=label+"-"+avoidDuplicates.get(label);
-				} else {
-					avoidDuplicates.put(label,0);
-				}
-				//String label = getUniqueName(names, indexes[i]);
-				zos.putNextEntry(new ZipEntry(label+".roi"));
-				re.write(roi);
-				out.flush();
-			}*/
 			out.close();	
 			return new ImageJRoisFile(temp);
 		} catch (IOException e) {
@@ -193,30 +181,19 @@ public class ConvertibleRois extends ConvertibleObject{
 			File temp = File.createTempFile("tpts", ".txt");
 	        //temp.deleteOnExit();		
 			TransformixInputRoisFile erf = new TransformixInputRoisFile(temp);
-			int nPts = 0;
-			for (Roi roi: rois.rois) {
-				//FloatPolygon pol = roi.getFloatPolygon();
-				// TODO nPts+=pol.npoints;
-				/*for (int i=0;i<pol.npoints;i++) {
-					//pol.xpoints[i];
-					//pol.ypoints[i];
-				}*/
-			}
+			List<Point2D> ctrlPts = rois.getPoints();
+			int nPts = ctrlPts.size();
 			writer = new BufferedWriter(new FileWriter(temp));
             writer.write("point");
             writer.newLine();
             writer.write(Integer.toString(nPts));
             writer.newLine();
-			for (Roi roi: rois.rois) {
-				FloatPolygon pol = roi.getFloatPolygon();
-				//nPts+=pol.npoints;
-				for (int i=0;i<pol.npoints;i++) {
-					writer.write(Float.toString(pol.xpoints[i]));
-					writer.write("\t");
-					writer.write(Float.toString(pol.ypoints[i]));
-					writer.newLine();
-				}
-			}
+            for (Point2D pt: ctrlPts) {
+                writer.write(Double.toString(pt.getX()));
+                writer.write("\t");
+                writer.write(Double.toString(pt.getY()));
+                writer.newLine();
+            }
 			writer.close();
 			return erf;
 		} catch (IOException e) {
@@ -231,11 +208,12 @@ public class ConvertibleRois extends ConvertibleObject{
         }
 	}
 
+    /*
 	ArrayList<Roi> local;
 	
 	public void setInitialArrayList(ArrayList<Roi> aIni) {
 		this.local=aIni;
-	}
+	}*/
 
 	@Converter
 	public static IJShapeRoiArray roiManagerToArray(RoiManager rm) {
@@ -248,99 +226,64 @@ public class ConvertibleRois extends ConvertibleObject{
 	}
 
 	@Converter
-	public RealPointList roiArrayToRealPointList(ArrayList<Roi> rois) {
+	public RealPointList roiArrayToRealPointList(IJShapeRoiArray rois) {
 		List<RealPoint> out = new ArrayList<>();
-		local=rois; // needs to be stores locally to retrieve 'metadata' rois informations
-		for (Roi roi: rois) {
-			for (Point p : roi) {
-				out.add(new RealPoint(new double[] {p.getX(), p.getY()}));
-			}
-		}
-		return new RealPointList(out);
+
+		for (Point2D pt:rois.getPoints()) {
+		    out.add(new RealPoint(new double[] {pt.getX(), pt.getY()}));
+        }
+
+		RealPointList rpl = new RealPointList(out);
+		rpl.shapeRoiList = rois; // keeps connectivity only ! do not use coordinates from this ref!
+
+		return rpl;
 	}
 
-    // TODO Not working! The new values are just ignored
 	@Converter
-	public IJShapeRoiArray realPointListToRoiArray(RealPointList list) {
-		if (this.local == null) {
-			return null;
-		} else {
-			ArrayList<Roi> out = new ArrayList<>();
-			Iterator<RealPoint> itRP = list.ptList.iterator();
-			local.forEach(roi -> {
-				Roi cvtRoi = (Roi) roi.clone();
-				for (Point p: cvtRoi) {
-					assert itRP.hasNext();
-					RealPoint rp = itRP.next();
-					p.setLocation(rp.getDoublePosition(0), rp.getDoublePosition(1));
-				}
-				out.add(cvtRoi);
-			});
-			return new IJShapeRoiArray(out);
-		}
+	public IJShapeRoiArray realPointListToRoiArray(RealPointList in) {
+		IJShapeRoiArray out = new IJShapeRoiArray(in.shapeRoiList);
+		out.setPoints(in.ptList.stream().map(rp ->
+		    new Point2D.Double(rp.getDoublePosition(0), rp.getDoublePosition(1))
+        ).collect(Collectors.toList()));
+		return out;
 	}
 	
 	@Converter
 	public static RoiManager arrayToRoiManager(IJShapeRoiArray rois) {
-		System.out.println("arrayToRoiManager called");
+		//System.out.println("arrayToRoiManager called");
         RoiManager roiManager = RoiManager.getRoiManager();
         if (roiManager==null) {
             roiManager = new RoiManager();
         }
         roiManager.reset();
         for (int i = 0; i < rois.rois.size(); i++) {
-            roiManager.addRoi(rois.rois.get(i));
+            roiManager.addRoi(rois.rois.get(i).getRoi());
         }
         return roiManager;
 	}
 
-	// Non static because we loose information of rois in elastix format
 	@Converter
-	public IJShapeRoiArray elastixFileFormatToArray(TransformixOutputRoisFile erf) {
-		//ArrayList<Roi> local = (ArrayList<Roi>) this.to(ArrayList.class);
+	public static IJShapeRoiArray elastixFileFormatToArray(TransformixOutputRoisFile erf) {
 		BufferedReader reader = null;
-		ArrayList<Roi> out = new ArrayList<>();
-		if (local==null) {
-			return null;
-		} else {
+		//ArrayList<Roi> out = new ArrayList<>();
 			try {
-				reader = new BufferedReader(new FileReader(erf.f));
-				//reader.readLine(); // skips points
-				//reader.readLine(); // skips number of points
-				for (Roi roi: local) {
-					FloatPolygon pol = roi.getFloatPolygon();
-					//Point	0	; InputIndex = [ 6335 7530 ]	; InputPoint = [ 6335.000000 7530.000000 ]	; OutputIndexFixed = [ 6270 7520 ]	; OutputPoint = [ 6270.019712 7520.199309 ]	; Deformation = [ -64.980286 -9.800692 ]
-			        String line = null;
-			        String[] parts = null;
-			        String part[] = null;
-			        float x,y;
-			        float[] xout = new float[pol.npoints];
-			        float[] yout = new float[pol.npoints];
-					for (int i=0;i<pol.npoints;i++) {
-						line  = reader.readLine();
-						parts = line.split(";");//\\d\\s+");
-						part = parts[4].split("[\\s]");
-						
-						//System.out.println(part[4]+"\t"+part[5]);
-						
-				        x = Float.valueOf(part[4].trim());
-				        y = Float.valueOf(part[5].trim());
-						
-				        pol.xpoints[i]=x;
-				        pol.ypoints[i]=y;
-				        xout[i]=x;
-				        yout[i]=y;
-					}
 
-					// TODO PolygonRoi roiOut = new PolygonRoi(xout, yout, xout.length, ij.gui.Roi.POLYGON );
-					/*roiOut.setStrokeColor(roi.getStrokeColor());
-					roiOut.setName(roi.getName());
-					out.add(roiOut);*/
+                IJShapeRoiArray out = new IJShapeRoiArray(erf.shapeRoiList);
+				reader = new BufferedReader(new FileReader(erf.f));
+				String line;
+                String[] parts = null;
+                String part[] = null;
+                ArrayList<Point2D> ptList = new ArrayList<>();
+				while ((line  = reader.readLine())!=null) {
+                    parts = line.split(";");//\\d\\s+");
+                    part = parts[4].split("[\\s]");
+                    double x = Double.valueOf(part[4].trim());
+                    double y = Double.valueOf(part[5].trim());
+                    ptList.add(new Point2D.Double(x,y));
 				}
-				
+				out.setPoints(ptList);
 				reader.close();
-				
-				return new IJShapeRoiArray(out);//local;
+				return out;
 			} catch (IOException e) {
 		        e.printStackTrace();
 		        return null;
@@ -351,7 +294,6 @@ public class ConvertibleRois extends ConvertibleObject{
 	            } catch (Exception e) {
 	            }
 	        }
-		}
 	}
 
 	// Converts to label image
@@ -362,7 +304,8 @@ public class ConvertibleRois extends ConvertibleObject{
 		float xmax=100;
 		float ymin=0;
 		float ymax=100;
-		for (Roi roi:rois.rois) {
+		for (CompositeFloatPoly cfp:rois.rois) {
+		    Roi roi = cfp.getRoi();
 			if (roi.getBounds().x<xmin) xmin=roi.getBounds().x;
 			if (roi.getBounds().y<ymin) ymin=roi.getBounds().y;
 			if (roi.getBounds().x+roi.getBounds().width>xmax) xmax=roi.getBounds().x+roi.getBounds().width;
@@ -372,7 +315,8 @@ public class ConvertibleRois extends ConvertibleObject{
 		//ImagePlus imp = new ImagePlus("Labels_"+this.toString())
 		ImageProcessor ip = imp.getProcessor();
 		int roiIndex=0;
-		for (Roi roi:rois.rois) {
+        for (CompositeFloatPoly cfp:rois.rois) {
+            Roi roi = cfp.getRoi();
 			roiIndex=roiIndex+1;
 			imp.setRoi(roi);
 			ip.setColor(roiIndex);
@@ -485,6 +429,7 @@ public class ConvertibleRois extends ConvertibleObject{
 				writer.newLine();
 			}
 			writer.close();
+			erf.shapeRoiList = rpl.shapeRoiList; // keeps connectivity info
 			return erf;
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -522,7 +467,9 @@ public class ConvertibleRois extends ConvertibleObject{
 					out.add(rp);
 				}
 				reader.close();
-				return new RealPointList(out);
+				RealPointList outrpl = new RealPointList(out);
+				outrpl.shapeRoiList = erf.shapeRoiList; // keep connectivity info
+				return outrpl;
 			} catch (IOException e) {
 				e.printStackTrace();
 				return null;

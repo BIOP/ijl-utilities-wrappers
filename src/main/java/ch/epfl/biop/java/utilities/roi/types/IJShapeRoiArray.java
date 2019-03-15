@@ -8,23 +8,26 @@ import java.util.List;
 import java.util.function.UnaryOperator;
 
 public class IJShapeRoiArray {
-    // TODO : remove roi list
-    public List<CompositeFloatPoly> roiscvt;
-
-    public List<Roi> rois;
+    public List<CompositeFloatPoly> rois;
 
     public IJShapeRoiArray(List<Roi> rois_in) {
         rois = new ArrayList<>();
-        roiscvt = new ArrayList<>();
         rois_in.forEach(roi -> {
-            System.out.println(roi);
-            roiscvt.add(new CompositeFloatPoly(roi));
+            rois.add(new CompositeFloatPoly(roi));
         });
+    }
+
+    public IJShapeRoiArray(IJShapeRoiArray input) {
+        // TODO check speed efficiency
+        rois = new ArrayList<>();
+        for (CompositeFloatPoly cfp: input.rois) {
+            rois.add(new CompositeFloatPoly(cfp.getRoi()));
+        }
     }
 
     public List<Point2D> getPoints() {
         LinkedList<Point2D> allPts = new LinkedList<>();
-        this.roiscvt.forEach(fp -> {
+        this.rois.forEach(fp -> {
             allPts.addAll(fp.getControlPoints());
         });
         return allPts;
@@ -33,8 +36,8 @@ public class IJShapeRoiArray {
     public void setPoints(List<Point2D> controlPoints) {
         // Split list between different ROIs
         int index = 0;
-        for (int i = 0;i<roiscvt.size();i++) {
-            CompositeFloatPoly cfp = roiscvt.get(i);
+        for (int i = 0; i< rois.size(); i++) {
+            CompositeFloatPoly cfp = rois.get(i);
             int nPts = cfp.getNumberOfCtrlPts();
             cfp.setControlPoints(controlPoints.subList(index,index+nPts));
             index+=nPts;

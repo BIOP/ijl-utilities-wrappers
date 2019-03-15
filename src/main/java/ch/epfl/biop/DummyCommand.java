@@ -1,18 +1,13 @@
 package ch.epfl.biop;
 
-import bdv.BigDataViewer;
 import ch.epfl.biop.java.utilities.roi.types.CompositeFloatPoly;
 import ch.epfl.biop.java.utilities.roi.types.IJShapeRoiArray;
-import ij.ImagePlus;
 import ij.gui.Roi;
 import ij.plugin.frame.RoiManager;
 import net.imagej.ImageJ;
 
-import net.imglib2.realtransform.RealTransform;
 import org.scijava.script.ScriptService;
 
-import java.awt.Dimension;
-import java.awt.geom.Point2D;
 import java.io.File;
 import java.util.ArrayList;
 
@@ -45,7 +40,7 @@ public class DummyCommand {
         ArrayList<Roi> rList = new ArrayList<>();
         rList.add(roiManager.getRoi(0));
         IJShapeRoiArray shapeRoiList = new IJShapeRoiArray(rList);
-        Roi roi = shapeRoiList.roiscvt.get(0).getRoi();
+        Roi roi = shapeRoiList.rois.get(0).getRoi();
         if (roi == null ){
             System.out.println("null");
 
@@ -61,7 +56,7 @@ public class DummyCommand {
                 pt.setLocation(npx,npy);
                 return pt;
             });
-            for (CompositeFloatPoly cfp:shapeRoiList.roiscvt) {
+            for (CompositeFloatPoly cfp:shapeRoiList.rois) {
                 roiManager.addRoi(cfp.getRoi());
             }
 

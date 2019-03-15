@@ -48,6 +48,7 @@ import java.util.stream.Collectors;
  */
 
 public class CompositeFloatPoly {
+
     public int getNumberOfCtrlPts() {
         return polys.stream().mapToInt(fp -> fp.npoints).sum();
     }
@@ -176,13 +177,13 @@ public class CompositeFloatPoly {
         this.x = roi.getXBase();
         this.y = roi.getYBase();
         if (roi instanceof ShapeRoi) {
-            RoiManager roiManager = RoiManager.getRoiManager();
+            //RoiManager roiManager = RoiManager.getRoiManager();
             ShapeRoi sr = (ShapeRoi) roi;
             Roi[] rois = getRois(sr);
             for (Roi r:rois) {
                 polys.add(r.getFloatPolygon());
-                System.out.println("class = "+r.getClass()+" name="+r.getName());
-                roiManager.addRoi(r);
+                //System.out.println("class = "+r.getClass()+" name="+r.getName());
+                //roiManager.addRoi(r);
             }
         } else {
             // Single ROI
