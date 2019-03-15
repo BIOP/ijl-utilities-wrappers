@@ -21,7 +21,7 @@ public class IJShapeRoiArray {
         // TODO check speed efficiency
         rois = new ArrayList<>();
         for (CompositeFloatPoly cfp: input.rois) {
-            rois.add(new CompositeFloatPoly(cfp.getRoi()));
+            rois.add(new CompositeFloatPoly(cfp)); // Problem with number of points
         }
     }
 
@@ -37,8 +37,11 @@ public class IJShapeRoiArray {
         // Split list between different ROIs
         int index = 0;
         for (int i = 0; i< rois.size(); i++) {
+            System.out.println("Setting ROI "+i);
             CompositeFloatPoly cfp = rois.get(i);
             int nPts = cfp.getNumberOfCtrlPts();
+            System.out.println("nPts = "+nPts);
+            System.out.println("["+index+";"+(index+nPts)+"]");
             cfp.setControlPoints(controlPoints.subList(index,index+nPts));
             index+=nPts;
         }

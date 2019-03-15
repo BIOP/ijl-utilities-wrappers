@@ -25,14 +25,14 @@ public class DummyCommand {
         imp.changes=false;*/
         // /home/nico/Dropbox/BIOP/
         try {
-            //ij.get(ScriptService.class).run(new File("C:\\Users\\chiarutt\\Dropbox\\BIOP\\Macro.ijm"), true).get();
-            ij.get(ScriptService.class).run(new File("/home/nico/Dropbox/BIOP/Macro.ijm"), true).get();
+            ij.get(ScriptService.class).run(new File("C:\\Users\\chiarutt\\Dropbox\\BIOP\\Macro2.ijm"), true).get();
+            //ij.get(ScriptService.class).run(new File("/home/nico/Dropbox/BIOP/Macro.ijm"), true).get();
 
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        RoiManager roiManager = RoiManager.getRoiManager();
+      /*  RoiManager roiManager = RoiManager.getRoiManager();
         if (roiManager==null) {
               roiManager = new RoiManager();
         }
@@ -61,7 +61,7 @@ public class DummyCommand {
             }
 
 
-        }
+        }*/
 
 	}
 

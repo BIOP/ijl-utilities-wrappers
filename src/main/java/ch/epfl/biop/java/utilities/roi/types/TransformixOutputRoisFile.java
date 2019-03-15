@@ -8,7 +8,12 @@ public class TransformixOutputRoisFile {
 
 	public IJShapeRoiArray shapeRoiList;
 	public File f;
-	public TransformixOutputRoisFile(File f) {
+	public TransformixOutputRoisFile(File f, TransformixInputRoisFile tirf) {
+
 		this.f=f;
+		if (tirf.shapeRoiList==null) {
+			System.out.println("C'est null dans le constructeur!!");
+		}
+		this.shapeRoiList = tirf.shapeRoiList; // pass the connectivity data
 	}
 }

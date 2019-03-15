@@ -2,6 +2,7 @@ package ch.epfl.biop.wrappers.transformix.ij2commands;
 
 import java.util.ArrayList;
 
+import ch.epfl.biop.java.utilities.roi.types.TransformixOutputRoisFile;
 import ch.epfl.biop.wrappers.elastix.RegisterHelper;
 import ij.gui.Roi;
 import org.scijava.ItemIO;
@@ -61,7 +62,9 @@ public class Transformix_TransformROIs implements Command {
 		}
 		//
 		if (outputToRoiManager) {
+			//ConvertibleRois.elastixFileFormatToArray((TransformixOutputRoisFile)cr_out.to(TransformixOutputRoisFile.class));
 			cr_out.to(RoiManager.class);
+
 		//	System.out.println("Writing ROIs to Roi Manager");
 		//String st = cr_out.get(ConvertibleRois.);
 		}

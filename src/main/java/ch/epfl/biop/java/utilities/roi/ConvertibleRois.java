@@ -181,6 +181,7 @@ public class ConvertibleRois extends ConvertibleObject{
 			File temp = File.createTempFile("tpts", ".txt");
 	        //temp.deleteOnExit();		
 			TransformixInputRoisFile erf = new TransformixInputRoisFile(temp);
+			erf.shapeRoiList = rois;
 			List<Point2D> ctrlPts = rois.getPoints();
 			int nPts = ctrlPts.size();
 			writer = new BufferedWriter(new FileWriter(temp));
@@ -207,13 +208,6 @@ public class ConvertibleRois extends ConvertibleObject{
             }
         }
 	}
-
-    /*
-	ArrayList<Roi> local;
-	
-	public void setInitialArrayList(ArrayList<Roi> aIni) {
-		this.local=aIni;
-	}*/
 
 	@Converter
 	public static IJShapeRoiArray roiManagerToArray(RoiManager rm) {
@@ -267,8 +261,13 @@ public class ConvertibleRois extends ConvertibleObject{
 		BufferedReader reader = null;
 		//ArrayList<Roi> out = new ArrayList<>();
 			try {
-
+				System.out.println("0");
+				if (erf.shapeRoiList==null) {
+					System.out.println("C'est null!!!!!!!!!!!!");
+				}
                 IJShapeRoiArray out = new IJShapeRoiArray(erf.shapeRoiList);
+
+				System.out.println("1");
 				reader = new BufferedReader(new FileReader(erf.f));
 				String line;
                 String[] parts = null;
@@ -281,7 +280,11 @@ public class ConvertibleRois extends ConvertibleObject{
                     double y = Double.valueOf(part[5].trim());
                     ptList.add(new Point2D.Double(x,y));
 				}
+
+				System.out.println("2");
 				out.setPoints(ptList);
+
+				System.out.println("3");
 				reader.close();
 				return out;
 			} catch (IOException e) {
@@ -482,25 +485,6 @@ public class ConvertibleRois extends ConvertibleObject{
 			}
 		}
 	}
-	
-	/*public static ArrayList<Roi> convertRoisToPolygonRois(ArrayList<Roi> arrayIn) {
-		ArrayList<Roi> arrayOut = new ArrayList<>();
-		arrayIn.forEach(roi -> {
-			if (roi.getClass()==ShapeRoi.class) {
-				ArrayList<Roi> list = new ArrayList<Roi>(Arrays.asList(((ShapeRoi)roi).getRois()));
-				list.forEach(r -> r.setName(roi.getName()));
-				arrayOut.addAll(list);
-			} else {
-				arrayOut.add(roi);
-			}
-		});
-
-		//ShapeRoi roi = new ShapeRoi();
-
-		return arrayOut;
-	}*/
-
-
 
 }
 

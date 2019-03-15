@@ -171,7 +171,41 @@ public class CompositeFloatPoly {
         }
     }
 
+    public CompositeFloatPoly(CompositeFloatPoly cfp_in) {
+        if (cfp_in !=null) {
+
+            name = cfp_in.name;//getName();
+            polys = new ArrayList<>();
+            this.x = cfp_in.x;//.getXBase();
+            this.y = cfp_in.y;//roi.getYBase();
+            for (FloatPolygon fp:cfp_in.polys) {
+                polys.add(new FloatPolygon(fp.xpoints.clone(), fp.ypoints.clone()));
+            }
+            /*if (roi instanceof ShapeRoi) {
+                //RoiManager roiManager = RoiManager.getRoiManager();
+                ShapeRoi sr = (ShapeRoi) roi;
+                Roi[] rois = getRois(sr);
+                for (Roi r:rois) {
+                    polys.add(r.getFloatPolygon());
+                    //System.out.println("class = "+r.getClass()+" name="+r.getName());
+                    //roiManager.addRoi(r);
+                }
+            } else {
+                // Single ROI
+                // TODO  Error message if it's not an area
+                polys.add(roi.getFloatPolygon());
+            }
+
+            for (FloatPolygon fp : polys) {
+                System.out.println(fp.toString());
+            }*/
+        } else {
+            System.err.println("Error : null roi given as an input in CompositeFloatPoly constructor.");
+        }
+    }
+
     public CompositeFloatPoly(Roi roi) {
+        if (roi !=null) {
         name = roi.getName();
         polys = new ArrayList<>();
         this.x = roi.getXBase();
@@ -193,6 +227,9 @@ public class CompositeFloatPoly {
 
         for (FloatPolygon fp : polys) {
             System.out.println(fp.toString());
+        }
+        } else {
+            System.err.println("Error : null roi given as an input in CompositeFloatPoly constructor.");
         }
     }
 

@@ -197,9 +197,11 @@ public class TransformHelper {
             	imageTransformed.set(new File(this.outputDir.get()+File.separator+"result.tif"));
             }
             if (transformType==ROIS_TRANSFORM) {
-            	TransformixOutputRoisFile erf =  new TransformixOutputRoisFile(new File(this.outputDir.get()+File.separator+"outputpoints.txt"));// roisToTransform.to(TransformixInputRoisFile.class);
+            	TransformixOutputRoisFile erf =  new TransformixOutputRoisFile(new File(this.outputDir.get()+File.separator+"outputpoints.txt"),
+                        (TransformixInputRoisFile) roisToTransform.to(TransformixInputRoisFile.class));// roisToTransform.to(TransformixInputRoisFile.class);
             	roisTransformed.clear();            	
             	roisTransformed.set(erf);
+            	System.out.println("Output rois set!");
             	//roisTransformed.set(roisToTransform.to(ArrayList.class));
             	//roisTransformed.elastixFileFormatToArray(erf);
             	//new File(this.outputDir.get()+File.separator+"outputpoints.txt"));
