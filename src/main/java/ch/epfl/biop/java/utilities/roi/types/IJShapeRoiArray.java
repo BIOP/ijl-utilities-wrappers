@@ -18,10 +18,9 @@ public class IJShapeRoiArray {
     }
 
     public IJShapeRoiArray(IJShapeRoiArray input) {
-        // TODO check speed efficiency
         rois = new ArrayList<>();
         for (CompositeFloatPoly cfp: input.rois) {
-            rois.add(new CompositeFloatPoly(cfp)); // Problem with number of points
+            rois.add(new CompositeFloatPoly(cfp)); // Problem with number of points ?
         }
     }
 

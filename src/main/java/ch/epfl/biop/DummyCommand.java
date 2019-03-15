@@ -16,53 +16,6 @@ public class DummyCommand {
 	public static void main(String[] args) {
         final ImageJ ij = new ImageJ();
         ij.ui().showUI();
-        //BiopWrappersCheck.reportAllWrappers();
-        //ScijavaPanelizableProcessorPlugin.keptClasses.add(Dimension.class);
-        //ScijavaPanelizableProcessorPlugin.keptClasses.add(RealTransform.class);
-        //ScijavaPanelizableProcessorPlugin.keptClasses.add(BigDataViewer.class);
-        /*ImagePlus imp = new ImagePlus("/home/nico/Dropbox/BIOP/blobs.tif");
-        imp.show();
-        imp.changes=false;*/
-        // /home/nico/Dropbox/BIOP/
-        try {
-            ij.get(ScriptService.class).run(new File("C:\\Users\\chiarutt\\Dropbox\\BIOP\\Macro2.ijm"), true).get();
-            //ij.get(ScriptService.class).run(new File("/home/nico/Dropbox/BIOP/Macro.ijm"), true).get();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-      /*  RoiManager roiManager = RoiManager.getRoiManager();
-        if (roiManager==null) {
-              roiManager = new RoiManager();
-        }
-
-        ArrayList<Roi> rList = new ArrayList<>();
-        rList.add(roiManager.getRoi(0));
-        IJShapeRoiArray shapeRoiList = new IJShapeRoiArray(rList);
-        Roi roi = shapeRoiList.rois.get(0).getRoi();
-        if (roi == null ){
-            System.out.println("null");
-
-            //roiManager.addRoi(null);
-        } else {
-            System.out.println("not null"+roi);
-
-            roiManager.addRoi(roi);
-
-            shapeRoiList.transform((pt) -> {
-                double npx = Math.sqrt(pt.getX()*40)*1.5;
-                double npy = Math.sqrt(pt.getY()*40)*1.5;
-                pt.setLocation(npx,npy);
-                return pt;
-            });
-            for (CompositeFloatPoly cfp:shapeRoiList.rois) {
-                roiManager.addRoi(cfp.getRoi());
-            }
-
-
-        }*/
-
 	}
 
 }

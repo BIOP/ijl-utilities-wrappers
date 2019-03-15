@@ -165,8 +165,15 @@ public class CompositeFloatPoly {
                     return positiveShape.get();
                 }
             } else {
-                System.err.println("Could not build ROI : no positive area defined.");
-                return null;
+                System.err.println("Error building ROI : no positive area defined.");
+                //return null;
+                if (negativeShape.isPresent()) {
+                    return negativeShape.get();
+                } else {
+                    System.err.println("Could not build ROI : no positive and negative area defined.");
+                    return null;
+                }
+                //return positiveShape.get().or(negativeShape.get());
             }
         }
     }
