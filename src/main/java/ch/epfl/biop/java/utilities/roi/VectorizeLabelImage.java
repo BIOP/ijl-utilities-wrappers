@@ -2,6 +2,7 @@ package ch.epfl.biop.java.utilities.roi;
 
 import java.util.ArrayList;
 
+import ch.epfl.biop.java.utilities.roi.types.IJShapeRoiArray;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
 import org.scijava.plugin.Parameter;
@@ -29,10 +30,10 @@ public class VectorizeLabelImage implements Command {
 	
 	@Override
 	public void run() {
-		/*ArrayList<Roi> out = ConvertibleRois.labelImageToRoiArrayVectorize(imgLabel);
+		IJShapeRoiArray out = ConvertibleRois.labelImageToRoiArrayVectorize(imgLabel);
 		cr = new ConvertibleRois();
 		cr.set(out);
-		if (putInRoiManager) cr.to(RoiManager.class);*/
+		if (putInRoiManager) cr.to(RoiManager.class);
 	}
 
 }

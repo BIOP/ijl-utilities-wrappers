@@ -154,6 +154,65 @@ public class CompositeFloatPoly {
         return area/2;
     }
 
+
+    public void smoothenWithConstrains(boolean[][] movablePx) {
+        // Todo : better handling of edges
+
+        for (FloatPolygon pol: this.polys) {
+            //ArrayList<Float> xout = new ArrayList<>();
+            //ArrayList<Float> yout = new ArrayList<>();
+            float[] xout = new float [pol.npoints];
+
+            float[] yout = new float [pol.npoints];
+
+            for (int i = 0; i < pol.npoints; i++) {
+                int iBefore = i - 1;
+                if (iBefore < 0) iBefore = pol.npoints - 1;
+                int iAfter = i + 1;
+                if (iAfter == pol.npoints) iAfter = 0;
+                float x = pol.xpoints[i];
+                float y = pol.ypoints[i];
+                if (movablePx[(int) (x)][(int) (y)]) {
+                    float xb = pol.xpoints[iBefore];
+                    float xa = pol.xpoints[iAfter];
+                    float yb = pol.ypoints[iBefore];
+                    float ya = pol.ypoints[iAfter];
+                    float dx = xa - xb;
+                    float dy = ya - yb;
+                    float ld = (float) java.lang.Math.sqrt(dx * dx + dy * dy);
+                    dx /= ld;
+                    dy /= ld;
+                    float proj = (x - xb) * dy - (y - yb) * dx;
+                    x += -0.5f * proj * dy;
+                    y += 0.5f * proj * dx;
+                }
+                xout[i]=x;
+                yout[i]=y;
+                //xout.add(x);
+                //yout.add(y);
+            }
+
+            for (int i = 0; i < pol.npoints; i++) {
+                 pol.xpoints[i]=xout[i];
+                 pol.ypoints[i]=yout[i];
+            }
+            //pol.xpoints=convertFloatArray(xout);
+            //pol.ypoints=convertFloatArray(xout);
+        }
+    }
+
+   /* public static float[] convertFloatArray(List<Float> floatList) {
+        float[] floatArray = new float[floatList.size()];
+        int i = 0;
+        for (Float f : floatList) {
+            floatArray[i++] = (f != null ? f : Float.NaN);
+        }
+        return floatArray;
+    }*/
+
+
+    static public int SUB_PIXELPRECISION = 10;
+
     /**
      * Computes the ImageJ ROI (Shape ROI)
      * @return
@@ -172,18 +231,21 @@ public class CompositeFloatPoly {
             Map<Boolean, List<FloatPolygon>> partitionedPolygons =
                     polys.stream()
                          .collect(Collectors.partitioningBy((fp) -> getArea(fp)>=0));
-
+            // import java.awt.Polygon;
             Optional<ShapeRoi> positiveShape = partitionedPolygons.get(true)
                                                                  .stream()
-                                                                 .map(fp -> (new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON)))
+                                                                 .map(fp -> getShape(fp))//new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON)))
                                                                  .map(pr -> new ShapeRoi(pr))
                                                                  .reduce(ShapeRoi::or);
 
             Optional<ShapeRoi> negativeShape = partitionedPolygons.get(false)
                     .stream()
-                    .map(fp -> (new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON)))
+                    //.map(fp -> (new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON)))
+                    .map(fp -> getShape(fp))
                     .map(pr -> new ShapeRoi(pr))
                     .reduce(ShapeRoi::or);
+            //FloatPolygon fp = this.polys.get(0);
+            //return new ShapeRoi(new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON));
 
             if (positiveShape.isPresent()) {
                 if (negativeShape.isPresent()) {
@@ -202,6 +264,22 @@ public class CompositeFloatPoly {
             }
         }
     }
+
+    Shape getShape(FloatPolygon fp) {
+        GeneralPath polygon =
+                new GeneralPath(GeneralPath.WIND_EVEN_ODD,
+                        fp.npoints);
+        polygon.moveTo(fp.xpoints[0], fp.ypoints[0]);
+
+        for (int index = 1; index < fp.npoints; index++) {
+            polygon.lineTo(fp.xpoints[index], fp.ypoints[index]);
+        };
+
+        polygon.closePath();
+
+        return polygon;
+    }
+
 
     /**
      *

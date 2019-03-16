@@ -337,7 +337,6 @@ public class ConvertibleRois extends ConvertibleObject{
 		// Converts data in case thats a RGB Image	
 		FloatProcessor fp = new FloatProcessor(ip.getWidth(), ip.getHeight());	
 		fp.setFloatArray(pixels);
-		//ImagePlus imgFloatCopy = new ImagePlus("FloatLabel",fp);
 		
 		boolean[][] movablePx = new boolean[ip.getWidth()+1][ip.getHeight()+1];
 		for (int x=1;x<ip.getWidth();x++) {
@@ -371,14 +370,10 @@ public class ConvertibleRois extends ConvertibleObject{
 				movablePx[x][y]=(!is3Colored)&&(!isCrossed);
 			}
 		}
-		//SelectToROIKeepLines.splitable = movablePx;
-		/*ArrayList<Roi> output = labelImageToRoiArray(imp);
-		output = convertRoisToPolygonRois(output);
-		output.replaceAll(roi -> ROIReShape.smoothenWithConstrains(roi, movablePx));
-		output.replaceAll(roi -> ROIReShape.smoothenWithConstrains(roi, movablePx));*/
-		//output.replaceAll(roi -> ROIReShape.smoothenWithConstrains(roi, movablePx));
-		//output.replaceAll(roi -> ROIReShape.smoothenWithConstrains(roi, movablePx));
-		return labelImageToRoiArray(imp);//IJShapeRoiArray(output);
+		IJShapeRoiArray output = labelImageToRoiArray(imp);
+		output.smoothenWithConstrains(movablePx);
+		output.smoothenWithConstrains(movablePx);
+		return output;
 	}
 
 	@Converter
