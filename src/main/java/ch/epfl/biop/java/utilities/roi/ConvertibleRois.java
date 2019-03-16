@@ -22,6 +22,7 @@ import ch.epfl.biop.java.utilities.roi.types.*;
 import ch.epfl.biop.java.utilities.roi.types.IJShapeRoiArray;
 import ij.IJ;
 import ij.ImagePlus;
+import ij.plugin.filter.ThresholdToSelection;
 import ij.process.ImageProcessor;
 import net.imglib2.RealPoint;
 import org.apache.commons.io.FileUtils;
@@ -328,7 +329,12 @@ public class ConvertibleRois extends ConvertibleObject{
 		}
 		return imp;
 	}
-	
+
+	/**
+	 * Tries to do something clever...
+	 * @param imp
+	 * @return
+	 */
 	static public IJShapeRoiArray labelImageToRoiArrayVectorize(ImagePlus imp) {
 		// Finds all tricolored pixels in imp
 		ImageProcessor ip = imp.getProcessor();
@@ -337,6 +343,8 @@ public class ConvertibleRois extends ConvertibleObject{
 		// Converts data in case thats a RGB Image	
 		FloatProcessor fp = new FloatProcessor(ip.getWidth(), ip.getHeight());	
 		fp.setFloatArray(pixels);
+
+		ImagePlus imgFloatCopy = new ImagePlus("FloatLabel",fp);
 		
 		boolean[][] movablePx = new boolean[ip.getWidth()+1][ip.getHeight()+1];
 		for (int x=1;x<ip.getWidth();x++) {
@@ -370,14 +378,34 @@ public class ConvertibleRois extends ConvertibleObject{
 				movablePx[x][y]=(!is3Colored)&&(!isCrossed);
 			}
 		}
-		IJShapeRoiArray output = labelImageToRoiArray(imp);
+
+		ArrayList<Roi> roiArray = new ArrayList<>();
+
+		HashSet<Float> existingPixelValues = new HashSet<>();
+
+		for (int x=0;x<ip.getWidth();x++) {
+			for (int y=0;y<ip.getHeight();y++) {
+				existingPixelValues.add((pixels[x][y]));
+			}
+		}
+
+		//SelectToROIKeepLines.filterMergable=true;
+		existingPixelValues.forEach(v -> {
+			fp.setThreshold( v,v,ImageProcessor.NO_LUT_UPDATE);
+			Roi roi = SelectToROIKeepLines.run(imgFloatCopy,movablePx,true);//ThresholdToSelection.run(imgFloatCopy);
+			roi.setName(Integer.toString((int) (double) v));
+			roiArray.add(roi);
+		});
+		//return new IJShapeRoiArray(roiArray);
+
+		IJShapeRoiArray output = new IJShapeRoiArray(roiArray);//labelImageToRoiArray(imp);
 		output.smoothenWithConstrains(movablePx);
 		output.smoothenWithConstrains(movablePx);
 		return output;
 	}
 
 	@Converter
-	public static IJShapeRoiArray labelImageToRoiArray(ImagePlus imp) {
+	public static IJShapeRoiArray labelImageToRoiArrayKeepSinglePixelPrecision(ImagePlus imp) {
 		ArrayList<Roi> roiArray = new ArrayList<>();
 		ImageProcessor ip = imp.getProcessor();
 		float[][] pixels = ip.getFloatArray();
@@ -403,6 +431,35 @@ public class ConvertibleRois extends ConvertibleObject{
 		});
 		return new IJShapeRoiArray(roiArray);
 	}
+
+	@Converter
+	public static IJShapeRoiArray labelImageToRoiArray(ImagePlus imp) {
+		ArrayList<Roi> roiArray = new ArrayList<>();
+		ImageProcessor ip = imp.getProcessor();
+		float[][] pixels = ip.getFloatArray();
+
+		HashSet<Float> existingPixelValues = new HashSet<>();
+
+		for (int x=0;x<ip.getWidth();x++) {
+			for (int y=0;y<ip.getHeight();y++) {
+				existingPixelValues.add((pixels[x][y]));
+			}
+		}
+
+		// Converts data in case thats a RGB Image
+		FloatProcessor fp = new FloatProcessor(ip.getWidth(), ip.getHeight());
+		fp.setFloatArray(pixels);
+		ImagePlus imgFloatCopy = new ImagePlus("FloatLabel",fp);
+		//SelectToROIKeepLines.filterMergable=true;
+		existingPixelValues.forEach(v -> {
+			fp.setThreshold( v,v,ImageProcessor.NO_LUT_UPDATE);
+			Roi roi = ThresholdToSelection.run(imgFloatCopy);
+			roi.setName(Integer.toString((int) (double) v));
+			roiArray.add(roi);
+		});
+		return new IJShapeRoiArray(roiArray);
+	}
+
 
 	@Converter
 	public static TransformixInputRoisFile realPointListToTransformixFile(RealPointList rpl) {

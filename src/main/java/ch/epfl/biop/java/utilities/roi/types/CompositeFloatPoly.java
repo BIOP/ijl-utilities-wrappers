@@ -249,14 +249,20 @@ public class CompositeFloatPoly {
 
             if (positiveShape.isPresent()) {
                 if (negativeShape.isPresent()) {
-                    return positiveShape.get().xor(negativeShape.get());
+                    Roi roi = positiveShape.get().xor(negativeShape.get());
+                    roi.setName(name);
+                    return roi;
                 } else {
-                    return positiveShape.get();
+                    Roi roi = positiveShape.get();
+                    roi.setName(name);
+                    return roi;
                 }
             } else {
                 if (negativeShape.isPresent()) {
                     // Dirty fix : if all area are in the same negative orientation (CCW), they are assumed to define positive areas
-                    return negativeShape.get();
+                    Roi roi = negativeShape.get();
+                    roi.setName(name);
+                    return roi;
                 } else {
                     System.err.println("Could not build ROI : no positive and negative area defined.");
                     return null;
