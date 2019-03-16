@@ -4,7 +4,6 @@ import ij.gui.OvalRoi;
 import ij.gui.PolygonRoi;
 import ij.gui.Roi;
 import ij.gui.ShapeRoi;
-import ij.plugin.frame.RoiManager;
 import ij.process.FloatPolygon;
 
 import java.awt.*;
@@ -39,7 +38,7 @@ import java.util.stream.Collectors;
  * - being able to set new shapes based on a list of control points
  *
  * TODO :
- * - check whether the polygon is repeating
+ * - check whether the polygon is repeating the end point
  * - check whether ROIs are representing areas
  *     - for the moment : write an error message
  *     - later plan, depending on use, is to handle correctly these non AREA rois
@@ -48,32 +47,6 @@ import java.util.stream.Collectors;
  */
 
 public class CompositeFloatPoly {
-
-    public int getNumberOfCtrlPts() {
-        return polys.stream().mapToInt(fp -> fp.npoints).sum();
-    }
-
-    public ArrayList<Point2D> getControlPoints() {
-        ArrayList<Point2D> list = new ArrayList<>();
-        polys.forEach( fp -> {
-            for (int i=0;i<fp.npoints;i++) {
-                list.add(new Point2D.Double(fp.xpoints[i],fp.ypoints[i]));
-            }
-        });
-        return list;
-    }
-
-    public void setControlPoints(List<Point2D> pts) {
-        int ptsIndex = 0;
-        for (FloatPolygon fp:this.polys) {
-            for (int i=0;i<fp.npoints;i++) {
-                Point2D pt = pts.get(ptsIndex);
-                fp.xpoints[i]= (float) pt.getX();
-                fp.ypoints[i]= (float) pt.getY();
-                ptsIndex++;
-            }
-        }
-    }
 
     private static final double SHAPE_TO_ROI=-1.0;
 
@@ -115,22 +88,76 @@ public class CompositeFloatPoly {
 
     public String name;
 
+    /**
+     * TODO Should be replaced by a clone() method
+     * @param cfp_in
+     */
+    public CompositeFloatPoly(CompositeFloatPoly cfp_in) {
+        if (cfp_in !=null) {
+            name = cfp_in.name;
+            polys = new ArrayList<>();
+            this.x = cfp_in.x;
+            this.y = cfp_in.y;
+            for (FloatPolygon fp:cfp_in.polys) {
+                polys.add(new FloatPolygon(fp.xpoints.clone(), fp.ypoints.clone()));
+            }
+        } else {
+            System.err.println("Error : null roi given as an input in CompositeFloatPoly constructor.");
+        }
+    }
+
+    /**
+     * Initializes a composite Float Poly from an ImageJ Roi
+     * @param roi
+     */
+    public CompositeFloatPoly(Roi roi) {
+        if (roi !=null) {
+            name = roi.getName();
+            polys = new ArrayList<>();
+            this.x = roi.getXBase();
+            this.y = roi.getYBase();
+            if (roi instanceof ShapeRoi) {
+                ShapeRoi sr = (ShapeRoi) roi;
+                Roi[] rois = getRois(sr);
+                for (Roi r:rois) {
+                    polys.add(r.getFloatPolygon());
+                }
+            } else {
+                // Single ROI
+                // TODO  Error message if it's not an area
+                polys.add(roi.getFloatPolygon());
+            }
+        } else {
+            System.err.println("Error : null roi given as an input in CompositeFloatPoly constructor.");
+        }
+    }
+
     public String toString() {
         return name;
     }
 
-    public static boolean isClockwise(FloatPolygon pr) {
+    /**
+     * Get area, convention is area is positive if the orientation is clockwise, negative otherwise
+     * TODO Check whether end points are repeated or not
+     * @param pr
+     * @return
+     */
+    static public double getArea(FloatPolygon pr) {
         if (pr.npoints<3) {
-            return false;
+            return 0;// false;
         }
-        float area = 0;
+        double area = 0;
         for (int i=0;i<pr.npoints-1;i++) {
             area+=pr.xpoints[i]*pr.ypoints[i+1]-pr.ypoints[i]*pr.xpoints[i+1];
         }
         area+=pr.xpoints[pr.npoints-1]*pr.ypoints[0]-pr.ypoints[pr.npoints-1]*pr.xpoints[0];
-        return area>0;
+        return area/2;
     }
 
+    /**
+     * Computes the ImageJ ROI (Shape ROI)
+     * @return
+     */
     public Roi getRoi() {
         if (polys==null) {
             return null;
@@ -144,7 +171,7 @@ public class CompositeFloatPoly {
         } else {
             Map<Boolean, List<FloatPolygon>> partitionedPolygons =
                     polys.stream()
-                         .collect(Collectors.partitioningBy(CompositeFloatPoly::isClockwise));
+                         .collect(Collectors.partitioningBy((fp) -> getArea(fp)>=0));
 
             Optional<ShapeRoi> positiveShape = partitionedPolygons.get(true)
                                                                  .stream()
@@ -165,78 +192,55 @@ public class CompositeFloatPoly {
                     return positiveShape.get();
                 }
             } else {
-                System.err.println("Error building ROI : no positive area defined.");
-                //return null;
                 if (negativeShape.isPresent()) {
+                    // Dirty fix : if all area are in the same negative orientation (CCW), they are assumed to define positive areas
                     return negativeShape.get();
                 } else {
                     System.err.println("Could not build ROI : no positive and negative area defined.");
                     return null;
                 }
-                //return positiveShape.get().or(negativeShape.get());
             }
         }
     }
 
-    public CompositeFloatPoly(CompositeFloatPoly cfp_in) {
-        if (cfp_in !=null) {
+    /**
+     *
+     * @return total number of points in the shape
+     */
+    public int getNumberOfCtrlPts() {
+        return polys.stream().mapToInt(fp -> fp.npoints).sum();
+    }
 
-            name = cfp_in.name;//getName();
-            polys = new ArrayList<>();
-            this.x = cfp_in.x;//.getXBase();
-            this.y = cfp_in.y;//roi.getYBase();
-            for (FloatPolygon fp:cfp_in.polys) {
-                polys.add(new FloatPolygon(fp.xpoints.clone(), fp.ypoints.clone()));
+    /**
+     *
+     * @return all control points as a list
+     */
+    public ArrayList<Point2D> getControlPoints() {
+        ArrayList<Point2D> list = new ArrayList<>();
+        polys.forEach( fp -> {
+            for (int i=0;i<fp.npoints;i++) {
+                list.add(new Point2D.Double(fp.xpoints[i],fp.ypoints[i]));
             }
-            /*if (roi instanceof ShapeRoi) {
-                //RoiManager roiManager = RoiManager.getRoiManager();
-                ShapeRoi sr = (ShapeRoi) roi;
-                Roi[] rois = getRois(sr);
-                for (Roi r:rois) {
-                    polys.add(r.getFloatPolygon());
-                    //System.out.println("class = "+r.getClass()+" name="+r.getName());
-                    //roiManager.addRoi(r);
+        });
+        return list;
+    }
+
+    /**
+     * @param pts
+     */
+    public void setControlPoints(List<Point2D> pts) {
+        if (pts.size()==this.getNumberOfCtrlPts()) {
+            int ptsIndex = 0;
+            for (FloatPolygon fp : this.polys) {
+                for (int i = 0; i < fp.npoints; i++) {
+                    Point2D pt = pts.get(ptsIndex);
+                    fp.xpoints[i] = (float) pt.getX();
+                    fp.ypoints[i] = (float) pt.getY();
+                    ptsIndex++;
                 }
-            } else {
-                // Single ROI
-                // TODO  Error message if it's not an area
-                polys.add(roi.getFloatPolygon());
-            }
-
-            for (FloatPolygon fp : polys) {
-                System.out.println(fp.toString());
-            }*/
-        } else {
-            System.err.println("Error : null roi given as an input in CompositeFloatPoly constructor.");
-        }
-    }
-
-    public CompositeFloatPoly(Roi roi) {
-        if (roi !=null) {
-        name = roi.getName();
-        polys = new ArrayList<>();
-        this.x = roi.getXBase();
-        this.y = roi.getYBase();
-        if (roi instanceof ShapeRoi) {
-            //RoiManager roiManager = RoiManager.getRoiManager();
-            ShapeRoi sr = (ShapeRoi) roi;
-            Roi[] rois = getRois(sr);
-            for (Roi r:rois) {
-                polys.add(r.getFloatPolygon());
-                //System.out.println("class = "+r.getClass()+" name="+r.getName());
-                //roiManager.addRoi(r);
             }
         } else {
-            // Single ROI
-            // TODO  Error message if it's not an area
-            polys.add(roi.getFloatPolygon());
-        }
-
-        for (FloatPolygon fp : polys) {
-            System.out.println(fp.toString());
-        }
-        } else {
-            System.err.println("Error : null roi given as an input in CompositeFloatPoly constructor.");
+            System.err.println("Non identical number of points between the shape and the input point list. SetControlPoints function ignored.");
         }
     }
 
@@ -261,7 +265,7 @@ public class CompositeFloatPoly {
             parsePath(pIter, null, null, rois, null);
         }
         Roi[] array = new Roi[rois.size()];
-        rois.copyInto((Roi[])array);
+        rois.copyInto(array);
         return array;
     }
 
