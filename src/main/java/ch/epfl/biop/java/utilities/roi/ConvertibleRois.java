@@ -512,13 +512,14 @@ public class ConvertibleRois extends ConvertibleObject{
 				while ((line = reader.readLine())!=null) {
 					parts = line.split(";");//\\d\\s+");
 					part = parts[4].split("[\\s]");
-					int nDim = part.length-3;
-					RealPoint rp = new RealPoint();
+					int nDim = 2;//part.length-4; to solve when todoing 3d
+					//RealPoint rp = new RealPoint();
 					double[] coords = new double [nDim];
 					for (int d=0;d<nDim;d++) {
 						coords[d]=Double.valueOf(part[4+d].trim());
 					}
-					rp.setPosition(coords);
+					RealPoint rp = new RealPoint(coords);
+					//rp.setPosition(coords);
 					out.add(rp);
 				}
 				reader.close();

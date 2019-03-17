@@ -144,7 +144,7 @@ public class CompositeFloatPoly {
      */
     static public double getArea(FloatPolygon pr) {
         if (pr.npoints<3) {
-            return 0;// false;
+            return 0;
         }
         double area = 0;
         for (int i=0;i<pr.npoints-1;i++) {
@@ -159,8 +159,6 @@ public class CompositeFloatPoly {
         // Todo : better handling of edges
 
         for (FloatPolygon pol: this.polys) {
-            //ArrayList<Float> xout = new ArrayList<>();
-            //ArrayList<Float> yout = new ArrayList<>();
             float[] xout = new float [pol.npoints];
 
             float[] yout = new float [pol.npoints];
@@ -188,30 +186,14 @@ public class CompositeFloatPoly {
                 }
                 xout[i]=x;
                 yout[i]=y;
-                //xout.add(x);
-                //yout.add(y);
             }
 
             for (int i = 0; i < pol.npoints; i++) {
                  pol.xpoints[i]=xout[i];
                  pol.ypoints[i]=yout[i];
             }
-            //pol.xpoints=convertFloatArray(xout);
-            //pol.ypoints=convertFloatArray(xout);
         }
     }
-
-   /* public static float[] convertFloatArray(List<Float> floatList) {
-        float[] floatArray = new float[floatList.size()];
-        int i = 0;
-        for (Float f : floatList) {
-            floatArray[i++] = (f != null ? f : Float.NaN);
-        }
-        return floatArray;
-    }*/
-
-
-    static public int SUB_PIXELPRECISION = 10;
 
     /**
      * Computes the ImageJ ROI (Shape ROI)
