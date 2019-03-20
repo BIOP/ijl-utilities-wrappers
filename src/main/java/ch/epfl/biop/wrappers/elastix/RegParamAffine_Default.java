@@ -39,7 +39,7 @@ public class RegParamAffine_Default extends RegistrationParameters {
 		FinalBSplineInterpolationOrder=3;
 		DefaultPixelValue=0f;
 		WriteResultImage=false;
-		ResultImagePixelType="short";
+		ResultImagePixelType="float";
 		ResultImageFormat="tif";
 	}
 }

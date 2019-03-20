@@ -215,10 +215,13 @@ public class RegistrationParameters extends ConvertibleObject {
 	// The pixel type and format of the resulting deformed moving image
 	@RegisterParam
 	public String ResultImagePixelType;// = "short";
+	//"unsigned short" "short" "float" "double"
+
 	@RegisterParam
 	public String ResultImageFormat;// = "tif";//mhd";
 	
-	
+	@RegisterParam
+	public boolean CompressResultImage = false; // lossless compression
 	// ---------------- For BSpline Transform
 	// The control point spacing of the bspline transformation in 
 	// the finest resolution level. Can be specified for each 

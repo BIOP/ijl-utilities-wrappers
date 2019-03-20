@@ -31,7 +31,7 @@ public class RegParamRigid_Default extends RegistrationParameters {
 		FinalBSplineInterpolationOrder=1;
 		DefaultPixelValue=0f;
 		WriteResultImage=false;
-		ResultImagePixelType="short";
+		ResultImagePixelType="float";
 		ResultImageFormat="tif";
 	}
 	
