@@ -98,6 +98,23 @@ public class RegistrationParameters extends ConvertibleObject {
 	// use automatic scales estimation:
 	@RegisterParam
 	public Boolean AutomaticScalesEstimation;
+
+	/**
+	 * When the initial alignment between two images is very off, you cannot start a nonrigid registration. And
+	 * 	sometimes it can be a hassle to get it right. What factors can help to get it right?
+	 * 	- Start with a transformation with a low degree of freedom, i.e. the translation, rigid, similarity or affine
+	 * 	transform. Sometimes the images are really far off, and have no overlap to begin with (NB: the position
+	 * 	of images in physical space is determined by the origin and voxel spacing.
+	 * 	 A solution is then to add the following line to your parameter file:
+	 * 	 AutomaticTransformInitialization = true
+	 * 	This parameter facilitates the automatic estimation of an initial alignment for the aforementioned
+	 * 	transformations. Three methods to do so are supported: the default method which aligns the centres
+	 * 	of the fixed and moving image, a method that aligns the centres of gravity, and a method that simply
+	 * 	aligns the image origins. A method can be selected by adding one of the following lines to the parameter
+	 * 	file: "GeometricalCenter", "CenterOfGravity", "Origins"
+	 */
+	@RegisterParam
+	public Boolean AutomaticTransformInitialization=true;
 	
 	// Whether transforms are combined by composition or by addition.
 	// In generally, Compose is the best option in most cases.
@@ -243,24 +260,6 @@ public class RegistrationParameters extends ConvertibleObject {
 	// This setting can also be supplied per dimension.
 	@RegisterParam
 	public Integer[] GridSpacingSchedule;
-
-
-	/**
-	 * When the initial alignment between two images is very off, you cannot start a nonrigid registration. And
-	 * 	sometimes it can be a hassle to get it right. What factors can help to get it right?
-	 * 	- Start with a transformation with a low degree of freedom, i.e. the translation, rigid, similarity or affine
-	 * 	transform. Sometimes the images are really far off, and have no overlap to begin with (NB: the position
-	 * 	of images in physical space is determined by the origin and voxel spacing.
-	 * 	 A solution is then to add the following line to your parameter file:
-	 * 	 AutomaticTransformInitialization = true
-	 * 	This parameter facilitates the automatic estimation of an initial alignment for the aforementioned
-	 * 	transformations. Three methods to do so are supported: the default method which aligns the centres
-	 * 	of the fixed and moving image, a method that aligns the centres of gravity, and a method that simply
-	 * 	aligns the image origins. A method can be selected by adding one of the following lines to the parameter
-	 * 	file: "GeometricalCenter", "CenterOfGravity", "Origins"
-	 */
-	@RegisterParam
-	boolean AutomaticTransformInitialization=true;
 
 	/**
 	 *	This parameter facilitates the automatic estimation of an initial alignment for the aforementioned

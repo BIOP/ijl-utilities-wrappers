@@ -19,7 +19,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-// DOESN T WORK for FLUORESCENT CELL SAMPLE, AND I DONT KNOW WHY
+// Some images are not updated...
+// TODO : improve hyperstack creation by looking at https://github.com/imagej/imagej1/blob/a750ce0ed717ce2cccb7a07cbc96b1a2394a68ff/ij/plugin/Scaler.java
+
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Transformix>Transform Image")
 public class Transformix_TransformImgPlus implements Command  {
 	@Parameter
@@ -55,8 +57,7 @@ public class Transformix_TransformImgPlus implements Command  {
 				ips.add(img_in.getStack().getProcessor(i+1));
 			}
 		}
-
-		List<ImageProcessor> tr_imps = ips.parallelStream().map(ip -> { // cannot be parallel this way ?
+		List<ImageProcessor> tr_imps = ips.parallelStream().map(ip -> {
 			ImagePlus imp = new ImagePlus();
 			imp.setProcessor(ip);
 			imp.setTitle(ip.toString());
@@ -65,7 +66,6 @@ public class Transformix_TransformImgPlus implements Command  {
 			th.setImage(imp);
 			th.transform();
 			ImagePlus imp_out = ((ImagePlus) (th.getTransformedImage().to(ImagePlus.class)));
-			imp_out.show();
 			return imp_out.getProcessor();
 		}).collect(Collectors.toList());
 
@@ -80,23 +80,16 @@ public class Transformix_TransformImgPlus implements Command  {
 				red.getStack().setProcessor(tr_imps.get(i_IP).convertToByte(false), i+1);
 				i_IP++;
 			}
-			//red.updateAndDraw();
-			//red.show();
 			green = IJ.createImage("Green", "8-bit", newW, newH, nTimepointsRGB);
 			for (int i=0;i<nTimepointsRGB;i++) {
 				green.getStack().setProcessor(tr_imps.get(i_IP).convertToByte(false), i+1);
 				i_IP++;
 			}
-			//green.updateAndDraw();
-			//green.show();
 			blue = IJ.createImage("Blue", "8-bit", newW, newH, nTimepointsRGB);
 			for (int i=0;i<nTimepointsRGB;i++) {
 				blue.getStack().setProcessor(tr_imps.get(i_IP).convertToByte(false), i+1);
 				i_IP++;
 			}
-			//blue.updateAndDraw();
-			//blue.show();
-			//IJ.run("Merge Channels...", "c1=[lena-std.tif (red)] c2=[lena-std.tif (green)] c3=[lena-std.tif (blue)]");
 			RGBStackMerge rgbsm = new RGBStackMerge();
 			img_out = rgbsm.mergeHyperstacks(new ImagePlus[]{red, green, blue}, false);
 			if (channels!=null) {
@@ -106,29 +99,18 @@ public class Transformix_TransformImgPlus implements Command  {
 				channels[2].close();
 			}
 		} else {
-			IJ.run(img_in, "Scale...","x=- y=- z=- width="+newW+" height="+newH+" interpolation=None average process create");
+			IJ.run(img_in, "Scale...","x=- y=- z=1.0 width="+newW+" height="+newH+" depth=- interpolation=None create");
 			img_out = IJ.getImage();
-			switch (tr_imps.get(0).getBitDepth()) {
-				case 8:
-					IJ.run(img_out, "8-bit", "");
-					break;
-				case 16:
-					IJ.run(img_out, "16-bit", "");
-					break;
-				case 32:
-					IJ.run(img_out, "32-bit", "");
-					break;
-			}
-
+			IJ.run(img_out, "32-bit", "");
 			for (int i = 0; i < img_in.getStack().getSize(); i++) {
 				img_out.getStack().setProcessor(tr_imps.get(i), i + 1);
 			}
+			img_out.getProcessor().setPixels(tr_imps.get(0).getPixels()); // Dirty fix channel 0
 		}
-		img_out.setCalibration(new Calibration()); // removes metadata
-		img_out.updateAndDraw();
 		if (isRGB) {
 			new StackConverter(img_out).convertToRGB();
 		}
+		img_out.updateAndDraw();
 	}
 	
 }
