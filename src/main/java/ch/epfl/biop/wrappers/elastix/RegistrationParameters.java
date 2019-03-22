@@ -99,11 +99,6 @@ public class RegistrationParameters extends ConvertibleObject {
 	@RegisterParam
 	public Boolean AutomaticScalesEstimation;
 	
-	// Automatically guess an initial translation by aligning the
-	// geometric centers of the fixed and moving.
-	@RegisterParam
-	public Boolean AutomaticTransformInitialization;
-	
 	// Whether transforms are combined by composition or by addition.
 	// In generally, Compose is the best option in most cases.
 	// It does not influence the results very much.
@@ -214,11 +209,11 @@ public class RegistrationParameters extends ConvertibleObject {
 
 	// The pixel type and format of the resulting deformed moving image
 	@RegisterParam
-	public String ResultImagePixelType;// = "short";
+	public String ResultImagePixelType = "float";
 	//"unsigned short" "short" "float" "double"
 
 	@RegisterParam
-	public String ResultImageFormat;// = "tif";//mhd";
+	public String ResultImageFormat = "tif";//mhd";
 	
 	@RegisterParam
 	public boolean CompressResultImage = false; // lossless compression
@@ -248,6 +243,34 @@ public class RegistrationParameters extends ConvertibleObject {
 	// This setting can also be supplied per dimension.
 	@RegisterParam
 	public Integer[] GridSpacingSchedule;
+
+
+	/**
+	 * When the initial alignment between two images is very off, you cannot start a nonrigid registration. And
+	 * 	sometimes it can be a hassle to get it right. What factors can help to get it right?
+	 * 	- Start with a transformation with a low degree of freedom, i.e. the translation, rigid, similarity or affine
+	 * 	transform. Sometimes the images are really far off, and have no overlap to begin with (NB: the position
+	 * 	of images in physical space is determined by the origin and voxel spacing.
+	 * 	 A solution is then to add the following line to your parameter file:
+	 * 	 AutomaticTransformInitialization = true
+	 * 	This parameter facilitates the automatic estimation of an initial alignment for the aforementioned
+	 * 	transformations. Three methods to do so are supported: the default method which aligns the centres
+	 * 	of the fixed and moving image, a method that aligns the centres of gravity, and a method that simply
+	 * 	aligns the image origins. A method can be selected by adding one of the following lines to the parameter
+	 * 	file: "GeometricalCenter", "CenterOfGravity", "Origins"
+	 */
+	@RegisterParam
+	boolean AutomaticTransformInitialization=true;
+
+	/**
+	 *	This parameter facilitates the automatic estimation of an initial alignment for the aforementioned
+	 * 	transformations. Three methods to do so are supported: the default method which aligns the centres
+	 * 	of the fixed and moving image, a method that aligns the centres of gravity, and a method that simply
+	 * 	aligns the image origins. A method can be selected by adding one of the following lines to the parameter
+	 * 	file: "GeometricalCenter", "CenterOfGravity", "Origins"
+	 */
+	//@RegisterParam
+	//String AutomaticTransformInitializationMethod;
 	
 	static public boolean easyToWrite(Class c) {
 		boolean easy=false;
@@ -271,7 +294,7 @@ public class RegistrationParameters extends ConvertibleObject {
 				if ((f.isAnnotationPresent(RegisterParam.class))&&(f.get(rp)!=null)) {
 					output+="("+f.getName()+" ";
 					if (easyToWrite(f.getType())) {
-						output+=f.get(rp);
+						output += f.get(rp);
 					}
 					if (f.getType()==(new float[] {}).getClass()) {
 						float[] arrayParam = (float[]) f.get(rp);
@@ -312,7 +335,7 @@ public class RegistrationParameters extends ConvertibleObject {
 		try {
 			File temp = File.createTempFile("rpa", ".txt");
 			writer = new BufferedWriter(new FileWriter(temp));
-            writer.write(RegistrationParameters.toString(rp));
+			writer.write(RegistrationParameters.toString(rp));
 			writer.close();
 			return temp;
 		} catch (IOException e) {

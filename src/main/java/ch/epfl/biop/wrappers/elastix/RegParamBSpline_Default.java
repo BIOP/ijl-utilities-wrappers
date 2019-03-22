@@ -42,8 +42,8 @@ public class RegParamBSpline_Default extends RegistrationParameters {
 		FinalBSplineInterpolationOrder=3;
 		DefaultPixelValue=0f;
 		WriteResultImage=false;
-		ResultImagePixelType="short";
-		ResultImageFormat="tif";
+		//ResultImagePixelType="short";
+		//ResultImageFormat="tif";
 	}
 
 }
