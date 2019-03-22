@@ -1,6 +1,7 @@
 package ch.epfl.biop.wrappers.transformix.ij2commands;
 
 import ch.epfl.biop.wrappers.elastix.RegisterHelper;
+import ij.measure.Calibration;
 import ij.plugin.ChannelSplitter;
 import ij.plugin.RGBStackMerge;
 import ij.process.ImageProcessor;
@@ -18,8 +19,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Transformix>Transform Image")
 // DOESN T WORK for FLUORESCENT CELL SAMPLE, AND I DONT KNOW WHY
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Transformix>Transform Image")
 public class Transformix_TransformImgPlus implements Command  {
 	@Parameter
     RegisterHelper rh;
@@ -55,7 +56,7 @@ public class Transformix_TransformImgPlus implements Command  {
 			}
 		}
 
-		List<ImageProcessor> tr_imps = ips.parallelStream().map(ip -> { // cannot be parallel this way
+		List<ImageProcessor> tr_imps = ips.parallelStream().map(ip -> { // cannot be parallel this way ?
 			ImagePlus imp = new ImagePlus();
 			imp.setProcessor(ip);
 			imp.setTitle(ip.toString());
@@ -63,7 +64,9 @@ public class Transformix_TransformImgPlus implements Command  {
 			th.setTransformFile(rh);
 			th.setImage(imp);
 			th.transform();
-			return ((ImagePlus) (th.getTransformedImage().to(ImagePlus.class))).getProcessor();
+			ImagePlus imp_out = ((ImagePlus) (th.getTransformedImage().to(ImagePlus.class)));
+			imp_out.show();
+			return imp_out.getProcessor();
 		}).collect(Collectors.toList());
 
 		int newH = tr_imps.get(0).getHeight();
@@ -121,6 +124,7 @@ public class Transformix_TransformImgPlus implements Command  {
 				img_out.getStack().setProcessor(tr_imps.get(i), i + 1);
 			}
 		}
+		img_out.setCalibration(new Calibration()); // removes metadata
 		img_out.updateAndDraw();
 		if (isRGB) {
 			new StackConverter(img_out).convertToRGB();
