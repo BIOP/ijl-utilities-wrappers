@@ -44,17 +44,17 @@ public class Transformix_TransformImgPlus implements Command  {
 			channels = ChannelSplitter.split(img_in);
 			nTimepointsRGB = channels[0].getStack().getSize();
 			for (int i=0;i<channels[0].getStack().getSize();i++) {
-				ips.add(channels[0].getStack().getProcessor(i+1));
+				ips.add(channels[0].getStack().getProcessor(i+1).convertToFloat());
 			}
 			for (int i=0;i<channels[1].getStack().getSize();i++) {
-				ips.add(channels[1].getStack().getProcessor(i+1));
+				ips.add(channels[1].getStack().getProcessor(i+1).convertToFloat());
 			}
 			for (int i=0;i<channels[2].getStack().getSize();i++) {
-				ips.add(channels[2].getStack().getProcessor(i+1));
+				ips.add(channels[2].getStack().getProcessor(i+1).convertToFloat());
 			}
 		} else {
 			for (int i=0;i<img_in.getStack().getSize();i++) {
-				ips.add(img_in.getStack().getProcessor(i+1));
+				ips.add(img_in.getStack().getProcessor(i+1).convertToFloat());
 			}
 		}
 		List<ImageProcessor> tr_imps = ips.parallelStream().map(ip -> {
@@ -110,7 +110,12 @@ public class Transformix_TransformImgPlus implements Command  {
 		if (isRGB) {
 			new StackConverter(img_out).convertToRGB();
 		}
+		ImagePlus imp_temp = img_out;
+		img_out = imp_temp.duplicate();
+		imp_temp.changes = false;
+		imp_temp.close();
 		img_out.updateAndDraw();
+		img_out.setTitle("Transformed_"+img_in.getTitle());
 	}
 	
 }
