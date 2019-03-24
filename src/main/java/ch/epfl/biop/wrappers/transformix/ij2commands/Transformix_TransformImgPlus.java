@@ -1,5 +1,6 @@
 package ch.epfl.biop.wrappers.transformix.ij2commands;
 
+import ch.epfl.biop.fiji.imageplusutils.ImagePlusFunctions;
 import ch.epfl.biop.wrappers.elastix.RegisterHelper;
 import ij.measure.Calibration;
 import ij.plugin.ChannelSplitter;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
 
 // Some images are not updated...
 // TODO : improve hyperstack creation by looking at https://github.com/imagej/imagej1/blob/a750ce0ed717ce2cccb7a07cbc96b1a2394a68ff/ij/plugin/Scaler.java
+// Needs to check this : https://github.com/imagej/imagej1/blob/master/ij/plugin/HyperStackConverter.java
 
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Transformix>Transform Image")
 public class Transformix_TransformImgPlus implements Command  {
@@ -72,6 +74,9 @@ public class Transformix_TransformImgPlus implements Command  {
 		int newH = tr_imps.get(0).getHeight();
 		int newW = tr_imps.get(0).getWidth();
 
+
+		ImagePlus img_out_temp;
+
 		if (isRGB) {
 			ImagePlus red, green, blue;
 			int i_IP = 0;
@@ -91,7 +96,7 @@ public class Transformix_TransformImgPlus implements Command  {
 				i_IP++;
 			}
 			RGBStackMerge rgbsm = new RGBStackMerge();
-			img_out = rgbsm.mergeHyperstacks(new ImagePlus[]{red, green, blue}, false);
+			img_out_temp = rgbsm.mergeHyperstacks(new ImagePlus[]{red, green, blue}, false);
 			if (channels!=null) {
 				assert channels.length==3;
 				channels[0].close();
@@ -99,23 +104,20 @@ public class Transformix_TransformImgPlus implements Command  {
 				channels[2].close();
 			}
 		} else {
-			IJ.run(img_in, "Scale...","x=- y=- z=1.0 width="+newW+" height="+newH+" depth=- interpolation=None create");
-			img_out = IJ.getImage();
-			IJ.run(img_out, "32-bit", "");
+			img_out_temp = new ImagePlusFunctions.ImagePlusBuilder().allAs(img_in).type32Bit().height(newH).width(newW).createImagePlus();
+			img_out_temp.setSlice(0);
 			for (int i = 0; i < img_in.getStack().getSize(); i++) {
-				img_out.getStack().setProcessor(tr_imps.get(i), i + 1);
+				img_out_temp.getStack().setProcessor(tr_imps.get(i), i + 1);
 			}
-			img_out.getProcessor().setPixels(tr_imps.get(0).getPixels()); // Dirty fix channel 0
+			/* Bug : imageprocessor not updated for one slide */
+			img_out_temp.getProcessor().setPixels(tr_imps.get(0).getPixels()); // Dirty fix slice 0 -> keep processor
 		}
 		if (isRGB) {
-			new StackConverter(img_out).convertToRGB();
+			new StackConverter(img_out_temp).convertToRGB();
 		}
-		ImagePlus imp_temp = img_out;
-		img_out = imp_temp.duplicate();
-		imp_temp.changes = false;
-		imp_temp.close();
-		img_out.updateAndDraw();
-		img_out.setTitle("Transformed_"+img_in.getTitle());
+		img_out_temp.setTitle("Transformed_"+img_in.getTitle());
+		img_out = img_out_temp.duplicate(); // only way found to have a correct display for composite images...
+		img_out.setTitle(img_out.getTitle().substring(4)); // Removes DUP_ in title
 	}
 	
 }
