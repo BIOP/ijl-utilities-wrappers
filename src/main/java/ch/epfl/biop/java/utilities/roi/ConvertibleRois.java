@@ -119,6 +119,7 @@ public class ConvertibleRois extends ConvertibleObject{
 
 	@Converter
 	public static IJShapeRoiArray imageJFileFormatToArray(ImageJRoisFile ijf) {
+		ImagePlus imp;
 		ArrayList<Roi> list = new ArrayList<>();
 		ZipInputStream in = null; 
 		ByteArrayOutputStream out = null; 

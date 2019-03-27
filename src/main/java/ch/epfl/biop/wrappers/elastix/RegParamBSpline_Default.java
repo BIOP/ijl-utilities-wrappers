@@ -4,6 +4,8 @@ public class RegParamBSpline_Default extends RegistrationParameters {
 	
 	public RegParamBSpline_Default() {
 		super();
+		this.AutomaticTransformInitialization=false;
+		this.AutomaticScalesEstimation=false;
 		FixedInternalImagePixelType="float";
 		MovingInternalImagePixelType="float";
 		FixedImageDimension=2;
@@ -21,7 +23,9 @@ public class RegParamBSpline_Default extends RegistrationParameters {
 		Transform="BSplineTransform";
 		//Metric="NormalizedMutualInformation";
 		Metric="AdvancedMattesMutualInformation";
-		
+
+
+
 		FinalGridSpacingInVoxels=20;
 		//AutomaticScalesEstimation=true;
 		//AutomaticTransformInitialization=true;
