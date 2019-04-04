@@ -400,8 +400,84 @@ public class ConvertibleRois extends ConvertibleObject{
 		//return new IJShapeRoiArray(roiArray);
 
 		IJShapeRoiArray output = new IJShapeRoiArray(roiArray);//labelImageToRoiArray(imp);
+		// Let's try to define cross pixels which can be merged :
+
+		/*boolean[][] mergePx = new boolean[ip.getWidth()+1][ip.getHeight()+1];
+		for (int x=1;x<ip.getWidth();x++) {
+			for (int y=1;y<ip.getHeight();y++) {
+				if (movablePx[x][y]==false) {
+					// Let's check whether it is
+					// b a or a b in which case a can be merged and should be merged
+					// a c    c a
+
+					float p1p1 = pixels[x][y];
+					float p1m1 = pixels[x][y-1];
+					float m1p1 = pixels[x-1][y];
+					float m1m1 = pixels[x-1][y-1];
+
+					if ((p1p1==m1m1)&&(p1m1!=m1p1)) {
+						// Ahah!
+						// We know it's 3 colored; so it's the situation:
+						// b a
+						// a c
+						// where a = p1p1
+						mergePx[x][y]=true;
+					}
+					if ((p1m1==m1p1)&&(p1p1!=m1m1)) {
+						// Ahah!
+						// We know it's 3 colored; so it's the situation:
+						// a c
+						// b a
+						// where a = p1p1
+						mergePx[x][y]=true;
+					}
+
+				}
+			}
+		}
+		List<CompositeFloatPoly> cfps_to_fuse = output.rois
+				.parallelStream()
+				.filter( cfp -> cfp.getControlPoints().stream().anyMatch( pt -> mergePx[(int)pt.getX()][(int) pt.getY()]))
+				.collect(Collectors.toList());
+		output.rois.removeAll(cfps_to_fuse);*/
+
+
+		// Merge Rois based on mergePx
+		/*boolean allMerged = false;
+		ArrayList<CompositeFloatPoly> cfps = new ArrayList<>();
+		cfps.addAll(output.rois);
+		// repeat while allMerging has not been done
+		while (allMerged==false) {
+			allMerged=true;
+			boolean merge_perform=false;
+			int indexPoly = 0;
+			while (merge_perform==false) {
+				CompositeFloatPoly cfp = cfps.get(indexPoly);
+				int indexPts = 0;
+				boolean merged=false;
+				while((indexPts<cfp.getControlPoints().size())&&(merged==false)) {
+					Point2D pt = cfp.getControlPoints().get(indexPts);
+					int px = (int) pt.getX();
+					int py = (int) pt.getY();
+					if (mergePx[px][py]) {
+						// look for buddy
+						int indexPoly2 = indexPoly+1;
+						while()&&()merge_perform==false
+						CompositeFloatPoly cfp2 = cfps.get(indexPoly2);
+
+
+					}
+				}
+				if (merged==true) {
+					merge_perform=true;
+				}
+				//cfp.getControlPoints().stream().filter(pt -> mergePx[(int)pt.getX()][(int)pt.getY()]).findFirst();
+			}
+
+		}*/
+
 		output.smoothenWithConstrains(movablePx);
-		output.smoothenWithConstrains(movablePx);
+		//output.smoothenWithConstrains(movablePx);
 		return output;
 	}
 

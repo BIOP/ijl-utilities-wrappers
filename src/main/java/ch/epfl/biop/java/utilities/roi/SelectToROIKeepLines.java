@@ -229,7 +229,6 @@ public class SelectToROIKeepLines {
 								outline[x] = null;
 								outline[x + 1].shift(x + 1, y);
 							} else if (outline[x + 1] == outline[x]) {
-								//System.err.println("subtract " + outline[x]);
 								polygons.add(outline[x].getPolygon(splitable, filterMergable)); // MINUS
 								outline[x] = outline[x + 1] = null;
 							} else {

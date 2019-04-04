@@ -20,7 +20,7 @@ public class RegParamBSpline_Default extends RegistrationParameters {
 		MovingImagePyramid="MovingSmoothingImagePyramid"; // try smoothing
 		
 		Optimizer="AdaptiveStochasticGradientDescent";
-		Transform="BSplineTransform";
+		Transform="RecursiveBSplineTransform";
 		//Metric="NormalizedMutualInformation";
 		Metric="AdvancedMattesMutualInformation";
 
