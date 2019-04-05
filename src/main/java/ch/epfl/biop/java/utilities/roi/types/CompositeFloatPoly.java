@@ -208,7 +208,9 @@ public class CompositeFloatPoly {
         }
         if (polys.size()==1) {
             FloatPolygon fp = polys.get(0);
-            return new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON);
+            Roi roi = new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON);
+            roi.setName(name);
+            return roi;
         } else {
             Map<Boolean, List<FloatPolygon>> partitionedPolygons =
                     polys.stream()

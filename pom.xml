@@ -13,7 +13,7 @@
 
 	<groupId>ch.epfl.biop</groupId>
 	<artifactId>ijl-utilities-wrappers</artifactId>
-	<version>0.3.1-SNAPSHOT</version>
+	<version>0.3.1</version>
 
 	<name>Wrappers for native shell task execution + ROIs and images conversion</name>
 	<description>Wrappers for ImageJ: Elastix, Transformix, Ilastik (add next here). </description>
