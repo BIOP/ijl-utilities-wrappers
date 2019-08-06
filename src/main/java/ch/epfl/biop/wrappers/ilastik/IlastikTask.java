@@ -28,10 +28,20 @@ public class IlastikTask implements Runnable {
 
     public String output_filename_format;
 
+    public Supplier<String> raw_data = null;
+
+    public Supplier<String> probabilities = null;
+
+    public Supplier<String> segmentation_image = null;
+
     public IlastikTask(IlastixTaskBuilder builder) {
         this.imageInPathSuppliers=builder.imageInPathSuppliers;
         this.export_source=builder.export_source;
         this.export_dtype=builder.export_dtype;
+
+        this.raw_data=builder.raw_data;
+        this.probabilities=builder.probabilities;
+        this.segmentation_image=builder.segmentation_image;
 
         this.ilastikProjectPathSupplier=builder.ilastikProjectPathSupplier;
         this.output_filename_format = builder.output_filename_format;
@@ -42,6 +52,19 @@ public class IlastikTask implements Runnable {
         options.add("--headless");
         System.out.println("this.export_source="+this.export_source);
         options.add("--project="+this.ilastikProjectPathSupplier.get());
+
+        if (raw_data!=null) {
+            options.add("--raw_data="+this.raw_data.get());
+        }
+
+        if (probabilities!=null) {
+            options.add("--probabilities="+this.probabilities.get());
+        }
+
+        if (segmentation_image!=null) {
+            options.add("--segmentation_image="+this.segmentation_image.get());
+        }
+
         System.out.println(this.export_source);
         options.add("--export_source="+this.export_source);
         options.add("--export_dtype="+this.export_dtype);
@@ -68,6 +91,12 @@ public class IlastikTask implements Runnable {
         private String export_dtype="uint8";
 
         public String output_filename_format="{dataset_dir}/{nickname}_results.tiff";
+
+        public Supplier<String> raw_data=null;
+
+        public Supplier<String> probabilities=null;
+
+        public Supplier<String> segmentation_image=null;
 
         int nThreads=-1;
 
@@ -100,6 +129,21 @@ public class IlastikTask implements Runnable {
 
         public IlastikTask.IlastixTaskBuilder output_filename_format(String str_arg) {
             this.output_filename_format=str_arg;
+            return this;
+        }
+
+        public IlastikTask.IlastixTaskBuilder raw_data(Supplier<String> str_arg) {
+            this.raw_data=str_arg;
+            return this;
+        }
+
+        public IlastikTask.IlastixTaskBuilder probabilities(Supplier<String> str_arg) {
+            this.probabilities=str_arg;
+            return this;
+        }
+
+        public IlastikTask.IlastixTaskBuilder segmentation_image(Supplier<String> str_arg) {
+            this.segmentation_image=str_arg;
             return this;
         }
 
