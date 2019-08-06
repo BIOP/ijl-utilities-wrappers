@@ -13,7 +13,7 @@
 
 	<groupId>ch.epfl.biop</groupId>
 	<artifactId>ijl-utilities-wrappers</artifactId>
-	<version>0.3.1</version>
+	<version>0.3.12</version>
 
 	<name>Wrappers for native shell task execution + ROIs and images conversion</name>
 	<description>Wrappers for ImageJ: Elastix, Transformix, Ilastik (add next here). </description>
@@ -29,6 +29,9 @@
 			<distribution>repo</distribution>
 		</license>
 	</licenses>
+
+
+
 	<developers>
 		<developer>
 			<id>nicokiaru</id>
@@ -133,6 +136,7 @@
 		<main-class>ch.epfl.biop.DummyCommand</main-class>
 		<license.licenseName>N/A</license.licenseName>
 		<license.copyrightOwners>N/A</license.copyrightOwners>
+		<scijava.app.directory>C:\Users\chiarutt\Dropbox\BIOP\fiji-win64\Fiji.app</scijava.app.directory>
 	</properties>
 
 	<dependencies>
@@ -204,9 +208,9 @@
 			<version>2.8.5</version>
 		</dependency>
 		<dependency>
-			<groupId>com.mycompany</groupId>
-			<artifactId>example-imagej-display</artifactId>
-			<version>0.1.0-SNAPSHOT</version>
+			<groupId>org.scijava</groupId>
+			<artifactId>scijava-ui-swing</artifactId>
+			<version>0.13.0</version>
 		</dependency>
 	</dependencies>
 </project>

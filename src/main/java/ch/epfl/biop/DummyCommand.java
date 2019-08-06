@@ -15,10 +15,10 @@ public class DummyCommand {
         final ImageJ ij = new ImageJ();
         ij.ui().showUI();
 
-       /* ImagePlus imp = IJ.openImage("/home/nico/Dropbox/BIOP/2019-02 Laura Ca/Label.tif");
-            imp = IJ.openImage("/home/nico/Desktop/Label.tif");
-        imp.show();
-        IJ.run(imp, "Vectorize Label Image", "putinroimanager=true");*/
+        //ImagePlus imp = IJ.openImage("/home/nico/Dropbox/BIOP/2019-02 Laura Ca/Label.tif");
+        //    imp = IJ.openImage("/home/nico/Desktop/Label.tif");
+        //imp.show();
+        //IJ.run(imp, "Vectorize Label Image", "putinroimanager=true");
 
         //ImagePlus imp = IJ.openImage("C:\\Users\\chiarutt\\Dropbox\\LabelPb.tif");
         //imp.show();

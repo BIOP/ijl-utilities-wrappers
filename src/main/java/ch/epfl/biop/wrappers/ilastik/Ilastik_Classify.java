@@ -2,13 +2,19 @@ package ch.epfl.biop.wrappers.ilastik;
 
 import ch.epfl.biop.java.utilities.image.ConvertibleImage;
 import ij.ImagePlus;
+import net.imagej.Dataset;
+import net.imagej.DefaultDataset;
+import net.imglib2.img.display.imagej.ImageJFunctions;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
+import org.scijava.convert.ConvertService;
+import org.scijava.io.IOService;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
 import org.apache.commons.io.FilenameUtils;
 
 import java.io.File;
+import java.io.IOException;
 
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Ilastik>Classify")
 public class Ilastik_Classify implements Command {
@@ -27,6 +33,12 @@ public class Ilastik_Classify implements Command {
 
     @Parameter(type = ItemIO.OUTPUT)
     ImagePlus image_out;
+
+    @Parameter
+    IOService io;
+
+    @Parameter
+    ConvertService cs;
 
     @Override
     public void run() {
@@ -47,12 +59,21 @@ public class Ilastik_Classify implements Command {
         String fileNameWithOutExt = FilenameUtils.removeExtension(fNameIn);
         String outputFileName = fileNameWithOutExt+"_results.tiff";
         System.out.println(outputFileName);
-        image_out = new ImagePlus(outputFileName);
-        image_out.setTitle(FilenameUtils.removeExtension(image_in.getTitle())+"_"+FilenameUtils.removeExtension(FilenameUtils.getName(ilastikProjectFile.getAbsolutePath()))+"_"+it.export_source);
-        if ((new File(outputFileName)).delete()) {
-            // Temp file correctly deleted
-        } else {
-            System.err.println("Error, couldn't delete temp file"+outputFileName);
+
+        try {
+
+            String titleImage = FilenameUtils.removeExtension(image_in.getTitle())+"_"+FilenameUtils.removeExtension(FilenameUtils.getName(ilastikProjectFile.getAbsolutePath()))+"_"+it.export_source;
+            image_out = cs.convert(io.open(outputFileName), ImagePlus.class);
+            image_out.setTitle(titleImage);
+
+            if ((new File(outputFileName)).delete()) {
+                // Temp file correctly deleted
+            } else {
+                System.err.println("Error, couldn't delete temp file"+outputFileName);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+
     }
 }

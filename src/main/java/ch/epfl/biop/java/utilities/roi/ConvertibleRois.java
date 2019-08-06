@@ -261,19 +261,12 @@ public class ConvertibleRois extends ConvertibleObject{
 	@Converter
 	public static IJShapeRoiArray elastixFileFormatToArray(TransformixOutputRoisFile erf) {
 		BufferedReader reader = null;
-		//ArrayList<Roi> out = new ArrayList<>();
 			try {
-				System.out.println("0");
-				if (erf.shapeRoiList==null) {
-					System.out.println("C'est null!!!!!!!!!!!!");
-				}
                 IJShapeRoiArray out = new IJShapeRoiArray(erf.shapeRoiList);
-
-				System.out.println("1");
 				reader = new BufferedReader(new FileReader(erf.f));
 				String line;
-                String[] parts = null;
-                String part[] = null;
+                String[] parts;
+                String part[];
                 ArrayList<Point2D> ptList = new ArrayList<>();
 				while ((line  = reader.readLine())!=null) {
                     parts = line.split(";");//\\d\\s+");
@@ -282,11 +275,7 @@ public class ConvertibleRois extends ConvertibleObject{
                     double y = Double.valueOf(part[5].trim());
                     ptList.add(new Point2D.Double(x,y));
 				}
-
-				System.out.println("2");
 				out.setPoints(ptList);
-
-				System.out.println("3");
 				reader.close();
 				return out;
 			} catch (IOException e) {

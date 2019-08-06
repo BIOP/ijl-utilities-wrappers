@@ -2,10 +2,11 @@ package ch.epfl.biop.fiji.objectgui;
 
 import ch.epfl.biop.wrappers.elastix.RegisterHelper;
 import ch.epfl.biop.wrappers.elastix.ij2commands.Elastix_Save_Registration;
-import net.imagej.ui.swing.viewer.EasySwingDisplayViewer;
+
 import org.scijava.command.CommandService;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
+import org.scijava.ui.swing.viewer.EasySwingDisplayViewer;
 import org.scijava.ui.viewer.DisplayViewer;
 
 import javax.swing.*;
