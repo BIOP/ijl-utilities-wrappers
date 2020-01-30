@@ -12,9 +12,14 @@ import org.scijava.plugin.Plugin;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.function.Consumer;
 
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Ilastik>Multicut + Object Classification")
 public class IlastikMulticutPlusObjectClassifyWorkflow implements Command {
+
+    Consumer<String> errlog = (text) -> System.err.println(text);
+
+    Consumer<String> log = (text) -> System.out.println(text);
 
     @Parameter(label = "Ilastik project file Proba")
     File ilastikProjectFileProba;
@@ -55,7 +60,7 @@ public class IlastikMulticutPlusObjectClassifyWorkflow implements Command {
         ci_raw.set(image_in_rawdata);
         String fNameIn_raw = ((File) ci_raw.to(File.class)).getAbsolutePath();
 
-        System.out.println("------------------- Proba");
+        log.accept("------------------- Proba");
 
         IlastikTask.IlastixTaskBuilder itBuilder = new IlastikTask.IlastixTaskBuilder()
                 .project(() -> ilastikProjectFileProba.getAbsolutePath())
@@ -70,9 +75,9 @@ public class IlastikMulticutPlusObjectClassifyWorkflow implements Command {
 
         String fileNameWithOutExtProba = FilenameUtils.removeExtension(fNameIn_raw);
         String outputFileNameProba = fileNameWithOutExtProba+"_resultsProba."+intermediateProbabilityFormat;
-        System.out.println(outputFileNameProba);
+        log.accept(outputFileNameProba);
 
-        System.out.println("------------------- Multicut");
+        log.accept("------------------- Multicut");
 
         itBuilder = new IlastikTask.IlastixTaskBuilder()
                 .project(() -> ilastikProjectFileMulticut.getAbsolutePath())
@@ -88,9 +93,9 @@ public class IlastikMulticutPlusObjectClassifyWorkflow implements Command {
 
         String fileNameWithOutExtMulticut = FilenameUtils.removeExtension(fNameIn_raw);
         String outputFileNameMulticut = fileNameWithOutExtMulticut+"_resultsMC."+intermediateMulticutOutputFormat;
-        System.out.println(outputFileNameMulticut);
+        log.accept(outputFileNameMulticut);
 
-        System.out.println("------------------- Object");
+        log.accept("------------------- Object");
 
         itBuilder = new IlastikTask.IlastixTaskBuilder()
                 .project(() -> ilastikProjectObjectClassification.getAbsolutePath())
@@ -106,7 +111,7 @@ public class IlastikMulticutPlusObjectClassifyWorkflow implements Command {
 
         String fileNameWithOutExt = FilenameUtils.removeExtension(fNameIn_raw);
         String outputFileName = fileNameWithOutExt+"_results.tiff";
-        System.out.println(outputFileNameMulticut);
+        log.accept(outputFileNameMulticut);
 
         try {
             String titleImage = FilenameUtils.removeExtension(image_in_rawdata.getTitle())+"_"+FilenameUtils.removeExtension(FilenameUtils.getName(ilastikProjectObjectClassification.getAbsolutePath()))+"_"+it.export_source;
@@ -116,17 +121,17 @@ public class IlastikMulticutPlusObjectClassifyWorkflow implements Command {
             if ((new File(outputFileName)).delete()) {
                 // Temp file correctly deleted
             } else {
-                System.err.println("Error, couldn't delete temp file"+outputFileName);
+                errlog.accept("Error, couldn't delete temp file"+outputFileName);
             }
             if ((new File(outputFileNameProba)).delete()) {
                 // Temp file correctly deleted
             } else {
-                System.err.println("Error, couldn't delete temp file"+outputFileNameProba);
+                errlog.accept("Error, couldn't delete temp file"+outputFileNameProba);
             }
             if ((new File(outputFileNameMulticut)).delete()) {
                 // Temp file correctly deleted
             } else {
-                System.err.println("Error, couldn't delete temp file"+outputFileNameMulticut);
+                errlog.accept("Error, couldn't delete temp file"+outputFileNameMulticut);
             }
         } catch (IOException e) {
             e.printStackTrace();

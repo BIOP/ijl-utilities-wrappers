@@ -2,20 +2,20 @@ package ch.epfl.biop.wrappers.ilastik;
 
 import ch.epfl.biop.java.utilities.image.ConvertibleImage;
 import ij.ImagePlus;
-import org.apache.commons.io.FilenameUtils;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
 import org.scijava.convert.ConvertService;
 import org.scijava.io.IOService;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
+import org.apache.commons.io.FilenameUtils;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.function.Consumer;
 
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Ilastik>Ilastik Multicut")
-public class Ilastik_Multicut implements Command {
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Ilastik>Ilastik Pixel Classification")
+public class Ilastik_Classifier_Pixel implements Command {
 
     Consumer<String> errlog = (text) -> System.err.println(text);
 
@@ -24,17 +24,14 @@ public class Ilastik_Multicut implements Command {
     @Parameter(label = "Ilastik project file")
     File ilastikProjectFile;
 
-    //@Parameter(label = "Classifier output", choices={"Simple Segmentation","Probabilities","Uncertainty","Labels","Features"})
-    String export_source="Multicut Segmentation";
+    @Parameter(label = "Classifier output", choices={"Simple Segmentation","Probabilities","Uncertainty","Labels","Features"})
+    String export_source="Simple Segmentation";
 
     @Parameter(label="The pixel type to convert your results to", choices={"uint8", "uint16", "float32"}) // uint32, int32, int8, int16, float64 and int32 unsupported by IJ1
     String export_dtype="uint8";
 
     @Parameter
-    ImagePlus image_in_rawdata;
-
-    @Parameter
-    ImagePlus image_in_probabilities;
+    ImagePlus image_in;
 
     @Parameter(type = ItemIO.OUTPUT)
     ImagePlus image_out;
@@ -47,19 +44,12 @@ public class Ilastik_Multicut implements Command {
 
     @Override
     public void run() {
-        ConvertibleImage ci_raw = new ConvertibleImage();
-        ci_raw.set(image_in_rawdata);
-        String fNameIn_raw = ((File) ci_raw.to(File.class)).getAbsolutePath();
-
-
-        ConvertibleImage ci_prob = new ConvertibleImage();
-        ci_prob.set(image_in_probabilities);
-        String fNameIn_prob = ((File) ci_prob.to(File.class)).getAbsolutePath();
-
+        ConvertibleImage ci = new ConvertibleImage();
+        ci.set(image_in);
+        String fNameIn = ((File) ci.to(File.class)).getAbsolutePath();
         IlastikTask.IlastixTaskBuilder itBuilder = new IlastikTask.IlastixTaskBuilder()
                 .project(() -> ilastikProjectFile.getAbsolutePath())
-                .raw_data(() -> fNameIn_raw)
-                .probabilities(() -> fNameIn_prob)
+                .image(() -> fNameIn)
                 .export_source(export_source)
                 .export_dtype(export_dtype)
                 .output_filename_format("{dataset_dir}/{nickname}_results.tiff");
@@ -68,13 +58,14 @@ public class Ilastik_Multicut implements Command {
 
         it.run();
 
-        String fileNameWithOutExt = FilenameUtils.removeExtension(fNameIn_raw);
+        String fileNameWithOutExt = FilenameUtils.removeExtension(fNameIn);
         String outputFileName = fileNameWithOutExt+"_results.tiff";
+        log.accept(outputFileName);
         log.accept(outputFileName);
 
         try {
 
-            String titleImage = FilenameUtils.removeExtension(image_in_rawdata.getTitle())+"_"+FilenameUtils.removeExtension(FilenameUtils.getName(ilastikProjectFile.getAbsolutePath()))+"_"+it.export_source;
+            String titleImage = FilenameUtils.removeExtension(image_in.getTitle())+"_"+FilenameUtils.removeExtension(FilenameUtils.getName(ilastikProjectFile.getAbsolutePath()))+"_"+it.export_source;
             image_out = cs.convert(io.open(outputFileName), ImagePlus.class);
             image_out.setTitle(titleImage);
 

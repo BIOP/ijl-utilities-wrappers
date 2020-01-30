@@ -12,14 +12,19 @@ import org.scijava.plugin.Plugin;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.function.Consumer;
 
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Ilastik>Multicut (2 projects)")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Ilastik>Ilastik Multicut (2 projects)")
 public class Ilastik_Multicut_2Projects implements Command {
 
-    @Parameter(label = "Ilastik project file Proba")
+    Consumer<String> errlog = (text) -> System.err.println(text);
+
+    Consumer<String> log = (text) -> System.out.println(text);
+
+    @Parameter(label = "Ilastik project file: Edge pixel classifier")
     File ilastikProjectFileProba;
 
-    @Parameter(label = "Ilastik project file Multicut")
+    @Parameter(label = "Ilastik project file: Multicut")
     File ilastikProjectFileMulticut;
 
     @Parameter(label="The pixel type to convert your results to", choices={"uint8", "uint16", "float32"}) // uint32, int32, int8, int16, float64 and int32 unsupported by IJ1
@@ -37,7 +42,7 @@ public class Ilastik_Multicut_2Projects implements Command {
     @Parameter
     ConvertService cs;
 
-    @Parameter(label="Intermediate probability format", choices={"tif", "tiff", "h5"}) // uint32, int32, int8, int16, float64 and int32 unsupported by IJ1
+    @Parameter(label="Intermediate probability format ", choices={"tif", "tiff", "h5"}) // uint32, int32, int8, int16, float64 and int32 unsupported by IJ1
     String intermediateProbabilityFormat="tiff";
 
     @Override
@@ -46,7 +51,7 @@ public class Ilastik_Multicut_2Projects implements Command {
         ci_raw.set(image_in_rawdata);
         String fNameIn_raw = ((File) ci_raw.to(File.class)).getAbsolutePath();
 
-        System.out.println("------------------- Proba");
+        log.accept("------------------- Proba");
 
         IlastikTask.IlastixTaskBuilder itBuilder = new IlastikTask.IlastixTaskBuilder()
                 .project(() -> ilastikProjectFileProba.getAbsolutePath())
@@ -61,9 +66,9 @@ public class Ilastik_Multicut_2Projects implements Command {
 
         String fileNameWithOutExtProba = FilenameUtils.removeExtension(fNameIn_raw);
         String outputFileNameProba = fileNameWithOutExtProba+"_results."+intermediateProbabilityFormat;
-        System.out.println(outputFileNameProba);
+        log.accept(outputFileNameProba);
 
-        System.out.println("------------------- Multicut");
+        log.accept("------------------- Multicut");
 
         itBuilder = new IlastikTask.IlastixTaskBuilder()
                 .project(() -> ilastikProjectFileMulticut.getAbsolutePath())
@@ -79,7 +84,7 @@ public class Ilastik_Multicut_2Projects implements Command {
 
         String fileNameWithOutExt = FilenameUtils.removeExtension(fNameIn_raw);
         String outputFileName = fileNameWithOutExt+"_results.tiff";
-        System.out.println(outputFileName);
+        log.accept(outputFileName);
 
         try {
             String titleImage = FilenameUtils.removeExtension(image_in_rawdata.getTitle())+"_"+FilenameUtils.removeExtension(FilenameUtils.getName(ilastikProjectFileMulticut.getAbsolutePath()))+"_"+it.export_source;
@@ -89,12 +94,12 @@ public class Ilastik_Multicut_2Projects implements Command {
             if ((new File(outputFileName)).delete()) {
                 // Temp file correctly deleted
             } else {
-                System.err.println("Error, couldn't delete temp file"+outputFileName);
+                errlog.accept("Error, couldn't delete temp file"+outputFileName);
             }
             if ((new File(outputFileNameProba)).delete()) {
                 // Temp file correctly deleted
             } else {
-                System.err.println("Error, couldn't delete temp file"+outputFileNameProba);
+                errlog.accept("Error, couldn't delete temp file"+outputFileNameProba);
             }
         } catch (IOException e) {
             e.printStackTrace();
