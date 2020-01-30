@@ -6,20 +6,19 @@ import org.scijava.ItemIO;
 import org.scijava.command.Command;
 import org.scijava.convert.ConvertService;
 import org.scijava.io.IOService;
+import org.scijava.log.LogService;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
 import org.apache.commons.io.FilenameUtils;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.function.Consumer;
 
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Ilastik>Ilastik Pixel Classification")
 public class Ilastik_Classifier_Pixel implements Command {
 
-    Consumer<String> errlog = (text) -> System.err.println(text);
-
-    Consumer<String> log = (text) -> System.out.println(text);
+    @Parameter
+    LogService ls;
 
     @Parameter(label = "Ilastik project file")
     File ilastikProjectFile;
@@ -42,8 +41,16 @@ public class Ilastik_Classifier_Pixel implements Command {
     @Parameter
     ConvertService cs;
 
+    @Parameter
+    boolean verbose = false;
+
     @Override
     public void run() {
+        if (!ilastikProjectFile.exists()) {
+            ls.error("Ilastik Project File : "+ilastikProjectFile.getAbsolutePath()+" does not exist!");
+            return;
+        }
+
         ConvertibleImage ci = new ConvertibleImage();
         ci.set(image_in);
         String fNameIn = ((File) ci.to(File.class)).getAbsolutePath();
@@ -60,8 +67,7 @@ public class Ilastik_Classifier_Pixel implements Command {
 
         String fileNameWithOutExt = FilenameUtils.removeExtension(fNameIn);
         String outputFileName = fileNameWithOutExt+"_results.tiff";
-        log.accept(outputFileName);
-        log.accept(outputFileName);
+        if (verbose) ls.info("Results file :"+outputFileName);
 
         try {
 
@@ -72,9 +78,10 @@ public class Ilastik_Classifier_Pixel implements Command {
             if ((new File(outputFileName)).delete()) {
                 // Temp file correctly deleted
             } else {
-                errlog.accept("Error, couldn't delete temp file"+outputFileName);
+                ls.error("Error, couldn't delete temp file"+outputFileName);
             }
         } catch (IOException e) {
+            ls.error("Error detected! Have you checked your ilp file ? Are the export settings right ? Check https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/fiji_ilastik_bridge/ ");
             e.printStackTrace();
         }
 
