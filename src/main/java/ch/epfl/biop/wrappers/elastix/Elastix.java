@@ -29,6 +29,7 @@ public class Elastix {
     }
     
     public static void execute(List<String> options) throws IOException, InterruptedException {
+            options.forEach(s -> System.out.println(s));
             List<String> cmd = new ArrayList<>();
             cmd.add(exePath);
             cmd.addAll(options);

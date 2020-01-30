@@ -34,6 +34,8 @@ public class RegisterHelper extends ConvertibleObject {
     ArrayList<Supplier<String>> transformFilesSupplier;
     public Supplier<String> outputDir;
 
+    public String initialTransformFilePath = null;
+
     ElastixTask align;
 
     boolean alignTaskSet = false;
@@ -47,6 +49,10 @@ public class RegisterHelper extends ConvertibleObject {
     public void setMovingImage(String pathToMovingImage) {
         movingImage.set(new File(pathToMovingImage));
         alignTaskSet = false;
+    }
+
+    public void addInitialTransformFromFilePath(String filePath) {
+        initialTransformFilePath = filePath;
     }
     
     public void setMovingImage(ConvertibleImage img) {
@@ -156,6 +162,10 @@ public class RegisterHelper extends ConvertibleObject {
 
                 for (Supplier<String> s : this.transformFilesSupplier) {
                     alignBuilder.addTransform(s);
+                }
+
+                if (this.initialTransformFilePath!=null) {
+                    alignBuilder.addInitialTransform(initialTransformFilePath);
                 }
 
                 align = alignBuilder.build();

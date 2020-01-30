@@ -14,6 +14,7 @@ public class ElastixTask implements Runnable {
     private Supplier<String> fixedImagePathSupplier,
                      movingImagePathSupplier,
                      outputFolderSupplier;
+    private String initialTransformFilePath;
 
     ArrayList<Supplier<String>> transformationParameterPathSupplier;
 
@@ -22,12 +23,16 @@ public class ElastixTask implements Runnable {
         this.movingImagePathSupplier=builder.movingImagePathSupplier;
         this.outputFolderSupplier=builder.outputFolderSupplier;
         this.transformationParameterPathSupplier=builder.transformationParameterPathSupplier;
+        this.initialTransformFilePath=builder.initialTransformFilePath;
     }
 
     public void run() {
         ArrayList<String> options = new ArrayList<>();
         options.add("-f");options.add(fixedImagePathSupplier.get());
         options.add("-m");options.add(movingImagePathSupplier.get());
+        if (initialTransformFilePath!=null) {
+            options.add("-t0");options.add(initialTransformFilePath);
+        }
         for (Supplier<String> s : transformationParameterPathSupplier) {
             options.add("-p");
             options.add(s.get());
@@ -47,6 +52,9 @@ public class ElastixTask implements Runnable {
         private Supplier<String> fixedImagePathSupplier,
                          movingImagePathSupplier,
                          outputFolderSupplier;
+
+        private String initialTransformFilePath;
+
         int nThreads=-1;
 
         private ArrayList<Supplier<String>> transformationParameterPathSupplier;
@@ -73,6 +81,11 @@ public class ElastixTask implements Runnable {
 
         public ElastixTaskBuilder outFolder(Supplier<String> outputFolderSupplier) {
             this.outputFolderSupplier = outputFolderSupplier;
+            return this;
+        }
+
+        public ElastixTaskBuilder addInitialTransform(String initialTransformFilePath) {
+            this.initialTransformFilePath = initialTransformFilePath;
             return this;
         }
 

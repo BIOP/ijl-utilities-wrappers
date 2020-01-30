@@ -6,14 +6,18 @@ import ij.IJ;
 import ij.ImagePlus;
 import ij.plugin.frame.RoiManager;
 import net.imagej.ImageJ;
+import net.imagej.ImgPlus;
+import org.scijava.convert.ConvertService;
 
 import java.io.File;
 
-public class DummyCommand {
 
+public class DummyCommand {
+    static ConvertService cs;
 	public static void main(String[] args) {
         final ImageJ ij = new ImageJ();
         ij.ui().showUI();
+
 
         //ImagePlus imp = IJ.openImage("/home/nico/Dropbox/BIOP/2019-02 Laura Ca/Label.tif");
         //    imp = IJ.openImage("/home/nico/Desktop/Label.tif");
