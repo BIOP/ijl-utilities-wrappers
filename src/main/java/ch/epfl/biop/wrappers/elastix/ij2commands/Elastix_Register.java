@@ -36,6 +36,9 @@ public class Elastix_Register implements Command {
 	@Parameter
 	public boolean spline;
 
+	@Parameter
+	public int splineGridSpacing;
+
 	@Parameter(type = ItemIO.OUTPUT)
 	public RegisterHelper rh;
 
@@ -58,6 +61,7 @@ public class Elastix_Register implements Command {
 		}
 		if (spline) {
 			RegistrationParameters rp = new RegParamBSpline_Default();
+			rp.FinalGridSpacingInVoxels = splineGridSpacing;
 			rh.addTransform(rp);
 		}
 		rh.align();

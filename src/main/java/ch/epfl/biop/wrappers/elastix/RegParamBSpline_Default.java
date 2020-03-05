@@ -24,9 +24,7 @@ public class RegParamBSpline_Default extends RegistrationParameters {
 		//Metric="NormalizedMutualInformation";
 		Metric="AdvancedMattesMutualInformation";
 
-
-
-		FinalGridSpacingInVoxels=2;//20;
+		FinalGridSpacingInVoxels=20;
 		//AutomaticScalesEstimation=true;
 		//AutomaticTransformInitialization=true;
 		HowToCombineTransforms="Compose";
