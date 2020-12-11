@@ -48,6 +48,8 @@ import java.util.stream.Collectors;
 
 public class CompositeFloatPoly {
 
+    public Color color;
+
     private static final double SHAPE_TO_ROI=-1.0;
 
     /***/
@@ -95,6 +97,7 @@ public class CompositeFloatPoly {
     public CompositeFloatPoly(CompositeFloatPoly cfp_in) {
         if (cfp_in !=null) {
             name = cfp_in.name;
+            color = cfp_in.color;
             polys = new ArrayList<>();
             this.x = cfp_in.x;
             this.y = cfp_in.y;
@@ -113,6 +116,7 @@ public class CompositeFloatPoly {
     public CompositeFloatPoly(Roi roi) {
         if (roi !=null) {
             name = roi.getName();
+            color = roi.getStrokeColor();
             polys = new ArrayList<>();
             this.x = roi.getXBase();
             this.y = roi.getYBase();
@@ -235,16 +239,19 @@ public class CompositeFloatPoly {
                 if (negativeShape.isPresent()) {
                     Roi roi = positiveShape.get().xor(negativeShape.get());
                     roi.setName(name);
+                    if (color!=null) roi.setStrokeColor(color);
                     return roi;
                 } else {
                     Roi roi = positiveShape.get();
                     roi.setName(name);
+                    if (color!=null) roi.setStrokeColor(color);
                     return roi;
                 }
             } else {
                 if (negativeShape.isPresent()) {
                     // Dirty fix : if all area are in the same negative orientation (CCW), they are assumed to define positive areas
                     Roi roi = negativeShape.get();
+                    if (color!=null) roi.setStrokeColor(color);
                     roi.setName(name);
                     return roi;
                 } else {

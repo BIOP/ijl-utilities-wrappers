@@ -115,6 +115,19 @@ public class RegistrationParameters extends ConvertibleObject {
 	 */
 	@RegisterParam
 	public Boolean AutomaticTransformInitialization=true;
+
+	/**
+	 * This parameter facilitates the automatic estimation of an initial alignment for the aforementionedtransformations.
+	 * Three methods to do so are supported:
+	 * the default method which aligns the centres of the fixed and moving image,
+	 * a method that aligns the centres of gravity,
+	 * and a method that simply aligns the image origins.
+	 * A method can be selected by adding one of the following lines to the parameter file:
+	 * ("GeometricalCenter")("Origins")("CenterOfGravity")
+	 * Note that “Origins” is currently only available for the affine transformation
+	 */
+	@RegisterParam
+	public String AutomaticTransformInitializationMethod = "CenterOfGravity";
 	
 	// Whether transforms are combined by composition or by addition.
 	// In generally, Compose is the best option in most cases.

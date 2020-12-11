@@ -1,8 +1,6 @@
 package ch.epfl.biop.java.utilities.roi.types;
 
-import ij.gui.PolygonRoi;
 import ij.gui.Roi;
-import ij.process.FloatPolygon;
 
 import java.awt.geom.Point2D;
 import java.util.ArrayList;
