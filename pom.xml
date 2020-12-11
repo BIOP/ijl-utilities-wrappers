@@ -106,26 +106,27 @@
 	</mailingLists>
 
 	<scm>
-		<connection>scm:git:git://github.com/</connection>
-		<developerConnection>scm:git:git@github.com:</developerConnection>
+		<connection>scm:git:git://github.com/BIOP/ijl-utilities-wrappers</connection>
+		<developerConnection>scm:git:git@github.com:BIOP/ijl-utilities-wrappers</developerConnection>
 		<tag>HEAD</tag>
-		<url>https://github.com/</url>
+		<url>https://github.com/BIOP/ijl-utilities-wrappers</url>
 	</scm>
 
 	<issueManagement>
 		<system>GitHub Issues</system>
-		<url></url>
+		<url>https://github.com/BIOP/ijl-utilities-wrappers/issues</url>
 	</issueManagement>
 
 	<ciManagement>
-		<system>None</system>
+		<system>Travis CI</system>
+		<url>https://travis-ci.com/BIOP/ijl-utilities-wrappers</url>
 	</ciManagement>
 
+
 	<repositories>
-		<!-- NB: for project parent -->
 		<repository>
-			<id>imagej.public</id>
-			<url>http://maven.imagej.net/content/groups/public</url>
+			<id>scijava.public</id>
+			<url>https://maven.scijava.org/content/groups/public</url>
 		</repository>
 	</repositories>
 	
@@ -143,6 +144,7 @@
             <groupId>net.imagej</groupId>
             <artifactId>imagej</artifactId>
         </dependency>
+
 		<dependency>
 			<groupId>net.imagej</groupId>
 			<artifactId>imagej-legacy</artifactId>
@@ -152,6 +154,7 @@
             <groupId>com.itextpdf</groupId>
             <artifactId>itextpdf</artifactId>
         </dependency>
+
         <dependency>
             <groupId>org.apache.xmlgraphics</groupId>
             <artifactId>batik-bridge</artifactId>
@@ -167,6 +170,7 @@
                 </exclusion>
             </exclusions>
         </dependency>
+
         <dependency>
             <groupId>org.apache.xmlgraphics</groupId>
             <artifactId>batik-svg-dom</artifactId>
@@ -182,32 +186,21 @@
                 </exclusion>
             </exclusions>
         </dependency>
+
 		<dependency>
 			<groupId>org.apache.xmlgraphics</groupId>
 			<artifactId>batik-gvt</artifactId>
 		</dependency>
-		<!--<dependency>
-			<groupId>org.json</groupId>
-			<artifactId>json</artifactId>
-			<version>20180813</version>
-		</dependency>-->
+
 		<dependency>
 			<groupId>commons-io</groupId>
 			<artifactId>commons-io</artifactId>
 		</dependency>
-		<!--<dependency>
-  			<groupId>sc.fiji</groupId>
-  			<artifactId>bigdataviewer_fiji</artifactId>
-		</dependency>-->
-		<!-- https://mvnrepository.com/artifact/com.google.code.gson/gson -->
-		<!--<dependency>
-			<groupId>com.google.code.gson</groupId>
-			<artifactId>gson</artifactId>
-			<version>2.8.5</version>
-		</dependency>-->
+
 		<dependency>
 			<groupId>org.scijava</groupId>
 			<artifactId>scijava-ui-swing</artifactId>
 		</dependency>
+
 	</dependencies>
 </project>
