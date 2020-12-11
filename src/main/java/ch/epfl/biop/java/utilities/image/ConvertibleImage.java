@@ -15,9 +15,9 @@ import net.imagej.ImageJ;
 
 /**
  * Converters for Images
- * ImagePlus -> File
- * File -> ImagePlus
- * url -> File
+ * ImagePlus to File
+ * File to ImagePlus
+ * url to File
  * downcasting
  */
 

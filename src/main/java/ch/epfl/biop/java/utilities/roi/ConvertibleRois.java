@@ -41,7 +41,7 @@ import java.awt.Point;
 
 /**
  * Converters for various ROI classes definition
- * - IJShapeRoiArray (wrapping of an ArrayList<ShapeRoi>)
+ * - IJShapeRoiArray (wrapping of a ShapeRoi ArrayList)
  * - RealPointList
  * - ImageJRoisFile (Zip file of rois from IJ1)
  * - SVGFile (SVGRoisFormat)

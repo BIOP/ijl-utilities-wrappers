@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * Abstraction layer to handle objects which can be defined by non java compatible objects
- * For instance a set of ROI can be defined by ArrayList<Roi> or RoiManager or a LabelImage
+ * For instance a set of ROI can be defined by a Roi ArrayList or RoiManager or a LabelImage
  * An Image can be a File or an ImagePlus
  *
  * By Extending this class and providing converter method using the Converter annotation,
