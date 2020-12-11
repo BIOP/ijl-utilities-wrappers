@@ -2,7 +2,6 @@ package ch.epfl.biop.wrappers.ij2command;
 
 import java.io.File;
 
-import ch.epfl.biop.wrappers.ilastik.Ilastik;
 import org.scijava.command.Command;
 import org.scijava.log.LogService;
 import org.scijava.plugin.Parameter;
@@ -27,19 +26,12 @@ public class BiopWrappersSet implements Command {
 	
 	@Parameter(required=false)
 	File transformixExecutable = new File(Transformix.exePath);
-
-
-	@Parameter(required=false)
-	File ilastikExecutable = new File(Ilastik.exePath);
 	
 	@Override
 	public void run() {
 		Transformix.setExePath(transformixExecutable);
 
 		Elastix.setExePath(elastixExecutable);
-
-
-		Ilastik.setExePath(ilastikExecutable);
 
 		if (ls!=null) {
 			ls.info(BiopWrappersCheck.reportAllWrappers());

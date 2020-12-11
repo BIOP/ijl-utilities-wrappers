@@ -5,7 +5,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 import ch.epfl.biop.wrappers.elastix.Elastix;
-import ch.epfl.biop.wrappers.ilastik.Ilastik;
 import ch.epfl.biop.wrappers.transformix.Transformix;
 
 public class BiopWrappersCheck {
@@ -53,7 +52,7 @@ public class BiopWrappersCheck {
 		}
 	}
 
-	@WrapperCheck(title="Ilastik")
+	/*@WrapperCheck(title="Ilastik")
 	public static boolean isIlastikSet() {
 		try {
 			Ilastik.execute("--help");
@@ -62,5 +61,5 @@ public class BiopWrappersCheck {
 			e.printStackTrace();
 			return false;
 		}
-	}
+	}*/
 }
