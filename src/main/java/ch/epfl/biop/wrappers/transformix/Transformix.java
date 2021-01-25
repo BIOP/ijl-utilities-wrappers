@@ -2,8 +2,10 @@ package ch.epfl.biop.wrappers.transformix;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 import ij.Prefs;
 
@@ -24,7 +26,7 @@ public class Transformix {
         Prefs.set(keyPrefix + "exePath", exePath);
     }
 
-    static void execute(List<String> options)  throws IOException, InterruptedException {
+    static void execute(List<String> options, Consumer<InputStream> outputHandler)  throws IOException, InterruptedException {
             List<String> cmd = new ArrayList<>();
             cmd.add(exePath);
             cmd.addAll(options);
@@ -32,13 +34,14 @@ public class Transformix {
             pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
             pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             Process p = pb.start();
+            if (outputHandler!=null) {outputHandler.accept(p.getInputStream());}
             p.waitFor();
     }
     
     public static void execute(String singleCommand) throws IOException, InterruptedException {
     	ArrayList<String> cmdList = new ArrayList<>();
     	cmdList.add(singleCommand);
-    	execute(cmdList);
+    	execute(cmdList, null);
     }
 
 }

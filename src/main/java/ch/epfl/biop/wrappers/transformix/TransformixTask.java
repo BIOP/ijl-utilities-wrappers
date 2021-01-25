@@ -29,7 +29,7 @@ public class TransformixTask implements Runnable {
         options.add("-out");options.add(outputFolderSupplier.get());
         options.add("-tp");options.add(transformFileSupplier.get());
         try {
-			Transformix.execute(options);
+			Transformix.execute(options, null);
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
 		}

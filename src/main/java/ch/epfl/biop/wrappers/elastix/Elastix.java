@@ -1,9 +1,11 @@
 package ch.epfl.biop.wrappers.elastix;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
+
+import ij.IJ;
 import ij.Prefs;
 
 /**
@@ -28,22 +30,25 @@ public class Elastix {
         Prefs.set(keyPrefix + "exePath", exePath);
     }
     
-    public static void execute(List<String> options) throws IOException, InterruptedException {
-            options.forEach(s -> System.out.println(s));
+    public static void execute(List<String> options, Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
+            //options.forEach(s -> System.out.println(s));
             List<String> cmd = new ArrayList<>();
             cmd.add(exePath);
             cmd.addAll(options);
             ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+            pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);//.Redirect.INHERIT);
+            //pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             Process p = pb.start();
+            // any output?
+            if (outputHandler!=null) {outputHandler.accept(p.getInputStream());}
             p.waitFor();
     }
     
     public static void execute(String singleCommand) throws IOException, InterruptedException {
     	ArrayList<String> cmdList = new ArrayList<>();
     	cmdList.add(singleCommand);
-    	execute(cmdList);
+    	execute(cmdList, null);
     }
 
 }

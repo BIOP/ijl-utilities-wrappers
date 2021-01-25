@@ -157,25 +157,29 @@ public class RegisterHelper extends ConvertibleObject {
     public void align() {
         if (!alignTaskSet) {
             if (checkParametersForAlignement()) {
-                ElastixTask.ElastixTaskBuilder alignBuilder = new ElastixTask.ElastixTaskBuilder().fixedImage(this::fixedImagePathSupplier)
+                ElastixTaskSettings settings = new ElastixTaskSettings().fixedImage(this::fixedImagePathSupplier)
                         .movingImage(this::movingImagePathSupplier).outFolder(outputDir);
 
                 for (Supplier<String> s : this.transformFilesSupplier) {
-                    alignBuilder.addTransform(s);
+                    settings.addTransform(s);
                 }
 
                 if (this.initialTransformFilePath!=null) {
-                    alignBuilder.addInitialTransform(initialTransformFilePath);
+                    settings.addInitialTransform(initialTransformFilePath);
                 }
 
-                align = alignBuilder.build();
+                align = new ElastixTask(settings);
                 alignTaskSet = true;
             } else {
                 align = null;
             }
         }
         if (alignTaskSet) {
-            align.run();
+            try {
+                align.run();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
     
