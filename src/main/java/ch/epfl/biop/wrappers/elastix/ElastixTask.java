@@ -8,29 +8,14 @@ import java.util.function.Supplier;
  * Allows the composition of several consecutive registrations
  */
 
-public class ElastixTask {
+abstract public class ElastixTask {
 
-    ElastixTaskSettings settings;
+    public ElastixTaskSettings settings;
 
-    public ElastixTask(ElastixTaskSettings settings) {
+    public void setSettings(ElastixTaskSettings settings) {
         this.settings = settings;
     }
 
-    public void run() throws Exception {
-        ArrayList<String> options = new ArrayList<>();
-        options.add("-f");options.add(settings.fixedImagePathSupplier.get());
-        options.add("-m");options.add(settings.movingImagePathSupplier.get());
-        if (settings.initialTransformFilePath!=null) {
-            options.add("-t0");options.add(settings.initialTransformFilePath);
-        }
-        for (Supplier<String> s : settings.transformationParameterPathSupplier) {
-            options.add("-p");
-            options.add(s.get());
-        }
-        options.add("-out");
-        options.add(settings.outputFolderSupplier.get());
-        //System.out.println(options);
-        Elastix.execute(options, null);
-    }
+    abstract public void run() throws Exception;
 
 }

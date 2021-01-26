@@ -1,5 +1,6 @@
 package ch.epfl.biop.wrappers.elastix.ij2commands;
 
+import ch.epfl.biop.wrappers.DefaultElastixTask;
 import ch.epfl.biop.wrappers.elastix.*;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
@@ -64,7 +65,7 @@ public class Elastix_Register implements Command {
 			rp.FinalGridSpacingInVoxels = splineGridSpacing;
 			rh.addTransform(rp);
 		}
-		rh.align();
+		rh.align(new DefaultElastixTask());
 		rh.to(RHZipFile.class);
 	}
 

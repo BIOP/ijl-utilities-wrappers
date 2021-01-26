@@ -4,6 +4,7 @@ import java.util.ArrayList;
 
 import ch.epfl.biop.java.utilities.roi.types.TransformixOutputRoisFile;
 import ch.epfl.biop.wrappers.elastix.RegisterHelper;
+import ch.epfl.biop.wrappers.transformix.DefaultTransformixTask;
 import ij.gui.Roi;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
@@ -52,7 +53,7 @@ public class Transformix_TransformROIs implements Command {
 		//if (ar==null) {
 		//	System.out.println("ar est null!");
 		//}
-		th.transform();
+		th.transform(new DefaultTransformixTask());
 		cr_out = th.getTransformedRois();
 		//cr_out.setInitialArrayList((ArrayList<Roi>) cr_in.to(ArrayList.class));
 		if (os!=null) {

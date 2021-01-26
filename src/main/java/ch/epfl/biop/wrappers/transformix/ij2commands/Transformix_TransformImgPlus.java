@@ -2,6 +2,7 @@ package ch.epfl.biop.wrappers.transformix.ij2commands;
 
 import ch.epfl.biop.fiji.imageplusutils.ImagePlusFunctions;
 import ch.epfl.biop.wrappers.elastix.RegisterHelper;
+import ch.epfl.biop.wrappers.transformix.DefaultTransformixTask;
 import ij.measure.Calibration;
 import ij.plugin.ChannelSplitter;
 import ij.plugin.RGBStackMerge;
@@ -43,7 +44,7 @@ public class Transformix_TransformImgPlus implements Command  {
 					TransformHelper th = new TransformHelper();
 					th.setTransformFile(rh);
 					th.setImage(imp);
-					th.transform();
+					th.transform(new DefaultTransformixTask());
 					return ((ImagePlus) (th.getTransformedImage().to(ImagePlus.class)));
 				}
 				,img_in);

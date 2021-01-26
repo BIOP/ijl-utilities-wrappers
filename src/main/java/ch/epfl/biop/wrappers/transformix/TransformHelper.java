@@ -34,7 +34,7 @@ public class TransformHelper {
 
     Supplier<String> ptsPath;
 
-    TransformixTask transform;
+    //TransformixTask transform;
 
     boolean transformTaskSet = false;
 
@@ -170,28 +170,33 @@ public class TransformHelper {
     	return erf.f.getAbsolutePath();
     }
     
-    public void transform() {
+    public void transform(TransformixTask task) {
         if (!transformTaskSet) {
             if (checkParametersForTransformation()) {
-                TransformixTask.TransformixTaskBuilder transformBuilder = new TransformixTask.TransformixTaskBuilder().transform(this.transformFile)
+                TransformixTaskSettings transformSettings = new TransformixTaskSettings().transform(this.transformFile)
                         .outFolder(this.outputDir);
 
                 if (transformType==IMAGE_TRANSFORM) {
-                    transformBuilder.image(this::imageToTransformPathSupplier);
+                    transformSettings.image(this::imageToTransformPathSupplier);
                 }
 
                 if (transformType==ROIS_TRANSFORM) {
-                    transformBuilder.pts(this::roisToTransformPathSupplier);
+                    transformSettings.pts(this::roisToTransformPathSupplier);
                 }
                 
-                transform = transformBuilder.build();
+                //transform = new TransformixTask(transformSettings);//transformBuilder.build();
+                task.setSettings(transformSettings);
                 transformTaskSet = true;
             } else {
-                transform = null;
+                task = null;
             }
         }
         if (transformTaskSet) {
-            transform.run();
+            try {
+                task.run();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
             if (transformType==IMAGE_TRANSFORM) {
             	imageTransformed.clear();
             	imageTransformed.set(new File(this.outputDir.get()+File.separator+"result.tif"));

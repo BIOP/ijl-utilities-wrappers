@@ -1,5 +1,6 @@
 package ch.epfl.biop.wrappers.elastix.ij2commands;
 
+import ch.epfl.biop.wrappers.DefaultElastixTask;
 import ch.epfl.biop.wrappers.elastix.*;
 import ij.ImagePlus;
 import org.scijava.ItemIO;
@@ -60,7 +61,7 @@ public class Elastix_InverseTransform implements Command {
         rh.addTransform(rp);
 
 
-        rh.align();
+        rh.align(new DefaultElastixTask());
 
         rh.to(RHZipFile.class);
 

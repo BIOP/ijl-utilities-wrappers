@@ -154,7 +154,7 @@ public class RegisterHelper extends ConvertibleObject {
     	return ((File) movingImage.to(File.class)).getAbsolutePath();
     }
     
-    public void align() {
+    public void align(ElastixTask align) {
         if (!alignTaskSet) {
             if (checkParametersForAlignement()) {
                 ElastixTaskSettings settings = new ElastixTaskSettings().fixedImage(this::fixedImagePathSupplier)
@@ -167,8 +167,7 @@ public class RegisterHelper extends ConvertibleObject {
                 if (this.initialTransformFilePath!=null) {
                     settings.addInitialTransform(initialTransformFilePath);
                 }
-
-                align = new ElastixTask(settings);
+                align.setSettings(settings);
                 alignTaskSet = true;
             } else {
                 align = null;
