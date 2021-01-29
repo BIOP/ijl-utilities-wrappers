@@ -1,5 +1,6 @@
 package ch.epfl.biop.wrappers.transformix;
 
+import java.io.File;
 import java.util.ArrayList;
 
 public class DefaultTransformixTask extends TransformixTask {
@@ -14,11 +15,8 @@ public class DefaultTransformixTask extends TransformixTask {
         }
         options.add("-out");options.add(settings.outputFolderSupplier.get());
         options.add("-tp");options.add(settings.transformFileSupplier.get());
-        //try {
+        options.add("-threads");options.add(""+settings.nThreads);
 
         Transformix.execute(options, null);
-		//} catch (IOException | InterruptedException e) {
-		//	e.printStackTrace();
-		//}
     }
 }

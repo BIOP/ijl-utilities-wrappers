@@ -1,5 +1,7 @@
 package ch.epfl.biop.wrappers.transformix;
 
+import ch.epfl.biop.wrappers.elastix.ElastixTaskSettings;
+
 import java.util.function.Supplier;
 
 public class TransformixTaskSettings {
@@ -9,14 +11,26 @@ public class TransformixTaskSettings {
             transformFileSupplier,
             inputPtsFileSupplier;
 
-    int nThreads=-1;
+    int nThreads=1;
+
+    public String taskInfo; // extra field for task specific info -> metadata for remote processing
 
     public TransformixTaskSettings() {
         transformFileSupplier = () -> "";
         imagePathSupplier =() -> "";
         outputFolderSupplier=() -> "";
         inputPtsFileSupplier=() -> "";
-        nThreads=-1;
+        nThreads=1;
+    }
+
+    public TransformixTaskSettings singleThread() {
+        this.nThreads = 1;
+        return this;
+    }
+
+    public TransformixTaskSettings nThreads(int nThreads) {
+        this.nThreads = nThreads;
+        return this;
     }
 
     public TransformixTaskSettings image(Supplier<String> mImgSupplier) {

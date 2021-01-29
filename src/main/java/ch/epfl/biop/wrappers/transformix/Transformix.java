@@ -26,12 +26,18 @@ public class Transformix {
         Prefs.set(keyPrefix + "exePath", exePath);
     }
 
+    private static File NULL_FILE = new File(
+            (System.getProperty("os.name")
+                    .startsWith("Windows") ? "NUL" : "/dev/null")
+    );
+
     static void execute(List<String> options, Consumer<InputStream> outputHandler)  throws IOException, InterruptedException {
             List<String> cmd = new ArrayList<>();
             cmd.add(exePath);
             cmd.addAll(options);
             ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+            //pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+            pb.redirectOutput(NULL_FILE);
             pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             Process p = pb.start();
             if (outputHandler!=null) {outputHandler.accept(p.getInputStream());}

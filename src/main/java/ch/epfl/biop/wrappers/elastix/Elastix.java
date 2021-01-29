@@ -29,6 +29,11 @@ public class Elastix {
     	exePath="elastix";
         Prefs.set(keyPrefix + "exePath", exePath);
     }
+
+    private static File NULL_FILE = new File(
+            (System.getProperty("os.name")
+                    .startsWith("Windows") ? "NUL" : "/dev/null")
+    );
     
     public static void execute(List<String> options, Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
             //options.forEach(s -> System.out.println(s));
@@ -37,7 +42,8 @@ public class Elastix {
             cmd.addAll(options);
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
-            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);//.Redirect.INHERIT);
+            //pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);//.Redirect.INHERIT);
+            pb.redirectOutput(NULL_FILE);
             //pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             Process p = pb.start();
             // any output?

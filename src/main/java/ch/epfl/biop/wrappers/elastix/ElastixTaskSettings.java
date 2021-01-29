@@ -10,13 +10,25 @@ public class ElastixTaskSettings {
 
     public  String initialTransformFilePath;
 
-    public int nThreads=-1;
+    public int nThreads=1;
 
     public ArrayList<Supplier<String>> transformationParameterPathSupplier;
 
+    public String taskInfo; // extra field for task specific info -> metadata for remote processing
+
     public ElastixTaskSettings() {
         transformationParameterPathSupplier = new ArrayList<>();
-        nThreads=-1;
+        nThreads=1;
+    }
+
+    public ElastixTaskSettings singleThread() {
+        this.nThreads = 1;
+        return this;
+    }
+
+    public ElastixTaskSettings nThreads(int nThreads) {
+        this.nThreads = nThreads;
+        return this;
     }
 
     public ElastixTaskSettings fixedImage(Supplier<String> fImgSupplier) {

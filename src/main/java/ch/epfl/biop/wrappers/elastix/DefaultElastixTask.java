@@ -1,8 +1,4 @@
-package ch.epfl.biop.wrappers;
-
-import ch.epfl.biop.wrappers.elastix.Elastix;
-import ch.epfl.biop.wrappers.elastix.ElastixTask;
-import ch.epfl.biop.wrappers.elastix.ElastixTaskSettings;
+package ch.epfl.biop.wrappers.elastix;
 
 import java.util.ArrayList;
 import java.util.function.Supplier;
@@ -23,7 +19,8 @@ public class DefaultElastixTask extends ElastixTask {
         }
         options.add("-out");
         options.add(settings.outputFolderSupplier.get());
-        //System.out.println(options);
+        options.add("-threads");options.add(""+settings.nThreads);
         Elastix.execute(options, null);
     }
+
 }

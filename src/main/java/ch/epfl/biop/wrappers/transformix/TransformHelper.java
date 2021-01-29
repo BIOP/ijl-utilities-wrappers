@@ -169,12 +169,20 @@ public class TransformHelper {
     	TransformixInputRoisFile erf = (TransformixInputRoisFile) roisToTransform.to(TransformixInputRoisFile.class);
     	return erf.f.getAbsolutePath();
     }
+
+    String transformInfo = null;
+
+    public void setExtraRegisterInfo(String transformInfo) {
+        this.transformInfo = transformInfo;
+    }
     
     public void transform(TransformixTask task) {
         if (!transformTaskSet) {
             if (checkParametersForTransformation()) {
                 TransformixTaskSettings transformSettings = new TransformixTaskSettings().transform(this.transformFile)
                         .outFolder(this.outputDir);
+
+                if (transformInfo!=null) transformSettings.taskInfo = transformInfo;
 
                 if (transformType==IMAGE_TRANSFORM) {
                     transformSettings.image(this::imageToTransformPathSupplier);

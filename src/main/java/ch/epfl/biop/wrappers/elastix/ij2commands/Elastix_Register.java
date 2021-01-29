@@ -1,6 +1,6 @@
 package ch.epfl.biop.wrappers.elastix.ij2commands;
 
-import ch.epfl.biop.wrappers.DefaultElastixTask;
+import ch.epfl.biop.wrappers.elastix.DefaultElastixTask;
 import ch.epfl.biop.wrappers.elastix.*;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;

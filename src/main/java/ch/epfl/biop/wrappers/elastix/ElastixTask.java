@@ -1,10 +1,7 @@
 package ch.epfl.biop.wrappers.elastix;
 
-import java.util.ArrayList;
-import java.util.function.Supplier;
-
 /**
- * Elastix task with buider pattern
+ * Elastix task with builder pattern
  * Allows the composition of several consecutive registrations
  */
 

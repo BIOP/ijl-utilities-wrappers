@@ -153,12 +153,20 @@ public class RegisterHelper extends ConvertibleObject {
     public String movingImagePathSupplier() {
     	return ((File) movingImage.to(File.class)).getAbsolutePath();
     }
-    
+
+    String registerInfo = null;
+
+    public void setExtraRegisterInfo(String registerInfo) {
+        this.registerInfo = registerInfo;
+    }
+
     public void align(ElastixTask align) {
         if (!alignTaskSet) {
             if (checkParametersForAlignement()) {
                 ElastixTaskSettings settings = new ElastixTaskSettings().fixedImage(this::fixedImagePathSupplier)
                         .movingImage(this::movingImagePathSupplier).outFolder(outputDir);
+
+                if (registerInfo!=null) settings.taskInfo = registerInfo;
 
                 for (Supplier<String> s : this.transformFilesSupplier) {
                     settings.addTransform(s);
