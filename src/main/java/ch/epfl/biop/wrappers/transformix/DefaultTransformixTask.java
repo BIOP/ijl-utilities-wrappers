@@ -7,6 +7,7 @@ public class DefaultTransformixTask extends TransformixTask {
 
     public void run() throws Exception {
         ArrayList<String> options = new ArrayList<>();
+        options.add("-threads");options.add(""+settings.nThreads);
         if (!settings.imagePathSupplier.get().equals("")) {
             options.add("-in");options.add(settings.imagePathSupplier.get());
         }
@@ -15,7 +16,6 @@ public class DefaultTransformixTask extends TransformixTask {
         }
         options.add("-out");options.add(settings.outputFolderSupplier.get());
         options.add("-tp");options.add(settings.transformFileSupplier.get());
-        options.add("-threads");options.add(""+settings.nThreads);
 
         Transformix.execute(options, null);
     }

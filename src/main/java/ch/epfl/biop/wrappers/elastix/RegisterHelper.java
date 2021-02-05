@@ -160,7 +160,7 @@ public class RegisterHelper extends ConvertibleObject {
         this.registerInfo = registerInfo;
     }
 
-    public void align(ElastixTask align) {
+    public void align(ElastixTask align) throws Exception {
         if (!alignTaskSet) {
             if (checkParametersForAlignement()) {
                 ElastixTaskSettings settings = new ElastixTaskSettings().fixedImage(this::fixedImagePathSupplier)
@@ -182,11 +182,7 @@ public class RegisterHelper extends ConvertibleObject {
             }
         }
         if (alignTaskSet) {
-            try {
-                align.run();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            align.run();
         }
     }
     

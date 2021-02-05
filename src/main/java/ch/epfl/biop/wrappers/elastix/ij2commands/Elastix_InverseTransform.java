@@ -60,12 +60,12 @@ public class Elastix_InverseTransform implements Command {
         rh.addInitialTransformFromFilePath(rh_toinvert.getTransformFile(rh_toinvert.getNumberOfTransform()-1));
         rh.addTransform(rp);
 
-
-        rh.align(new DefaultElastixTask());
-
-        rh.to(RHZipFile.class);
-
-        rh_inverted = rh;
-
+        try {
+            rh.align(new DefaultElastixTask());
+            rh.to(RHZipFile.class);
+            rh_inverted = rh;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

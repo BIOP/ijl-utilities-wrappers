@@ -65,8 +65,12 @@ public class Elastix_Register implements Command {
 			rp.FinalGridSpacingInVoxels = splineGridSpacing;
 			rh.addTransform(rp);
 		}
-		rh.align(new DefaultElastixTask());
-		rh.to(RHZipFile.class);
+		try {
+			rh.align(new DefaultElastixTask());
+			rh.to(RHZipFile.class);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 
 }

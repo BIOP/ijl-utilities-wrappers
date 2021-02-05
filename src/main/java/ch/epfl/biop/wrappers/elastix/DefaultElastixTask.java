@@ -8,6 +8,7 @@ public class DefaultElastixTask extends ElastixTask {
     @Override
     public void run() throws Exception {
         ArrayList<String> options = new ArrayList<>();
+        options.add("-threads");options.add(""+settings.nThreads);
         options.add("-f");options.add(settings.fixedImagePathSupplier.get());
         options.add("-m");options.add(settings.movingImagePathSupplier.get());
         if (settings.initialTransformFilePath!=null) {
@@ -19,7 +20,6 @@ public class DefaultElastixTask extends ElastixTask {
         }
         options.add("-out");
         options.add(settings.outputFolderSupplier.get());
-        options.add("-threads");options.add(""+settings.nThreads);
         Elastix.execute(options, null);
     }
 
