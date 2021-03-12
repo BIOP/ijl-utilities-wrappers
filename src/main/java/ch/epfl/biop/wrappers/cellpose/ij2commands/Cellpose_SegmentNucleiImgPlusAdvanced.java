@@ -19,41 +19,48 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
     ImagePlus imp;
 
     @Parameter
-    int diameter;
+    int diameter = 30 ;
 
     @Parameter
-    int cellproba_threshold;
+    double cellproba_threshold = 0.0 ;
 
     @Parameter
-    int flow_threshold;
+    double flow_threshold = 0.0 ;
 
-    @Parameter
+    @Parameter(choices = {"2D","3D"})
+    String dimensionMode ;
+
     Boolean verbose=true ;
 
     @Override
     public void run() {
         // save the current imp in a temp folder
         String tempDir = IJ.getDirectory("Temp");
-        if (verbose ) System.out.println(tempDir);
         // create Tempdir
         File cellposeTempDir = new File( tempDir , "cellposeTemp");
         cellposeTempDir.mkdir();
-        if (verbose ) System.out.println(cellposeTempDir);
-
+        // and save the current imp into the Tempdir
         File imp_path = new File(cellposeTempDir, imp.getShortTitle()+".tif") ;
-        if (verbose ) System.out.println(imp_path.toString());
-
         FileSaver fs = new FileSaver(imp);
-        fs.saveAsTiff(imp_path.toString() );
+        fs.saveAsTiff( imp_path.toString() );
+        if (verbose ) System.out.println(imp_path.toString());
 
         // Prepare cellPose settings
         CellposeTaskSettings settings = new CellposeTaskSettings();
         settings.setDatasetDir( cellposeTempDir.toString() );
         settings.setModelNuclei();
-        settings.setChannel1(1);
-        settings.setDiameter(diameter);
-        settings.setCellProbTh( cellproba_threshold);
-        settings.setFlowTH(flow_threshold);
+        settings.setDiameter( diameter );
+        settings.setCellProbTh( cellproba_threshold );
+        settings.setFlowTH( flow_threshold );
+
+        if (dimensionMode.equals("3D")){
+            if (imp.getNSlices() > 1 ) {
+                settings.setDo3D();
+            } else {
+                System.out.println("NOTE : Can't use 3D mode, on 2D image");
+            }
+        }
+
         // and a cellpose task
         DefaultCellposeTask cellposeTask = new DefaultCellposeTask();
         try {
@@ -63,6 +70,7 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
 
             // open generated tif
             File cellpose_imp_path = new File(cellposeTempDir, imp.getShortTitle()+"_cp_masks"+".tif");
+            // cellpose also creates a txt file (probably to be used with script to import ROI in imagej)
             File cellpose_outlines_path = new File(cellposeTempDir, imp.getShortTitle()+"_cp_outlines"+".txt");
 
             ImagePlus cellpose_imp = IJ.openImage(cellpose_imp_path.toString());

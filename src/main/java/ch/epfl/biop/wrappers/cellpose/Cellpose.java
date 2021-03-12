@@ -35,47 +35,67 @@ public class Cellpose {
     }
     public static void setEnvType(String envType){ Prefs.set(keyPrefix + "envType"    , envType); }
     public static void setUseGpu(boolean useGpu){  Prefs.set(keyPrefix + "useGpu"     , useGpu); }
-    public static void setUseMxnet(Boolean useMxnet){ Prefs.set(keyPrefix + "useMxnet" , useMxnet);}
-    public static void setUseFastMode(Boolean useFastMode){Prefs.set(keyPrefix + "useFastMode", useFastMode);}
-    public static void setUseResample(Boolean useResample) {Prefs.set(keyPrefix + "useFastMode", useResample);}
+    public static void setUseMxnet(boolean useMxnet){ Prefs.set(keyPrefix + "useMxnet" , useMxnet);}
+    public static void setUseFastMode(boolean useFastMode){Prefs.set(keyPrefix + "useFastMode", useFastMode);}
+    public static void setUseResample(boolean useResample) {Prefs.set(keyPrefix + "useFastMode", useResample);}
 
     private static final File NULL_FILE = new File((System.getProperty("os.name") .startsWith("Windows") ? "NUL" : "/dev/null"));
 
     static void execute(List<String> options, Consumer<InputStream> outputHandler)  throws IOException, InterruptedException {
-            List<String> cmd = new ArrayList<>();
+        List<String> cmd = new ArrayList<>();
 
-            String envType = Prefs.get(keyPrefix+"envType", Cellpose.envType);
-            if ( envType.equals("conda") ) {
-                List<String> conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", envDirPath);
-                cmd.addAll(conda_activate_cmd);
-            } else if  ( envType.equals("venv") ){ // venv
-                List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(envDirPath,"Scripts/activate").toString() );
-                cmd.addAll(venv_activate_cmd);
-            } else{
-                System.out.println("Virtual env type unrecognized!");
-            }
+        // Get the prefs about the env type
+        String envType = Prefs.get(keyPrefix+"envType", Cellpose.envType);
+        // and way of processing, GPU, Mxnet ...
+        boolean useGpu = Prefs.get(keyPrefix + "useGpu"     , Cellpose.useGpu);
+        boolean useMxnet = Prefs.get(keyPrefix + "useMxnet" , Cellpose.useMxnet);
+        boolean useFastMode = Prefs.get(keyPrefix + "useFastMode", Cellpose.useFastMode);
+        boolean useResample = Prefs.get(keyPrefix + "useFastMode", Cellpose.useResample);
 
-            cmd.add("&");// to have a second line
-            List<String> cellpose_args_cmd = Arrays.asList("python", "-m", "cellpose");
-            cmd.addAll(cellpose_args_cmd);
+        // Depending of the env type
+        if (envType.equals("conda")) {
+            List<String> conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", envDirPath);
+            cmd.addAll(conda_activate_cmd);
+        } else if (envType.equals("venv")) { // venv
+            List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(envDirPath, "Scripts/activate").toString());
+            cmd.addAll(venv_activate_cmd);
+        } else {
+            System.out.println("Virtual env type unrecognized!");
+        }
 
-            if ( !options.isEmpty() ) {
-                cmd.addAll(options);
-            }
+        // After starting the env we can now use cellpose
+        cmd.add("&");// to have a second line
+        List<String> cellpose_args_cmd = Arrays.asList("python", "-m", "cellpose");
+        cmd.addAll(cellpose_args_cmd);
 
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-            //pb.redirectOutput(NULL_FILE);
-            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-            Process p = pb.start();
-            if (outputHandler!=null) {outputHandler.accept(p.getInputStream());}
-            p.waitFor();
+        // input options
+        cmd.addAll(options);
+
+        // finally we add the prefs to the cmd
+        List<String> prefs_cmd = new ArrayList<>();;
+        if (useGpu) prefs_cmd.add("--use_gpu");
+        if (useMxnet) prefs_cmd.add("--mxnet");
+        if (useFastMode ) prefs_cmd.add("--fast_mode");
+        if (useResample ) prefs_cmd.add("--resample");
+        cmd.addAll(prefs_cmd);
+
+
+        // Now the cmd line is ready
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+        //pb.redirectOutput(NULL_FILE);
+        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+        Process p = pb.start();
+        if (outputHandler != null) {
+            outputHandler.accept(p.getInputStream());
+        }
+        p.waitFor();
     }
 
     public static void execute(String singleCommand) throws IOException, InterruptedException {
-            ArrayList<String> cmdList = new ArrayList<>();
-            cmdList.add(singleCommand);
-            execute(cmdList, null);
+        ArrayList<String> cmdList = new ArrayList<>();
+        cmdList.add(singleCommand);
+        execute(cmdList, null);
     }
 
 }

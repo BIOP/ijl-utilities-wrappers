@@ -8,26 +8,17 @@ public class CellposeTaskSettings {
 
     String datasetDir;
     String model;
-    String ch1 ;
-    String diameter;
-    String flow_threshold;
-    String cellprob_threshold;
+    int ch1 = 1 ;
+    // value defined from https://cellpose.readthedocs.io/en/latest/command.html#input-settings
+    int diameter = 30 ;
+    double flow_threshold = 0.0 ;
+    double cellprob_threshold = 0.0 ;
+
     boolean useGpu;
     boolean useFastMode;
     boolean useResample;
     boolean useMxnet;
     boolean use3D;
-
-    public CellposeTaskSettings initialize() {
-        String keyPrefix = Cellpose.class.getName() + ".";
-
-        this.useGpu = Prefs.get(keyPrefix+"useGpu", true);
-        this.useMxnet = Prefs.get(keyPrefix+"useMxnet", false);
-        this.useFastMode = Prefs.get(keyPrefix+"useFastMode",false);
-        this.useResample = Prefs.get(keyPrefix+"useResample",false);
-
-        return this;
-    }
 
     public CellposeTaskSettings setDo3D() {
         this.use3D = true;
@@ -55,22 +46,22 @@ public class CellposeTaskSettings {
     }
 
     public CellposeTaskSettings setChannel1( int ch1) {
-        this.ch1 = ""+ch1;
+        this.ch1 = ch1;
         return this;
     }
 
     public CellposeTaskSettings setDiameter( int diameter) {
-        this.diameter = ""+diameter;
+        this.diameter = diameter;
         return this;
     }
 
-    public CellposeTaskSettings setFlowTH( int flow_threshold) {
-        this.flow_threshold = ""+flow_threshold;
+    public CellposeTaskSettings setFlowTH( double flow_threshold) {
+        this.flow_threshold = flow_threshold;
         return this;
     }
 
-    public CellposeTaskSettings setCellProbTh( int cellprob_threshold) {
-        this.cellprob_threshold = ""+cellprob_threshold;
+    public CellposeTaskSettings setCellProbTh( double cellprob_threshold) {
+        this.cellprob_threshold = cellprob_threshold;
         return this;
     }
 }

@@ -1,16 +1,14 @@
 package ch.epfl.biop.wrappers.cellpose.ij2commands;
 
-import ch.epfl.biop.wrappers.cellpose.CellposeTaskSettings;
-import ch.epfl.biop.wrappers.cellpose.DefaultCellposeTask;
 import ij.IJ;
 import ij.ImagePlus;
-import ij.io.FileSaver;
+
 import net.imagej.ImageJ;
 import org.scijava.command.Command;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
 
-import java.io.File;
+
 
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Segment Nuclei")
 public class Cellpose_SegmentNucleiImgPlusBasic implements Command{
@@ -18,11 +16,27 @@ public class Cellpose_SegmentNucleiImgPlusBasic implements Command{
     @Parameter
     ImagePlus imp;
 
+    @Parameter
+      ImageJ ij;
     // to get
     Boolean verbose=true ;
 
+    public void segmentNucleiBasic(final ImageJ ij , ImagePlus imp){
+        ij.command().run(Cellpose_SegmentNucleiImgPlusAdvanced.class, true,
+                "imp", imp,
+                "diameter", 30,
+                "cellproba_threshold", 0.0,
+                "flow_threshold", 0.0,
+                "dimensionMode", "3D");
+    }
+
     @Override
     public void run() {
+
+        segmentNucleiBasic( ij , imp);
+
+        /*
+
         // save the current imp in a temp folder
         String tempDir = IJ.getDirectory("Temp");
         if (verbose ) System.out.println(tempDir);
@@ -39,7 +53,7 @@ public class Cellpose_SegmentNucleiImgPlusBasic implements Command{
 
         // Prepare cellPose settings
         CellposeTaskSettings settings = new CellposeTaskSettings();
-        settings.initialize();
+        //settings.initialize();
         settings.setDatasetDir( cellposeTempDir.toString() );
         settings.setModelNuclei();
         settings.setChannel1(1);
@@ -70,7 +84,7 @@ public class Cellpose_SegmentNucleiImgPlusBasic implements Command{
         } catch (Exception e) {
             e.printStackTrace();
         }
-
+        */
     }
 
 
@@ -86,4 +100,7 @@ public class Cellpose_SegmentNucleiImgPlusBasic implements Command{
             ij.command().run(Cellpose_SegmentNucleiImgPlusBasic.class, true);
 
     }
+
+
+
 }
