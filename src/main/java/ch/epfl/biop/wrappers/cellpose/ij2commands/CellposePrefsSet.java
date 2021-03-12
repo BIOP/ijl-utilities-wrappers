@@ -2,6 +2,7 @@ package ch.epfl.biop.wrappers.cellpose.ij2commands;
 
 import ch.epfl.biop.wrappers.BiopWrappersCheck;
 import ch.epfl.biop.wrappers.cellpose.Cellpose;
+import ch.epfl.biop.wrappers.cellpose.CellposeWrapperCheck;
 import org.scijava.command.Command;
 import org.scijava.log.LogService;
 import org.scijava.plugin.Parameter;
@@ -49,7 +50,7 @@ public class CellposePrefsSet implements Command {
 		Cellpose.setUseResample( useResample );
 
 		if (ls!=null) {
-			ls.info(BiopWrappersCheck.reportAllWrappers());
+			ls.info(CellposeWrapperCheck.reportAllWrappers());
 		}
 	}
 }
