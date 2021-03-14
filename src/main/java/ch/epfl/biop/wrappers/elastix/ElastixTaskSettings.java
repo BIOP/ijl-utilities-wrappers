@@ -16,6 +16,8 @@ public class ElastixTaskSettings {
 
     public String taskInfo; // extra field for task specific info -> metadata for remote processing
 
+    public boolean verbose = false;
+
     public ElastixTaskSettings() {
         transformationParameterPathSupplier = new ArrayList<>();
         nThreads=1;
@@ -53,6 +55,11 @@ public class ElastixTaskSettings {
 
     public ElastixTaskSettings addInitialTransform(String initialTransformFilePath) {
         this.initialTransformFilePath = initialTransformFilePath;
+        return this;
+    }
+
+    public ElastixTaskSettings verbose() {
+        this.verbose = true;
         return this;
     }
 
