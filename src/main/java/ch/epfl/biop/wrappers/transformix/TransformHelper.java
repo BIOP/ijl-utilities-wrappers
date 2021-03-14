@@ -155,7 +155,7 @@ public class TransformHelper {
 
     public void setDefaultOutputDir() {
         TempDirectory tempDir = new TempDirectory("tr-out");
-        //tempDir.deleteOnExit();
+        tempDir.deleteOnExit();
         Path path = tempDir.getPath();
         outputDir = path::toString;
     }
