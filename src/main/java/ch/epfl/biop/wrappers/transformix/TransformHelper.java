@@ -37,6 +37,7 @@ public class TransformHelper {
     //TransformixTask transform;
 
     boolean transformTaskSet = false;
+    boolean verbose = false;
 
     Supplier<String> outputDir;
 
@@ -50,6 +51,10 @@ public class TransformHelper {
     public void setTransformFile(RegisterHelper rh) {
         transformFile = rh::getFinalTransformFile;
         transformTaskSet = false;
+    }
+
+    public void verbose() {
+        verbose = true;
     }
 
     public void setTransformFile(Supplier<String> pathToTransformFile) {
@@ -83,12 +88,6 @@ public class TransformHelper {
     	this.roisToTransform=rois;
     	transformType = TransformHelper.ROIS_TRANSFORM;
     }
-
-    /*public void setImage(URL url, String extension) {
-        imgPath = (new HDDBackedFile(url, extension))::getFilePath;
-        transformTaskSet = false;
-        transformType = IMAGE_TRANSFORM;
-    }*/
 
     public void setImage(String pathToImage) {
         imageToTransform.set(new File(pathToImage));
@@ -181,6 +180,8 @@ public class TransformHelper {
             if (checkParametersForTransformation()) {
                 TransformixTaskSettings transformSettings = new TransformixTaskSettings().transform(this.transformFile)
                         .outFolder(this.outputDir);
+
+                if (verbose) transformSettings.verbose();
 
                 if (transformInfo!=null) transformSettings.taskInfo = transformInfo;
 

@@ -30,15 +30,18 @@ import ch.epfl.biop.java.utilities.image.ConvertibleImage;
 public class RegisterHelper extends ConvertibleObject {
 
     ConvertibleImage fixedImage;
+
     ConvertibleImage movingImage;
+
     ArrayList<Supplier<String>> transformFilesSupplier;
+
     public Supplier<String> outputDir;
 
     public String initialTransformFilePath = null;
 
-    ElastixTask align;
-
     boolean alignTaskSet = false;
+
+    boolean verbose = false;
 
     public RegisterHelper() {
         transformFilesSupplier = new ArrayList<>();
@@ -66,6 +69,10 @@ public class RegisterHelper extends ConvertibleObject {
     public void setMovingImage(URL url) {
         movingImage.set(url);
         alignTaskSet = false;
+    }
+
+    public void verbose() {
+        verbose = true;
     }
 
     public void setMovingImage(ImagePlus imp) {
@@ -165,6 +172,8 @@ public class RegisterHelper extends ConvertibleObject {
             if (checkParametersForAlignement()) {
                 ElastixTaskSettings settings = new ElastixTaskSettings().fixedImage(this::fixedImagePathSupplier)
                         .movingImage(this::movingImagePathSupplier).outFolder(outputDir);
+
+                if (verbose) settings.verbose();
 
                 if (registerInfo!=null) settings.taskInfo = registerInfo;
 
