@@ -4,6 +4,7 @@ import ij.IJ;
 import ij.ImagePlus;
 
 import net.imagej.ImageJ;
+import org.scijava.ItemIO;
 import org.scijava.command.Command;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
@@ -16,75 +17,20 @@ public class Cellpose_SegmentNucleiImgPlusBasic implements Command{
     @Parameter
     ImagePlus imp;
 
-    @Parameter
-      ImageJ ij;
-    // to get
-    Boolean verbose=true ;
+    @Parameter (type= ItemIO.OUTPUT)
+    ImagePlus cellpose_imp ;
 
-    public void segmentNucleiBasic(final ImageJ ij , ImagePlus imp){
-        ij.command().run(Cellpose_SegmentNucleiImgPlusAdvanced.class, true,
-                "imp", imp,
-                "diameter", 30,
-                "cellproba_threshold", 0.0,
-                "flow_threshold", 0.0,
-                "dimensionMode", "3D");
-    }
+    public void run(){
 
-    @Override
-    public void run() {
+        Cellpose_SegmentNucleiImgPlusAdvanced nucSeg = new Cellpose_SegmentNucleiImgPlusAdvanced();
+        nucSeg.imp = imp;
+        nucSeg.diameter = 30 ;
+        nucSeg.cellproba_threshold = 0.0;
+        nucSeg.flow_threshold = 0.0 ;
+        nucSeg.dimensionMode = "3D" ;
 
-        segmentNucleiBasic( ij , imp);
-
-        /*
-
-        // save the current imp in a temp folder
-        String tempDir = IJ.getDirectory("Temp");
-        if (verbose ) System.out.println(tempDir);
-        // create Tempdir
-        File cellposeTempDir = new File( tempDir , "cellposeTemp");
-        cellposeTempDir.mkdir();
-        if (verbose ) System.out.println(cellposeTempDir);
-
-        File imp_path = new File(cellposeTempDir, imp.getShortTitle()+".tif") ;
-        if (verbose ) System.out.println(imp_path.toString());
-
-        FileSaver fs = new FileSaver(imp);
-        fs.saveAsTiff(imp_path.toString() );
-
-        // Prepare cellPose settings
-        CellposeTaskSettings settings = new CellposeTaskSettings();
-        //settings.initialize();
-        settings.setDatasetDir( cellposeTempDir.toString() );
-        settings.setModelNuclei();
-        settings.setChannel1(1);
-
-        if (imp.getNSlices() > 1 ) settings.setDo3D();
-
-        // and a cellpose task
-        DefaultCellposeTask cellposeTask = new DefaultCellposeTask();
-        try {
-            //process imp with cellpose
-            cellposeTask.setSettings(settings);
-            cellposeTask.run();
-
-            // open generated tif
-            File cellpose_imp_path = new File(cellposeTempDir, imp.getShortTitle()+"_cp_masks"+".tif");
-            // cellpose also creates a txt file (probably to be used with script to import ROI in imagej)
-            File cellpose_outlines_path = new File(cellposeTempDir, imp.getShortTitle()+"_cp_outlines"+".txt");
-
-            ImagePlus cellpose_imp = IJ.openImage(cellpose_imp_path.toString());
-            cellpose_imp.show();
-
-            // delete the created image
-            imp_path.delete();
-            cellpose_imp_path.delete();
-            cellpose_outlines_path.delete();
-            cellposeTempDir.delete();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        */
+        nucSeg.run();
+        cellpose_imp = nucSeg.cellpose_imp;
     }
 
 
