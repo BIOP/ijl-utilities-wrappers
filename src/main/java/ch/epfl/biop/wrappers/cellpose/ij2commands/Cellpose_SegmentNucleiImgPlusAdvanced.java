@@ -6,6 +6,7 @@ import ij.IJ;
 import ij.ImagePlus;
 import ij.io.FileSaver;
 import net.imagej.ImageJ;
+import org.scijava.ItemIO;
 import org.scijava.command.Command;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
@@ -29,6 +30,9 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
 
     @Parameter(choices = {"2D","3D"})
     String dimensionMode ;
+
+    @Parameter (type= ItemIO.OUTPUT)
+    ImagePlus cellpose_imp ;
 
     Boolean verbose=true ;
 
@@ -73,8 +77,7 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
             // cellpose also creates a txt file (probably to be used with script to import ROI in imagej)
             File cellpose_outlines_path = new File(cellposeTempDir, imp.getShortTitle()+"_cp_outlines"+".txt");
 
-            ImagePlus cellpose_imp = IJ.openImage(cellpose_imp_path.toString());
-            cellpose_imp.show();
+            cellpose_imp = IJ.openImage(cellpose_imp_path.toString());
 
             // delete the created files and folder
             imp_path.delete();
