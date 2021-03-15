@@ -61,7 +61,7 @@ public class CellposeTaskSettings {
         return this;
     }
 
-    public CellposeTaskSettings setFlowTH( double flow_threshold) {
+    public CellposeTaskSettings setFlowTh(double flow_threshold) {
         this.flow_threshold = flow_threshold;
         return this;
     }
