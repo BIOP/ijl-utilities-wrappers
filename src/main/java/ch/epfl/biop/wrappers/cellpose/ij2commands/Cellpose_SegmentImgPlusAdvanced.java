@@ -19,6 +19,7 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
     @Parameter
     ImagePlus imp;
 
+    //
     @Parameter
     int diameter = 30 ;
 
@@ -26,9 +27,9 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
     double cellproba_threshold = 0.0 ;
 
     @Parameter
-    double flow_threshold = 0.0 ;
+    double flow_threshold = 0.4 ;
 
-    @Parameter(choices = {"cyto","nuclei"} , callback = "modelchanged")
+    @Parameter(choices = {"nuclei","cyto","cyto (no nuclei)"} , callback = "modelchanged")
     String model ;
 
     @Parameter
@@ -45,8 +46,16 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
 
     Boolean verbose=true ;
 
+    // propose some default value
     public void modelchanged(){
         if (model.equals("nuclei")){
+            ch1 = 1;
+            ch2 = -1 ;
+        } else if (model.equals("cyto")){
+            ch1 = 1;
+            ch2 = 2 ;
+        } else {
+            ch1 = 1;
             ch2 = -1 ;
         }
     }
@@ -68,6 +77,8 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
         CellposeTaskSettings settings = new CellposeTaskSettings();
         settings.setDatasetDir( cellposeTempDir.toString() );
 
+        //TODO Discuss if necessary
+        if (model.equals("cyto (no nuclei)")) model="cyto";
         settings.setModel(model);
         settings.setChannel1(ch1);
 

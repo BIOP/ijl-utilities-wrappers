@@ -11,9 +11,9 @@ public class CellposeTaskSettings {
     int ch1 = 1 ;
     int ch2 = 2 ;
 
-    // value defined from https://cellpose.readthedocs.io/en/latest/command.html#input-settings
+    // value defined from https://cellpose.readthedocs.io/en/latest/api.html
     int diameter = 30 ;
-    double flow_threshold = 0.0 ;
+    double flow_threshold = 0.4 ;
     double cellprob_threshold = 0.0 ;
 
     boolean useGpu;
