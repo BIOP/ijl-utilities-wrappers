@@ -18,8 +18,10 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add("--chan");
         options.add(""+settings.ch1);
 
-        options.add("--chan2");
-        options.add(""+settings.ch2);
+        if (settings.ch2 > 0){
+            options.add("--chan2");
+            options.add(""+settings.ch2);
+        }
 
         options.add("--diameter");
         options.add(""+settings.diameter);
@@ -35,6 +37,10 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add("--save_tif");
 
         options.add("--no_npy");
+
+
+
+
 
         Cellpose.execute(options, null);
     }
