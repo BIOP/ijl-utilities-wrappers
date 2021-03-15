@@ -20,13 +20,16 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
     ImagePlus imp;
 
     @Parameter
+    int ch1 = 1 ;
+
+    @Parameter
     int diameter = 30 ;
 
     @Parameter
     double cellproba_threshold = 0.0 ;
 
     @Parameter
-    double flow_threshold = 0.0 ;
+    double flow_threshold = 0.4 ;
 
     @Parameter(choices = {"2D","3D"})
     String dimensionMode ;
@@ -38,57 +41,20 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
 
     @Override
     public void run() {
-        // save the current imp in a temp folder
-        String tempDir = IJ.getDirectory("Temp");
-        // create Tempdir
-        File cellposeTempDir = new File( tempDir , "cellposeTemp");
-        cellposeTempDir.mkdir();
-        // and save the current imp into the Tempdir
-        File imp_path = new File(cellposeTempDir, imp.getShortTitle()+".tif") ;
-        FileSaver fs = new FileSaver(imp);
-        fs.saveAsTiff( imp_path.toString() );
-        if (verbose ) System.out.println(imp_path.toString());
 
-        // Prepare cellPose settings
-        CellposeTaskSettings settings = new CellposeTaskSettings();
-        settings.setDatasetDir( cellposeTempDir.toString() );
-        settings.setModelNuclei();
-        settings.setDiameter( diameter );
-        settings.setCellProbTh( cellproba_threshold );
-        settings.setFlowTH( flow_threshold );
+        Cellpose_SegmentImgPlusAdvanced nucleiCellpose = new Cellpose_SegmentImgPlusAdvanced();
+        nucleiCellpose.imp = imp;
+        nucleiCellpose.ch1 = ch1 ;
+        nucleiCellpose.ch2 = -1 ;
+        nucleiCellpose.model = "nuclei";
+        nucleiCellpose.diameter = diameter;
+        nucleiCellpose.cellproba_threshold = cellproba_threshold;
+        nucleiCellpose.flow_threshold = flow_threshold;
+        nucleiCellpose.dimensionMode  =dimensionMode;
 
-        if (dimensionMode.equals("3D")){
-            if (imp.getNSlices() > 1 ) {
-                settings.setDo3D();
-            } else {
-                System.out.println("NOTE : Can't use 3D mode, on 2D image");
-            }
-        }
+        nucleiCellpose.run();
 
-        // and a cellpose task
-        DefaultCellposeTask cellposeTask = new DefaultCellposeTask();
-        try {
-            //process imp with cellpose
-            cellposeTask.setSettings(settings);
-            cellposeTask.run();
-
-            // open generated tif
-            File cellpose_imp_path = new File(cellposeTempDir, imp.getShortTitle()+"_cp_masks"+".tif");
-            // cellpose also creates a txt file (probably to be used with script to import ROI in imagej)
-            File cellpose_outlines_path = new File(cellposeTempDir, imp.getShortTitle()+"_cp_outlines"+".txt");
-
-            cellpose_imp = IJ.openImage(cellpose_imp_path.toString());
-
-            // delete the created files and folder
-            imp_path.delete();
-            cellpose_imp_path.delete();
-            cellpose_outlines_path.delete();
-            cellposeTempDir.delete();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
+        cellpose_imp = nucleiCellpose.cellpose_imp ;
     }
 
 
@@ -97,11 +63,10 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
             // create the ImageJ application context with all available services
             final ImageJ ij = new ImageJ();
             ij.ui().showUI();
-            ImagePlus imp = IJ.openImage("https://imagej.net/images/blobs.gif");
+            ImagePlus imp = IJ.openImage("C:\\Users\\guiet\\Desktop\\CellPose_dataset\\CellDemoNuclei3D-iso.tif");
             imp.show();
-            IJ.run(imp, "Invert LUT", "");
+            // IJ.run(imp, "Invert LUT", "");
             // will run on the current image
             ij.command().run(Cellpose_SegmentNucleiImgPlusAdvanced.class, true);
-
     }
 }
