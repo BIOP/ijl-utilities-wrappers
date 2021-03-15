@@ -20,18 +20,11 @@ Briefly, ***Cellpose*** wrapper sequentially:
 - opens the created label image in Fiji
 - cleans the temporary folder
 
-**NOTE** : to use a conda environment you need to enable conda command outside conda prompt, [*cf* installation instructions](https://github.com/BIOP/ijl-utilities-wrappers/tree/conda-cellpose-wrapper#-enable-conda-command-outside-conda-prompt-).
+**NOTE** : The Cellpose wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions](https://github.com/BIOP/ijl-utilities-wrappers/tree/conda-cellpose-wrapper#-enable-conda-command-outside-conda-prompt-).
 
 
 <h2>Installation</h2>
-You'll find here some instructions to install the ***Cellpose*** commands and some guidance to set up a Cellpose virtual environment.
-
-<h3>(soon) Fiji - Cellpose wrapper</h2>
-- Please use our update site ***(PTBIOP | https://biop.epfl.ch/Fiji-Update/)*** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
-- Restart Fiji
-- Plugins>BIOP>Cellpose> Define Env. & prefs. , select the path to your working Cellpose Virtual Environment.
-
-Congratulation you can now Cellpose-ing your first image from Fiji!
+You'll find here some instructions to install the ***Cellpose*** wrapper and some guidance to set up a Cellpose virtual environment.
 
 <h3>Cellpose Virtual Environment </h2>
 
@@ -85,10 +78,23 @@ You should get the list of your conda envs.
 
 
 <h5> Mac </h5>
-**Please contact us with succesfull procedure **
+
+**_Please contact us with succesfull procedure._**
 
 <h5> Linux </h5>
-** Please contact us with succesfull procedure **
+
+**_Please contact us with succesfull procedure_**
+
+
+<h3>Fiji - Cellpose wrapper (SOON) </h2>
+
+**NOTE** The Fiji - Cellpose wrapper is useless without a working Cellpose environment, please see installation. 
+
+- Please use our update site **_(PTBIOP | https://biop.epfl.ch/Fiji-Update/)_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
+- Restart Fiji
+- Plugins>BIOP>Cellpose> Define Env. & prefs. , select the path to your working Cellpose Virtual Environment.
+
+Congratulation you can now use Cellpose on your first image from Fiji!
 
 
 
