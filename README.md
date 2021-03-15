@@ -12,9 +12,9 @@
 
 <h1>Cellpose</h1> 
 
-The ***Cellpose*** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environement (either conda, or venv) from Fiji.
+The ***_Cellpose_** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environment (either conda, or venv) from Fiji.
 
-Briefly, ***Cellpose*** wrapper sequentially:
+Briefly, **_Cellpose_** wrapper sequentially:
 - saves the current Fiji image in a temporary folder
 - starts the cellpose-env and runs Cellpose with defined parameters
 - opens the created label image in Fiji
@@ -24,7 +24,7 @@ Briefly, ***Cellpose*** wrapper sequentially:
 
 
 <h2>Installation</h2>
-You'll find here some instructions to install the ***Cellpose*** wrapper and some guidance to set up a Cellpose virtual environment.
+You'll find here some instructions to install the **_Cellpose_** wrapper and some guidance to set up a Cellpose virtual environment.
 
 <h3>Cellpose Virtual Environment </h2>
 
@@ -75,15 +75,13 @@ To check if it works, you can:
 You should get the list of your conda envs.
 
 
-
-
 <h5> Mac </h5>
 
-**_Please contact us with succesfull procedure._**
+**_Please contact us with successful procedure._**
 
 <h5> Linux </h5>
 
-**_Please contact us with succesfull procedure_**
+**_Please contact us with successful procedure_**
 
 
 <h3>Fiji - Cellpose wrapper (SOON) </h2>
@@ -92,7 +90,7 @@ You should get the list of your conda envs.
 
 - Please use our update site **_(PTBIOP | https://biop.epfl.ch/Fiji-Update/)_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
 - Restart Fiji
-- Plugins>BIOP>Cellpose> Define Env. & prefs. , select the path to your working Cellpose Virtual Environment.
+- ``Plugins>BIOP>Cellpose> Define Env. & prefs.`` , select the path to your working Cellpose virtual environment.
 
 Congratulation you can now use Cellpose on your first image from Fiji!
 
