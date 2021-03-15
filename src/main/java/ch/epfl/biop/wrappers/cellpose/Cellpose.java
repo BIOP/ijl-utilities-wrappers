@@ -79,6 +79,7 @@ public class Cellpose {
         if (useResample ) prefs_cmd.add("--resample");
         cmd.addAll(prefs_cmd);
 
+        System.out.println( cmd );
 
         // Now the cmd line is ready
         ProcessBuilder pb = new ProcessBuilder(cmd);
