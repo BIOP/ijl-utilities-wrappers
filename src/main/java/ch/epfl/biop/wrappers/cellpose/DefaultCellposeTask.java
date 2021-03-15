@@ -18,6 +18,9 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add("--chan");
         options.add(""+settings.ch1);
 
+        options.add("--chan2");
+        options.add(""+settings.ch2);
+
         options.add("--diameter");
         options.add(""+settings.diameter);
 
@@ -28,11 +31,6 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add(""+settings.cellprob_threshold);
 
         if (settings.use3D) options.add("--do_3D");
-
-        // Some option set from preferences
-
-        //options.add("--chan2");
-        //options.add(""+settings.ch2.get());
 
         options.add("--save_tif");
 
