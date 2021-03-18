@@ -7,8 +7,8 @@ public class CellposeTaskSettings {
 
     String datasetDir;
     String model;
-    int ch1 = 1 ;
-    int ch2 = 2 ;
+    int ch1 ;
+    int ch2 =-1 ;
 
     // value defined from https://cellpose.readthedocs.io/en/latest/api.html
     int diameter = 30 ;
@@ -43,7 +43,7 @@ public class CellposeTaskSettings {
     }
 
     public CellposeTaskSettings setChannel2( int ch2) {
-        this.ch1 = ch2;
+        this.ch2 = ch2;
         return this;
     }
     public CellposeTaskSettings setDiameter( int diameter) {
