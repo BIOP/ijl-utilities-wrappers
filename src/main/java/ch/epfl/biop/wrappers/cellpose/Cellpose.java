@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
+import ij.IJ;
 import ij.Prefs;
 
 public class Cellpose {
@@ -49,8 +50,17 @@ public class Cellpose {
 
         // Depending of the env type
         if (envType.equals("conda")) {
-            List<String> conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", envDirPath);
+            List<String> conda_activate_cmd = null;
+
+            if (  IJ.isWindows()) {
+                conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", envDirPath);
+            } else if ( IJ.isLinux() || IJ.isMacOSX() ){
+                // https://docs.conda.io/projects/conda/en/4.6.1/user-guide/tasks/manage-environments.html#id2
+                //conda_activate_cmd = Arrays.asList("terminal", "-e", "/C", "conda", "source","activate", envDirPath);
+                throw new UnsupportedOperationException("Linux and MacOS not supported yet");
+            }
             cmd.addAll(conda_activate_cmd);
+
         } else if (envType.equals("venv")) { // venv
             List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(envDirPath, "Scripts/activate").toString());
             cmd.addAll(venv_activate_cmd);
