@@ -20,7 +20,7 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
     ImagePlus imp;
 
     @Parameter
-    int ch1 = 1 ;
+    int nuclei_channel = 1 ;
 
     @Parameter
     int diameter = 30 ;
@@ -44,8 +44,8 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
 
         Cellpose_SegmentImgPlusAdvanced nucleiCellpose = new Cellpose_SegmentImgPlusAdvanced();
         nucleiCellpose.imp = imp;
-        nucleiCellpose.ch1 = ch1 ;
-        nucleiCellpose.ch2 = -1 ;
+        nucleiCellpose.nuclei_channel = nuclei_channel ;
+        nucleiCellpose.cyto_channel = -1 ;
         nucleiCellpose.model = "nuclei";
         nucleiCellpose.diameter = diameter;
         nucleiCellpose.cellproba_threshold = cellproba_threshold;

@@ -5,7 +5,6 @@ import ij.Prefs;
 
 public class CellposeTaskSettings {
 
-
     String datasetDir;
     String model;
     int ch1 = 1 ;
@@ -16,11 +15,12 @@ public class CellposeTaskSettings {
     double flow_threshold = 0.4 ;
     double cellprob_threshold = 0.0 ;
 
+    boolean use3D;
+
     boolean useGpu;
     boolean useFastMode;
     boolean useResample;
     boolean useMxnet;
-    boolean use3D;
 
     public CellposeTaskSettings setDo3D() {
         this.use3D = true;
@@ -34,16 +34,6 @@ public class CellposeTaskSettings {
 
     public CellposeTaskSettings setModel( String model) {
         this.model = model;
-        return this;
-    }
-
-    public CellposeTaskSettings setModelNuclei() {
-        this.model = "nuclei";
-        return this;
-    }
-
-    public CellposeTaskSettings setModelCyto() {
-        this.model = "cyto";
         return this;
     }
 
@@ -68,6 +58,15 @@ public class CellposeTaskSettings {
 
     public CellposeTaskSettings setCellProbTh( double cellprob_threshold) {
         this.cellprob_threshold = cellprob_threshold;
+        return this;
+    }
+
+    public CellposeTaskSettings setFromPrefs(){
+        String keyPrefix = Cellpose.class.getName()+".";
+        this.useGpu = Prefs.get(keyPrefix + "useGpu"     , Cellpose.useGpu);
+        this.useMxnet = Prefs.get(keyPrefix + "useMxnet" , Cellpose.useMxnet);
+        this.useFastMode = Prefs.get(keyPrefix + "useFastMode", Cellpose.useFastMode);
+        this.useResample = Prefs.get(keyPrefix + "useResample", Cellpose.useResample);
         return this;
     }
 }

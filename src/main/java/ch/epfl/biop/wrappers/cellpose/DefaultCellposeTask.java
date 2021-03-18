@@ -1,7 +1,5 @@
 package ch.epfl.biop.wrappers.cellpose;
 
-
-
 import java.util.ArrayList;
 
 public class DefaultCellposeTask extends CellposeTask {
@@ -38,9 +36,10 @@ public class DefaultCellposeTask extends CellposeTask {
 
         options.add("--no_npy");
 
-
-
-
+        if (settings.useGpu) options.add("--use_gpu");
+        if (settings.useMxnet) options.add("--mxnet");
+        if (settings.useFastMode ) options.add("--fast_mode");
+        if (settings.useResample ) options.add("--resample");
 
         Cellpose.execute(options, null);
     }

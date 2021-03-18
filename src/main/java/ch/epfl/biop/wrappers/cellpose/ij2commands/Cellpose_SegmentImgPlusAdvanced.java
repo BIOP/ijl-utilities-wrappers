@@ -18,7 +18,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Cellpose Adv. Time")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Cellpose Advanced")
 public class Cellpose_SegmentImgPlusAdvanced implements Command{
 
     @Parameter
@@ -38,10 +38,10 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
     String model ;
 
     @Parameter
-    int ch1 ;
+    int nuclei_channel ;//TODO replace by nuclei_channel ? and cytoplasme_channel ? and take care in background
 
     @Parameter
-    int ch2;
+    int cyto_channel;
 
     @Parameter(choices = {"2D","3D"})
     String dimensionMode ;
@@ -54,14 +54,14 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
     // propose some default value when a model is selected
     public void modelchanged(){
         if (model.equals("nuclei")){
-            ch1 = 1;
-            ch2 = -1 ;
+            nuclei_channel = 1;
+            cyto_channel = -1 ;
         } else if (model.equals("cyto")){
-            ch1 = 1;
-            ch2 = 2 ;
-        } else {
-            ch1 = 1;
-            ch2 = -1 ;
+            cyto_channel = 1;
+            nuclei_channel = 2 ;
+        } else if (model.equals("cyto (no nuclei)")){
+            cyto_channel = 1;
+            nuclei_channel = -1 ;
         }
     }
 
@@ -69,6 +69,8 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
     public void run() {
         // Prepare cellPose settings
         CellposeTaskSettings settings = new CellposeTaskSettings();
+        // this is necessary
+        settings.setFromPrefs();
         // and a cellpose task
         DefaultCellposeTask cellposeTask = new DefaultCellposeTask();
 
@@ -85,12 +87,19 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
         settings.setDatasetDir( cellposeTempDir.toString() );
 
         // TODO Discuss if necessary to have this "cyto (no nuclei)"
-        if (model.equals("cyto (no nuclei)")) model="cyto";
-        settings.setModel(model);
-        settings.setChannel1(ch1);
+        if (model.equals("nuclei")){
+            settings.setChannel1(nuclei_channel) ;
+            settings.setChannel2(-1) ;
+        } else if (model.equals("cyto")){
+            settings.setChannel1(cyto_channel) ;
+            settings.setChannel2(nuclei_channel) ;
+        } else if (model.equals("cyto (no nuclei)")){
+            model="cyto";
+            settings.setChannel1(cyto_channel) ;
+            settings.setChannel2(-1) ;
+        }
 
-        if (model.equals("cyto")) settings.setChannel2(ch2);
-        else settings.setChannel2(ch1);
+        settings.setModel(model);
 
         settings.setDiameter( diameter );
         settings.setCellProbTh( cellproba_threshold );

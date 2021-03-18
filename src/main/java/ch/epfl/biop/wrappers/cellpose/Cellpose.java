@@ -27,7 +27,7 @@ public class Cellpose {
     public static boolean useGpu = Prefs.get(keyPrefix+"useGpu", defaultUseGpu);
     public static boolean useMxnet = Prefs.get(keyPrefix+"useMxnet", defaultUseMxnet);
     public static boolean useFastMode = Prefs.get(keyPrefix+"useFastMode", defaultUseFastMode);
-    public static boolean useResample = Prefs.get(keyPrefix+"useFastMode", defaultUseResample);
+    public static boolean useResample = Prefs.get(keyPrefix+"useResample", defaultUseResample);
 
     public static void setEnvDirPath(File f) {
         envDirPath = f.getAbsolutePath();
@@ -37,7 +37,7 @@ public class Cellpose {
     public static void setUseGpu(boolean useGpu){  Prefs.set(keyPrefix + "useGpu"     , useGpu); }
     public static void setUseMxnet(boolean useMxnet){ Prefs.set(keyPrefix + "useMxnet" , useMxnet);}
     public static void setUseFastMode(boolean useFastMode){Prefs.set(keyPrefix + "useFastMode", useFastMode);}
-    public static void setUseResample(boolean useResample) {Prefs.set(keyPrefix + "useFastMode", useResample);}
+    public static void setUseResample(boolean useResample) {Prefs.set(keyPrefix + "useResample", useResample);}
 
     private static final File NULL_FILE = new File((System.getProperty("os.name") .startsWith("Windows") ? "NUL" : "/dev/null"));
 
@@ -46,11 +46,6 @@ public class Cellpose {
 
         // Get the prefs about the env type
         String envType = Prefs.get(keyPrefix+"envType", Cellpose.envType);
-        // and way of processing, GPU, Mxnet ...
-        boolean useGpu = Prefs.get(keyPrefix + "useGpu"     , Cellpose.useGpu);
-        boolean useMxnet = Prefs.get(keyPrefix + "useMxnet" , Cellpose.useMxnet);
-        boolean useFastMode = Prefs.get(keyPrefix + "useFastMode", Cellpose.useFastMode);
-        boolean useResample = Prefs.get(keyPrefix + "useFastMode", Cellpose.useResample);
 
         // Depending of the env type
         if (envType.equals("conda")) {
@@ -70,15 +65,7 @@ public class Cellpose {
 
         // input options
         cmd.addAll(options);
-
-        // finally we add the prefs to the cmd
-        List<String> prefs_cmd = new ArrayList<>();;
-        if (useGpu) prefs_cmd.add("--use_gpu");
-        if (useMxnet) prefs_cmd.add("--mxnet");
-        if (useFastMode ) prefs_cmd.add("--fast_mode");
-        if (useResample ) prefs_cmd.add("--resample");
-        cmd.addAll(prefs_cmd);
-
+        //
         System.out.println( cmd );
 
         // Now the cmd line is ready
