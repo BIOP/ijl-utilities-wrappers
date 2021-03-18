@@ -30,15 +30,18 @@ import ch.epfl.biop.java.utilities.image.ConvertibleImage;
 public class RegisterHelper extends ConvertibleObject {
 
     ConvertibleImage fixedImage;
+
     ConvertibleImage movingImage;
+
     ArrayList<Supplier<String>> transformFilesSupplier;
+
     public Supplier<String> outputDir;
 
     public String initialTransformFilePath = null;
 
-    ElastixTask align;
-
     boolean alignTaskSet = false;
+
+    boolean verbose = false;
 
     public RegisterHelper() {
         transformFilesSupplier = new ArrayList<>();
@@ -66,6 +69,10 @@ public class RegisterHelper extends ConvertibleObject {
     public void setMovingImage(URL url) {
         movingImage.set(url);
         alignTaskSet = false;
+    }
+
+    public void verbose() {
+        verbose = true;
     }
 
     public void setMovingImage(ImagePlus imp) {
@@ -166,6 +173,8 @@ public class RegisterHelper extends ConvertibleObject {
                 ElastixTaskSettings settings = new ElastixTaskSettings().fixedImage(this::fixedImagePathSupplier)
                         .movingImage(this::movingImagePathSupplier).outFolder(outputDir);
 
+                if (verbose) settings.verbose();
+
                 if (registerInfo!=null) settings.taskInfo = registerInfo;
 
                 for (Supplier<String> s : this.transformFilesSupplier) {
@@ -182,6 +191,7 @@ public class RegisterHelper extends ConvertibleObject {
             }
         }
         if (alignTaskSet) {
+            assert align != null;
             align.run();
         }
     }
@@ -236,6 +246,7 @@ public class RegisterHelper extends ConvertibleObject {
                 zipOut.closeEntry();
             }
             File[] children = fileToZip.listFiles();
+            assert children != null;
             for (File childFile : children) {
                 zipFolder(childFile,  fileName + File.separator +childFile.getName(), zipOut);
             }
@@ -258,6 +269,7 @@ public class RegisterHelper extends ConvertibleObject {
         //}
         if (fileToZip.isDirectory()) {
             File[] children = fileToZip.listFiles();
+            assert children != null;
             for (File childFile : children) {
                 if (childFile.getName().startsWith("TransformParameters")) {
                     //zipFolderNR(childFile,  fileName + "/" +childFile.getName(), zipOut);
@@ -273,7 +285,6 @@ public class RegisterHelper extends ConvertibleObject {
                     fis.close();
                 }
             }
-            return;
         }
     }
 
@@ -331,8 +342,9 @@ public class RegisterHelper extends ConvertibleObject {
             // Unzips files into temp directory
             String fileZip = rzf.f.getAbsolutePath();
             byte[] buffer = new byte[1024];
-            ZipInputStream zis = null;
-            zis = new ZipInputStream(new FileInputStream(fileZip));
+            ZipInputStream zis;
+            FileInputStream fis = new FileInputStream(fileZip);
+            zis = new ZipInputStream(fis);
             ZipEntry zipEntry = zis.getNextEntry();
             while(zipEntry != null){
                 String fileName = zipEntry.getName();
@@ -365,6 +377,7 @@ public class RegisterHelper extends ConvertibleObject {
             }
             zis.closeEntry();
             zis.close();
+            fis.close();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -382,13 +395,13 @@ public class RegisterHelper extends ConvertibleObject {
     	try {
     		String regexTr = "(\\(InitialTransformParametersFileName\\s\")(.+)(\"\\))";
 	        while (transformFiles.containsKey(i)) {
-	        	String verify, putData;
+	        	String putData;
 	        	File f = transformFiles.get(i);
 	        	
 	        	// input the file content to the StringBuffer "input"
 	            BufferedReader file = new BufferedReader(new FileReader(f));
 	            String line;
-	            StringBuffer inputBuffer = new StringBuffer();
+	            StringBuilder inputBuffer = new StringBuilder();
                 System.out.println(transformFiles.get(i-1).getAbsolutePath().replaceAll("\\\\","\\\\\\\\"));
 	            while ((line = file.readLine()) != null) {
 

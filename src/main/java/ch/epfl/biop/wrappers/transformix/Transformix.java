@@ -31,23 +31,25 @@ public class Transformix {
                     .startsWith("Windows") ? "NUL" : "/dev/null")
     );
 
-    static void execute(List<String> options, Consumer<InputStream> outputHandler)  throws IOException, InterruptedException {
+    static void execute(List<String> options, boolean verbose)  throws IOException, InterruptedException {
             List<String> cmd = new ArrayList<>();
             cmd.add(exePath);
             cmd.addAll(options);
             ProcessBuilder pb = new ProcessBuilder(cmd);
-            //pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-            pb.redirectOutput(NULL_FILE);
+            if (verbose) {
+                pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+            } else {
+                pb.redirectOutput(NULL_FILE);
+            }
             pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             Process p = pb.start();
-            if (outputHandler!=null) {outputHandler.accept(p.getInputStream());}
             p.waitFor();
     }
     
     public static void execute(String singleCommand) throws IOException, InterruptedException {
     	ArrayList<String> cmdList = new ArrayList<>();
     	cmdList.add(singleCommand);
-    	execute(cmdList, null);
+    	execute(cmdList, false);
     }
 
 }

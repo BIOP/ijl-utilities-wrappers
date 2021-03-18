@@ -346,6 +346,7 @@ public class RegistrationParameters extends ConvertibleObject {
 		BufferedWriter writer = null;
 		try {
 			File temp = File.createTempFile("rpa", ".txt");
+			temp.deleteOnExit();
 			writer = new BufferedWriter(new FileWriter(temp));
 			writer.write(RegistrationParameters.toString(rp));
 			writer.close();

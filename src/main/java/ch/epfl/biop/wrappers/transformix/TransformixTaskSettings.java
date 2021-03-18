@@ -15,6 +15,8 @@ public class TransformixTaskSettings {
 
     public String taskInfo; // extra field for task specific info -> metadata for remote processing
 
+    public boolean verbose = false;
+
     public TransformixTaskSettings() {
         transformFileSupplier = () -> "";
         imagePathSupplier =() -> "";
@@ -50,6 +52,11 @@ public class TransformixTaskSettings {
 
     public TransformixTaskSettings outFolder(Supplier<String> outputFolderSupplier) {
         this.outputFolderSupplier = outputFolderSupplier;
+        return this;
+    }
+
+    public TransformixTaskSettings verbose() {
+        this.verbose = true;
         return this;
     }
 
