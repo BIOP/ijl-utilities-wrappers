@@ -51,6 +51,7 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
 
     Boolean verbose=true ;
 
+
     // propose some default value when a model is selected
     public void modelchanged(){
         if (model.equals("nuclei")){
@@ -64,6 +65,7 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
             nuclei_channel = -1 ;
         }
     }
+
 
     @Override
     public void run() {
@@ -89,14 +91,15 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
         // TODO Discuss if necessary to have this "cyto (no nuclei)"
         if (model.equals("nuclei")){
             settings.setChannel1(nuclei_channel) ;
-            settings.setChannel2(-1) ;
+            //settings.setChannel2(-1) ;
         } else if (model.equals("cyto")){
+            System.out.println("cyto_channel:"+cyto_channel+":nuclei_channel:"+nuclei_channel);
             settings.setChannel1(cyto_channel) ;
             settings.setChannel2(nuclei_channel) ;
         } else if (model.equals("cyto (no nuclei)")){
             model="cyto";
             settings.setChannel1(cyto_channel) ;
-            settings.setChannel2(-1) ;
+            //settings.setChannel2(-1) ;
         }
 
         settings.setModel(model);

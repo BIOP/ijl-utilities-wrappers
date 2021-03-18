@@ -44,13 +44,15 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
 
         Cellpose_SegmentImgPlusAdvanced nucleiCellpose = new Cellpose_SegmentImgPlusAdvanced();
         nucleiCellpose.imp = imp;
-        nucleiCellpose.nuclei_channel = nuclei_channel ;
-        nucleiCellpose.cyto_channel = -1 ;
-        nucleiCellpose.model = "nuclei";
         nucleiCellpose.diameter = diameter;
         nucleiCellpose.cellproba_threshold = cellproba_threshold;
         nucleiCellpose.flow_threshold = flow_threshold;
-        nucleiCellpose.dimensionMode  =dimensionMode;
+
+        nucleiCellpose.model = "nuclei";
+        nucleiCellpose.nuclei_channel = nuclei_channel ;
+        nucleiCellpose.cyto_channel = -1 ;
+
+        nucleiCellpose.dimensionMode  = dimensionMode;
 
         nucleiCellpose.run();
 
