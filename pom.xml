@@ -106,7 +106,6 @@
 	<scm>
 		<connection>scm:git:git://github.com/BIOP/ijl-utilities-wrappers</connection>
 		<developerConnection>scm:git:git@github.com:BIOP/ijl-utilities-wrappers</developerConnection>
-		<tag>HEAD</tag>
 		<url>https://github.com/BIOP/ijl-utilities-wrappers</url>
 	</scm>
 
@@ -137,6 +136,7 @@
 
 		<!-- NB: Deploy releases to the SciJava Maven repository. -->
 		<releaseProfiles>deploy-to-scijava</releaseProfiles>
+		<doclint>none</doclint>
 	</properties>
 
 	<dependencies>
