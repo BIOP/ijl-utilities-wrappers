@@ -87,6 +87,10 @@ You should get the list of your conda envs.
 <h3>Fiji - Cellpose wrapper (SOON) </h2>
 
 **NOTE** The Fiji - Cellpose wrapper is useless without a working Cellpose environment, please see installation. 
+To test if you have a working Cellpose environment:
+1 - Activate your environment
+2 - Type `python -m cellpose --help`
+You should not get an error.
 
 - Please use our update site **_(PTBIOP | https://biop.epfl.ch/Fiji-Update/)_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
 - Restart Fiji

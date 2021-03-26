@@ -16,7 +16,7 @@ public class Cellpose {
     public static String keyPrefix = Cellpose.class.getName()+".";
 
     //static String defaultExePath = "C:/Users/username/.conda/envs/cellpose";
-    static String defaultEnvDirPath = "E:/conda-envs/CellPoseGPU3";
+    static String defaultEnvDirPath = "C:/Users/username/.conda/envs/cellpose";//"E:/conda-envs/CellPoseGPU3";
     static String defaultEnvType    = "conda";
     static boolean defaultUseGpu    = true;
     static boolean defaultUseMxnet  = false;

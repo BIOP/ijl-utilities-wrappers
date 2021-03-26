@@ -1,3 +1,4 @@
+import ch.epfl.biop.wrappers.cellpose.ij2commands.CellposePrefsSet;
 import ch.epfl.biop.wrappers.cellpose.ij2commands.Cellpose_SegmentImgPlusAdvanced;
 import ch.epfl.biop.wrappers.cellpose.ij2commands.Cellpose_SegmentNucleiImgPlusAdvanced;
 import ch.epfl.biop.wrappers.cellpose.ij2commands.Cellpose_SegmentNucleiImgPlusBasic;
@@ -22,6 +23,8 @@ public class DemoCellpose {
     final public static void main(String... args) throws Exception {
 
         ij.ui().showUI();
+
+        ij.command().run(CellposePrefsSet.class, true).get();
 
         //ImagePlus imp = new ImagePlus("src/test/resources/20191004_R03-C05-F03-crop.tif");
         ImagePlus imp = IJ.openImage("src/test/resources/20191004_R03-C05-F03-crop.tif");
