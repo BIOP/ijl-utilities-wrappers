@@ -107,7 +107,7 @@
 		<connection>scm:git:git://github.com/BIOP/ijl-utilities-wrappers</connection>
 		<developerConnection>scm:git:git@github.com:BIOP/ijl-utilities-wrappers</developerConnection>
 		<url>https://github.com/BIOP/ijl-utilities-wrappers</url>
-	</scm>
+  </scm>
 
 	<issueManagement>
 		<system>GitHub Issues</system>
