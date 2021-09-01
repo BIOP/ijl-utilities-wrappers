@@ -31,7 +31,7 @@ public class DemoCellpose {
         imp.show();
 
         // Test 2D NucleiBasic
-        IJ.selectWindow( imp.getTitle() );
+        //IJ.selectWindow( imp.getTitle() );
         nucleiBasic2D() ;
 
         // Test 3D NucleiAdvanced
@@ -43,7 +43,7 @@ public class DemoCellpose {
         cytoAdv3D_1ch();
 
         // Test 3D Cyto, 2chs
-        IJ.selectWindow( imp.getTitle() );
+        //IJ.selectWindow( imp.getTitle() );
         cytoAdv3D_2ch();
 
     }
