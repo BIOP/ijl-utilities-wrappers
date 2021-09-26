@@ -1,4 +1,4 @@
-[![](https://travis-ci.com/BIOP/ijl-utilities-wrappers.svg?branch=master)](https://travis-ci.com/BIOP/ijl-utilities-wrappers)
+[![](https://github.com/BIOP/ijl-utilities-wrappers/actions/workflows/build-main.yml/badge.svg)](https://github.com/BIOP/ijl-utilities-wrappers/actions/workflows/build-main.yml)
 
 # Wrappers for FIJI
 
