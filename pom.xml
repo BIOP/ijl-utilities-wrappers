@@ -116,8 +116,8 @@
 	</issueManagement>
 
 	<ciManagement>
-		<system>Travis CI</system>
-		<url>https://travis-ci.com/BIOP/ijl-utilities-wrappers</url>
+		<system>GitHub Actions</system>
+		<url>https://github.com/BIOP/ijl-utilities-wrappers/actions</url>
 	</ciManagement>
 
 
