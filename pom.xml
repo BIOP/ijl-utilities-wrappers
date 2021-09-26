@@ -136,7 +136,7 @@
 		<scijava.app.directory>C:\Users\chiarutt\Desktop\fiji-win64-updatedev\Fiji.app</scijava.app.directory>
 
 		<!-- NB: Deploy releases to the SciJava Maven repository. -->
-		<releaseProfiles>deploy-to-scijava</releaseProfiles>
+		<releaseProfiles>sign,deploy-to-scijava</releaseProfiles>
 		<doclint>none</doclint>
 	</properties>
 
