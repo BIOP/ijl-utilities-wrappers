@@ -8,3 +8,4 @@
 .idea
 travisify.tmp.bak
 pom.xml.releaseBackup
+release.properties
