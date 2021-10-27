@@ -37,11 +37,24 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command{
     @Parameter (required = false)
     File model_path= new File ("cellpose");
 
-    @Parameter(choices = {"nuclei","cyto","cyto (no nuclei)", "own model"} , callback = "modelchanged")
+    @Parameter(choices = {  "nuclei",
+                            "cyto",
+                            "cyto2",
+                            "cyto (no nuclei)",
+                            "own model nuclei",
+                            "own model cyto",
+                            "own model cyto2",
+                            "own model cyto (no nuclei)",
+                            "own model cyto2 (no nuclei)"} , callback = "modelchanged")
     String model ;
 
+    /*
     @Parameter
-    int nuclei_channel ;//TODO replace by nuclei_channel ? and cytoplasme_channel ? and take care in background
+    double anisotropy;
+    */
+
+    @Parameter
+    int nuclei_channel ;
 
     @Parameter
     int cyto_channel;
@@ -60,10 +73,19 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command{
         if (model.equals("nuclei")){
             nuclei_channel = 1;
             cyto_channel = -1 ;
-        } else if (model.equals("cyto")){
+        } else if ( (model.equals("cyto"))||(model.equals("cyto2")) ){
             cyto_channel = 1;
             nuclei_channel = 2 ;
         } else if (model.equals("cyto (no nuclei)")){
+            cyto_channel = 1;
+            nuclei_channel = -1 ;
+        } else if (model.equals("own model nuclei")){
+            nuclei_channel = 1;
+            cyto_channel = -1 ;
+        } else if ((model.equals("own model cyto"))||(model.equals("own model cyto2"))) {
+            cyto_channel = 1;
+            nuclei_channel = 2 ;
+        } else if (model.equals("own model cyto (no nuclei)")||model.equals("own model cyto2 (no nuclei)")){
             cyto_channel = 1;
             nuclei_channel = -1 ;
         }
@@ -79,7 +101,6 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command{
         // and a cellpose task
         DefaultCellposeTask cellposeTask = new DefaultCellposeTask();
 
-
         Calibration cal = imp.getCalibration();
 
         // We'll ave the current time-point of the imp in a temp folder
@@ -91,40 +112,36 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command{
         // Add it to the settings
         settings.setDatasetDir( cellposeTempDir.toString() );
 
-        // TODO Discuss if necessary to have this "cyto (no nuclei)"
-        if (model_path.equals("cellpose")) {
-
-            if (model.equals("nuclei")) {
+        if (model.equals("nuclei")) {
                 settings.setChannel1(nuclei_channel);
                 //settings.setChannel2(-1) ;
-            } else if (model.equals("cyto")) {
+        } else if (model.equals("cyto")) {
                 System.out.println("cyto_channel:" + cyto_channel + ":nuclei_channel:" + nuclei_channel);
                 settings.setChannel1(cyto_channel);
                 settings.setChannel2(nuclei_channel);
-            } else if (model.equals("cyto (no nuclei)")) {
+        } else if (model.equals("cyto (no nuclei)")) {
                 model = "cyto";
                 settings.setChannel1(cyto_channel);
                 //settings.setChannel2(-1) ;
-            } else if (model.equals("own model cyto")){
-                model = "cyto";
-                settings.setChannel1(cyto_channel);
-               //settings.setChannel2(nuclei_channel) ;
-            }else if (model.equals("own model nuclei")){
-                model = "nuclei";
+        }else if (model.equals("own model nuclei")){
+                model = model_path.toString();
                 settings.setChannel1(nuclei_channel);
                //settings.setChannel2(-1) ;
+        } else if (model.equals("own model cyto")){
+                model = model_path.toString();
+                settings.setChannel1(cyto_channel);
+                settings.setChannel2(nuclei_channel) ;
+        } else if (model.equals("own model cyto (no nuclei)")){
+                model = model_path.toString();
+                settings.setChannel1(cyto_channel);
+                //settings.setChannel2(nuclei_channel) ;
             }
-            settings.setModel( model.toString() );
-        } else {
-
-            settings.setModel( model_path.toString() );
-        }
-
-
+        settings.setModel( model );
 
         settings.setDiameter( diameter );
         settings.setCellProbTh( cellproba_threshold );
         settings.setFlowTh( flow_threshold );
+        //settings.setAnisotropy(anisotropy);
 
         if (dimensionMode.equals("3D")){
             if (imp.getNSlices() > 1 ) settings.setDo3D();
@@ -199,8 +216,6 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command{
             // create the ImageJ application context with all available services
             final ImageJ ij = new ImageJ();
             ij.ui().showUI();
-            ImagePlus imp = IJ.openImage("C:\\Users\\guiet\\Desktop\\CellPose_dataset\\DPC_5t_ds3.tif");
-            imp.show();
             // will run on the current image
             //ij.command().run(CellposePrefsSet.class, true);
             ij.command().run(Cellpose_SegmentImgPlusOwnModelAdvanced.class, true);

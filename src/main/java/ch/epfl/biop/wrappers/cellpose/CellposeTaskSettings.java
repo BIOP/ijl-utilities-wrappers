@@ -14,6 +14,7 @@ public class CellposeTaskSettings {
     int diameter = 30 ;
     double flow_threshold = 0.4 ;
     double cellprob_threshold = 0.0 ;
+    //double anisotropy = 1 ;
 
     boolean use3D;
 
@@ -21,6 +22,7 @@ public class CellposeTaskSettings {
     boolean useFastMode;
     boolean useResample;
     boolean useMxnet;
+
 
     public CellposeTaskSettings setDo3D() {
         this.use3D = true;
@@ -55,7 +57,12 @@ public class CellposeTaskSettings {
         this.flow_threshold = flow_threshold;
         return this;
     }
-
+    /*
+    public CellposeTaskSettings setAnisotropy(double anisotropy) {
+        this.anisotropy = anisotropy;
+        return this;
+    }
+    */
     public CellposeTaskSettings setCellProbTh( double cellprob_threshold) {
         this.cellprob_threshold = cellprob_threshold;
         return this;
@@ -69,4 +76,6 @@ public class CellposeTaskSettings {
         this.useResample = Prefs.get(keyPrefix + "useResample", Cellpose.useResample);
         return this;
     }
+
+
 }
