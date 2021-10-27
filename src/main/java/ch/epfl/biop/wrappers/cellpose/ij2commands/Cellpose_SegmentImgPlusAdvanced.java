@@ -38,7 +38,7 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
     String model ;
 
     @Parameter
-    int nuclei_channel ;//TODO replace by nuclei_channel ? and cytoplasme_channel ? and take care in background
+    int nuclei_channel ;
 
     @Parameter
     int cyto_channel;
@@ -88,7 +88,7 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command{
         // Add it to the settings
         settings.setDatasetDir( cellposeTempDir.toString() );
 
-        // TODO Discuss if necessary to have this "cyto (no nuclei)"
+
         if (model.equals("nuclei")){
             settings.setChannel1(nuclei_channel) ;
             //settings.setChannel2(-1) ;
