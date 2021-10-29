@@ -56,8 +56,8 @@ public class Cellpose {
                 conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", envDirPath);
             } else if ( IJ.isLinux() || IJ.isMacOSX() ){
                 // https://docs.conda.io/projects/conda/en/4.6.1/user-guide/tasks/manage-environments.html#id2
-                conda_activate_cmd = Arrays.asList("bash", "-c", "conda", "source","activate", envDirPath);
-                // throw new UnsupportedOperationException("Linux and MacOS not supported yet");
+                // conda_activate_cmd = Arrays.asList("bash", "-c", "conda", "source","activate", envDirPath);
+                throw new UnsupportedOperationException("Linux and MacOS not supported yet");
             }
             cmd.addAll(conda_activate_cmd);
 
