@@ -84,7 +84,7 @@ You should get the list of your conda envs.
 **_Please contact us with successful procedure_**
 
 
-<h3>Fiji - Cellpose wrapper (SOON) </h2>
+<h3>Fiji - Cellpose wrapper </h2>
 
 **NOTE** The Fiji - Cellpose wrapper is useless without a working Cellpose environment, please see installation. 
 To test if you have a working Cellpose environment:
