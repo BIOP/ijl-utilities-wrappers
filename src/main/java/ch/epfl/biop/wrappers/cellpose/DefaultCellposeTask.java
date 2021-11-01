@@ -30,6 +30,15 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add("--cellprob_threshold");
         options.add(""+settings.cellprob_threshold);
 
+        /* TODO anisotropy exists in the doc of cellpose==0.7.2  (https://cellpose.readthedocs.io/en/stable/settings.html?highlight=anisotropy#d-settings)
+           but on 2021.10.26 we can only pip install cellpose==0.6.5
+           maybe later...
+        if (settings.anisotropy > 1.0){
+            options.add("--anisotropy");
+            options.add(""+settings.anisotropy);
+        }
+        */
+
         if (settings.use3D) options.add("--do_3D");
 
         options.add("--save_tif");
