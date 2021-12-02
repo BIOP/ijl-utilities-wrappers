@@ -1,0 +1,11 @@
+name: cellpose_biop_gpu
+dependencies:
+  - python>=3.8
+  - pip
+  - cudnn==8.2.1
+  - cudatoolkit=11.3
+  - pytorch::pytorch 
+  - pip:
+    - cellpose==0.7.2
+    - jupyterlab
+    - scikit-image
