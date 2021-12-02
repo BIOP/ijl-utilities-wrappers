@@ -44,10 +44,13 @@ Please [find here a very detailed installation procedure with venv](https://c4sc
 
 <h6> Cellpose-GPU </h6>
 
-A successful GPU installation was possible with Win10 & NVIDIA GeForce RTX 2080 Ti, following [the detailed installation procedure described for venv](https://c4science.ch/w/bioimaging_and_optics_platform_biop/computers-servers/software/gpu-deep-learning/virtualenv/), with some minor changes :
-- [CUDA Toolkit installer 10.1](https://developer.nvidia.com/cuda-10.1-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork), 
-do not limit the installation to "the Developer and Runtime parts", the simplest (not the cleanest) is to run the default installation.(§)
-- import conda env using [cellpose_biop_gpu.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/conda-cellpose-wrapper/resources/cellpose_biop_gpu.yml) (§§)
+A successful GPU installation was possible with Win10 & NVIDIA GeForce RTX 2080 Ti, following [the detailed installation procedure described for venv](https://c4science.ch/w/bioimaging_and_optics_platform_biop/computers-servers/software/gpu-deep-learning/virtualenv/)
+
+If you prefer using Anaconda :
+| CUDA Toolkit | cuDNN | cellpose | yml |
+| ------------- | ------------- | ------------- | ------------- |
+| [CUDA Toolkit installer 10.1](https://developer.nvidia.com/cuda-10.1-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork) (§)| 7.6.5 | 0.6| [cellpose_biop_gpu.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/conda-cellpose-wrapper/resources/cellpose_biop_gpu.yml) (§§)| 
+| 11.3 | 8.2.1 | 0.6 , 0.7| TBD |
 
 **(§)**: nvcc is required for the installation procedure and "the cudatoolkit packages available via Conda do not include [it]" ( [more about this issue here](https://horovod.readthedocs.io/en/stable/conda_include.html)). 
 To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you should get something close to :
