@@ -12,7 +12,9 @@
 
 <h1>Cellpose</h1> 
 
-The ***_Cellpose_** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environment (either conda, or venv) from Fiji.
+**NOTE** : up to cellpose 0.6 (cellpose/omnipose 0.7 is under dev)
+
+The **_Cellpose_** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environment (either conda, or venv) from Fiji.
 
 Briefly, **_Cellpose_** wrapper sequentially:
 - saves the current Fiji image in a temporary folder
