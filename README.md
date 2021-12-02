@@ -60,7 +60,7 @@ To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you shoul
 
 `` Cuda compilation tools, release 10.1, V10.1.243`` 
 
-**(§§)** : a yml file subtility I learnt on this journey, you can enforce a certain package_name::channel_name
+**(§§)** : a yml file subtility I learnt on this journey, you can enforce a certain channel_name::package_name
 
 
 <h6> Enable conda command outside conda prompt </h6>
