@@ -22,31 +22,45 @@ Briefly, **_Cellpose_** wrapper sequentially:
 - opens the created label image in Fiji
 - cleans the temporary folder
 
-**NOTE** : The Cellpose wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions](https://github.com/BIOP/ijl-utilities-wrappers/tree/conda-cellpose-wrapper#-enable-conda-command-outside-conda-prompt-).
 
 
-<h2>Installation</h2>
+<h2> I. Installation</h2>
 You'll find here some instructions to install the **_Cellpose_** wrapper and some guidance to set up a Cellpose virtual environment.
 
-<h3>Cellpose Virtual Environment </h2>
+**NOTE** : if you rely on conda, the Cellpose wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions below : ](https://github.com/BIOP/ijl-utilities-wrappers/tree/master#-enable-conda-command-outside-conda-prompt-).
+
+<h3> I.A. Cellpose Virtual Environment </h2>
 
 You can find [instructions to install Cellpose environment on Cellpose repo](https://github.com/MouseLand/cellpose)
 
 Please find below some  information, provided "as is" without any warranties of successful installation, nor further support.
 
-<h4>More on venv installation</h3>
+<h4> I.A.1. More on venv installation</h3>
 
 Please [find here a very detailed installation procedure with venv](https://c4science.ch/w/bioimaging_and_optics_platform_biop/computers-servers/software/gpu-deep-learning/virtualenv/).
 
-<h4>More on conda installation</h3>
+<h4> I.A.2. More on conda installation</h3>
 
-<h5> Windows </h5>
+<h5> I.A.2.a. Windows </h5>
+**NOTE** : if you rely on conda, the Cellpose wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions below : ](https://github.com/BIOP/ijl-utilities-wrappers/tree/master#-enable-conda-command-outside-conda-prompt-).
 
-<h6> Cellpose-GPU </h6>
+<h6> Enable conda command outside conda prompt </h6>
+You need to follow this two steps procedure to enable Windows to use conda from cmd.exe.
 
-A successful GPU installation was possible with Win10 & NVIDIA GeForce RTX 2080 Ti, following [the detailed installation procedure described for venv](https://c4science.ch/w/bioimaging_and_optics_platform_biop/computers-servers/software/gpu-deep-learning/virtualenv/)
+- 1-Into the environment variable , edit PATH , add path to your ``..\Anaconda3\condabin ``default would be ``C:\ProgramData\Anaconda3\condabin``
+- 2-Open a new PowerShell (and/or PowerShell (x86) ), run the following command once to initialize conda:
+  `` conda init``
 
-If you prefer using Anaconda :
+From now on you don't need to run a conda prompt you can simply activate a conda env from `` cmd.exe`` .
+
+To check if it works, you can:
+- 1.Press windows key, type ``cmd.exe`` (to get a command promt)
+- 2.Type ``conda env list``
+  You should get the list of your conda envs.
+
+<h6> Conda cellpose-GPU </h6>
+
+A successful GPU installation was possible with Win10 & NVIDIA GeForce RTX 2080 Ti, following [the detailed installation procedure described for venv](https://c4science.ch/w/bioimaging_and_optics_platform_biop/computers-servers/software/gpu-deep-learning/virtualenv/) following installation of drivers, VisualStudio, CUDA Toolkit, CuDDN before using Anaconda and the yml file below:
 | CUDA Toolkit | cuDNN | cellpose | yml |
 | ------------- | ------------- | ------------- | ------------- |
 | [CUDA Toolkit installer 10.1](https://developer.nvidia.com/cuda-10.1-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork) (§)| 7.6.0 | 0.6| [cellpose_biop_gpu.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/cellpose_biop_gpu.yml) (§§)| 
@@ -68,32 +82,21 @@ To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you shoul
 **(§§)** : a yml file subtility I learnt on this journey, you can enforce a certain channel_name::package_name
 
 
-<h6> Enable conda command outside conda prompt </h6>
-You need to follow this two steps procedure to enable Windows to use conda from cmd.exe.
-
-- 1-Into the environment variable , edit PATH , add path to your ``..\Anaconda3\condabin ``default would be ``C:\ProgramData\Anaconda3\condabin`` 
-- 2-Open a new Powershell, run the following command once to initialize conda:
-  conda init
-  
-From now on you don't need to run a conda prompt you can simply activate a conda env from cmd.exe.
-To check if it works, you can:
-- 1.Press windows key, type ``cmd.exe`` (to get a command promt)
-- 2.Type ``conda env list``
-You should get the list of your conda envs.
 
 
-<h5> Mac </h5>
+
+<h5> I.A.2.b. Mac </h5>
 
 **_Please contact us with successful procedure._**
 
-<h5> Linux </h5>
+<h5> I.A.2.c. Linux </h5>
 
 **_Please contact us with successful procedure_**
 
 
-<h3>Fiji - Cellpose wrapper </h2>
+<h3> I.B. Fiji - Cellpose wrapper </h2>
 
-**NOTE** The Fiji - Cellpose wrapper is useless without a working Cellpose environment, please see installation. 
+**NOTE** The Fiji - Cellpose wrapper is useless without a working Cellpose environment, please see installation abobe (I.A.). 
 To test if you have a working Cellpose environment:
 1 - Activate your environment
 2 - Type `python -m cellpose --help`
@@ -101,9 +104,12 @@ You should not get an error.
 
 - Please use our update site **_(PTBIOP | https://biop.epfl.ch/Fiji-Update/)_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
 - Restart Fiji
-- ``Plugins>BIOP>Cellpose> Define Env. & prefs.`` , select the path to your working Cellpose virtual environment.
+- ``Plugins>BIOP>Cellpose> Define Env. & prefs.`` 
+  - Select the path to your working Cellpose virtual environment 
+  - Select EnvType : ``conda`` or ``venv``
+  - Select version : ``0.6`` or ``0.7``
 
-Congratulation you can now use Cellpose on your first image from Fiji!
+Congratulation you can now use Cellpose on your first image from Fiji! :
 
 
 

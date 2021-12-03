@@ -15,6 +15,7 @@ public class Cellpose {
 
     public static String keyPrefix = Cellpose.class.getName()+".";
 
+
     //static String defaultExePath = "C:/Users/username/.conda/envs/cellpose";
     static String defaultEnvDirPath = "C:/Users/username/.conda/envs/cellpose";//"E:/conda-envs/CellPoseGPU3";
     static String defaultEnvType    = "conda";
@@ -22,6 +23,7 @@ public class Cellpose {
     static boolean defaultUseMxnet  = false;
     static boolean defaultUseFastMode = false;
     static boolean defaultUseResample = false;
+    static String defaultVersion = "0.6";
 
     public static String envDirPath = Prefs.get(keyPrefix+"envDirPath", defaultEnvDirPath);
     public static String envType = Prefs.get(keyPrefix+"envType", defaultEnvType);
@@ -29,6 +31,7 @@ public class Cellpose {
     public static boolean useMxnet = Prefs.get(keyPrefix+"useMxnet", defaultUseMxnet);
     public static boolean useFastMode = Prefs.get(keyPrefix+"useFastMode", defaultUseFastMode);
     public static boolean useResample = Prefs.get(keyPrefix+"useResample", defaultUseResample);
+    public static String version = Prefs.get(keyPrefix+"version", defaultVersion);
 
     public static void setEnvDirPath(File f) {
         envDirPath = f.getAbsolutePath();
@@ -39,6 +42,7 @@ public class Cellpose {
     public static void setUseMxnet(boolean useMxnet){ Prefs.set(keyPrefix + "useMxnet" , useMxnet);}
     public static void setUseFastMode(boolean useFastMode){Prefs.set(keyPrefix + "useFastMode", useFastMode);}
     public static void setUseResample(boolean useResample) {Prefs.set(keyPrefix + "useResample", useResample);}
+    public static void setVersion(String version) {Prefs.set(keyPrefix + "version", version);}
 
     private static final File NULL_FILE = new File((System.getProperty("os.name") .startsWith("Windows") ? "NUL" : "/dev/null"));
 

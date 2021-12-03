@@ -14,20 +14,19 @@ public class CellposeTaskSettings {
     int diameter = 30;
     double flow_threshold = 0.4;
     double cellprob_threshold = 0.0;
-    //double anisotropy = 1 ;
+    double anisotropy = 1 ;
+    double stitch_threshold = 0 ;
 
-    boolean use3D;
+    boolean use3D=false;
 
     boolean useGpu;
     boolean useFastMode;
     boolean useResample;
     boolean useMxnet;
-
-
-    public CellposeTaskSettings setDo3D() {
-        this.use3D = true;
-        return this;
-    }
+    String version;
+    boolean omni=false;
+    boolean cluster=false;
+    String additional_flags;
 
     public CellposeTaskSettings setDatasetDir(String datasetDir) {
         this.datasetDir = datasetDir;
@@ -59,23 +58,53 @@ public class CellposeTaskSettings {
         return this;
     }
 
-    /*
-    public CellposeTaskSettings setAnisotropy(double anisotropy) {
-        this.anisotropy = anisotropy;
-        return this;
-    }
-    */
     public CellposeTaskSettings setCellProbTh(double cellprob_threshold) {
         this.cellprob_threshold = cellprob_threshold;
         return this;
     }
 
+    public CellposeTaskSettings setAnisotropy(double anisotropy) {
+        this.anisotropy = anisotropy;
+        return this;
+    }
+
+    public CellposeTaskSettings setStitchThreshold(double stitch_threshold){
+        this.stitch_threshold = stitch_threshold;
+        return this;
+    }
+
+    public CellposeTaskSettings setDo3D() {
+        this.use3D = true;
+        return this;
+    }
+
+    public CellposeTaskSettings do3D(boolean do3D) {
+        this.use3D = do3D;
+        return this;
+    }
+
+    public CellposeTaskSettings setOmni(boolean omni) {
+        this.omni = omni;
+        return this;
+    }
+
+    public CellposeTaskSettings setCluster(boolean cluster) {
+        this.cluster = cluster;
+        return this;
+    }
     public CellposeTaskSettings setFromPrefs() {
         String keyPrefix = Cellpose.class.getName() + ".";
         this.useGpu = Prefs.get(keyPrefix + "useGpu", Cellpose.useGpu);
         this.useMxnet = Prefs.get(keyPrefix + "useMxnet", Cellpose.useMxnet);
         this.useFastMode = Prefs.get(keyPrefix + "useFastMode", Cellpose.useFastMode);
         this.useResample = Prefs.get(keyPrefix + "useResample", Cellpose.useResample);
+        this.version = Prefs.get(keyPrefix + "Version", Cellpose.version);
+        return this;
+    }
+
+
+    public CellposeTaskSettings setAdditionalFlags(String additional_flags) {
+        this.additional_flags = additional_flags;
         return this;
     }
 }

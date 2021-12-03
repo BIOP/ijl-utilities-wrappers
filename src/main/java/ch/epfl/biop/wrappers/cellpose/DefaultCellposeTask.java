@@ -25,19 +25,35 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add(""+settings.diameter);
 
         options.add("--flow_threshold");
-        options.add(""+settings.flow_threshold);
+        options.add("" + settings.flow_threshold);
 
-        options.add("--cellprob_threshold");
-        options.add(""+settings.cellprob_threshold);
-
-        /* TODO anisotropy exists in the doc of cellpose==0.7.2  (https://cellpose.readthedocs.io/en/stable/settings.html?highlight=anisotropy#d-settings)
-           but on 2021.10.26 we can only pip install cellpose==0.6.5
-           maybe later...
-        if (settings.anisotropy > 1.0){
-            options.add("--anisotropy");
-            options.add(""+settings.anisotropy);
+        if (settings.version.equals("0.6")) {
+            options.add("--cellprob_threshold");
+            options.add(""+settings.cellprob_threshold);
         }
-        */
+
+        if (settings.version.equals("0.7")) {
+
+            if (settings.anisotropy != 1.0){
+                options.add("--anisotropy");
+                options.add(""+settings.anisotropy);
+            }
+
+            if (settings.stitch_threshold>0){
+                options.add("--stitch_threshold");
+                options.add(""+settings.stitch_threshold);
+                settings.do3D(false); // has to be 2D!
+            }
+
+            if (settings.omni){
+                options.add("--omni");
+            }
+
+            if (settings.cluster){
+                options.add("--cluster");
+            }
+
+        }
 
         if (settings.use3D) options.add("--do_3D");
 
@@ -50,6 +66,17 @@ public class DefaultCellposeTask extends CellposeTask {
         if (settings.useFastMode ) options.add("--fast_mode");
         if (settings.useResample ) options.add("--resample");
 
+        String[] flagsList = settings.additional_flags.split(",");
+
+        if (flagsList.length>1) {
+            for (int i=0 ;  i <flagsList.length ; i++) {
+                options.add(flagsList[i].toString().trim());
+            }
+        }else{
+            if(settings.additional_flags.length()>1){
+                options.add(settings.additional_flags.trim());
+            }
+        }
         Cellpose.execute(options, null);
     }
 }
