@@ -66,15 +66,17 @@ public class DefaultCellposeTask extends CellposeTask {
         if (settings.useFastMode ) options.add("--fast_mode");
         if (settings.useResample ) options.add("--resample");
 
-        String[] flagsList = settings.additional_flags.split(",");
+        if (settings.additional_flags!=null) {
+            String[] flagsList = settings.additional_flags.split(",");
 
-        if (flagsList.length>1) {
-            for (int i=0 ;  i <flagsList.length ; i++) {
-                options.add(flagsList[i].toString().trim());
-            }
-        }else{
-            if(settings.additional_flags.length()>1){
-                options.add(settings.additional_flags.trim());
+            if (flagsList.length>1) {
+                for (int i=0 ;  i <flagsList.length ; i++) {
+                    options.add(flagsList[i].toString().trim());
+                }
+            }else{
+                if(settings.additional_flags.length()>1){
+                    options.add(settings.additional_flags.trim());
+                }
             }
         }
         Cellpose.execute(options, null);
