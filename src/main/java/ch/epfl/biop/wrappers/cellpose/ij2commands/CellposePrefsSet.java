@@ -13,7 +13,7 @@ import java.io.File;
  * Checks whether the executable being wrapped are accessible
  */
 
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Define Env. and prefs.")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Cellpose setup...")
 public class CellposePrefsSet implements Command {
 
 	@Parameter
