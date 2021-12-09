@@ -25,19 +25,22 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
     ImagePlus imp;
 
     // value defined from https://cellpose.readthedocs.io/en/latest/api.html
-    @Parameter
+    @Parameter ( label = "Diameter (default 17 for nuclei, 30 for cyto,0 for automatic dectection)" )
     int diameter = 30;
 
-    @Parameter
+    @Parameter ( label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)" )
     double cellproba_threshold = 0.0;
 
-    @Parameter
+    @Parameter ( label = "flow_threshold (default 0.4)" )
     double flow_threshold = 0.4;
 
-    @Parameter
+    @Parameter ( label = "Anisotropy between xy and z (1 means none)" )
     double anisotropy = 1.0;
 
-    @Parameter(required = false)
+    @Parameter ( label = "Diameter threshold (default 12)" )
+    double diam_threshold = 12.0;
+
+    @Parameter(required = false , label = "model_path to your owm model (default cellpose for pretrained model) ")
     File model_path = new File("cellpose");
 
     @Parameter(choices = {"nuclei",
@@ -52,17 +55,17 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
                             "own model bact_omni"}, callback = "modelchanged")
     String model;
 
-    @Parameter(label = "Set to 0 if not necessary (for cyto and bact models)")
+    @Parameter (label = "nuclei_channel (set to 0 if not necessary)")
     int nuclei_channel;
 
-    @Parameter
+    @Parameter (label = "cyto_channel (set to 0 if not necessary)")
     int cyto_channel;
 
     @Parameter(choices = {"2D", "3D"})
     String dimensionMode;
 
-    @Parameter
-    double stitch_threshold;
+    @Parameter (label = "stitch_threshold (between 0 and 1, default -1)")
+    double stitch_threshold = -1;
 
     @Parameter
     boolean omni;
@@ -70,7 +73,7 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
     @Parameter
     boolean cluster;
 
-    @Parameter(required = false)
+    @Parameter(required = false , label="add more flags")
     String additionnal_flags;
 
     @Parameter(type = ItemIO.OUTPUT)
@@ -84,12 +87,12 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
         if (model.equals("nuclei")) {
             nuclei_channel = 1;
             cyto_channel = -1;
-        } else if ((model.equals("cyto")) || (model.equals("cyto2")) || (model.equals("cyto2_omni"))) {
-            cyto_channel = 1;
-            nuclei_channel = 2;
         } else if ((model.equals("bact_omni"))) {
             cyto_channel = 1;
             nuclei_channel = -1;
+        } else if ((model.equals("cyto")) || (model.equals("cyto2")) || (model.equals("cyto2_omni"))) {
+            cyto_channel = 1;
+            nuclei_channel = 2;
         } else if (model.equals("own model nuclei")) {
             nuclei_channel = 1;
             cyto_channel = -1;
@@ -119,6 +122,14 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
         // create tempdir
         File cellposeTempDir = new File(tempDir, "cellposeTemp");
         cellposeTempDir.mkdir();
+
+        // when plugin crashes, image file can pile up in the folder, so we make sure to clear everything
+        File[] contents = cellposeTempDir.listFiles();
+        if (contents != null) {
+            for (File f : contents) {
+               f.delete();
+            }
+        }
 
         // Add it to the settings
         settings.setDatasetDir(cellposeTempDir.toString());
@@ -150,6 +161,7 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
         settings.setCellProbTh(cellproba_threshold);
         settings.setFlowTh(flow_threshold);
         settings.setAnisotropy(anisotropy);
+        settings.setDiamThreshold(diam_threshold);
         settings.setStitchThreshold(stitch_threshold);
         settings.setOmni(omni);
         settings.setCluster(cluster);

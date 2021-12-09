@@ -53,6 +53,16 @@ public class DefaultCellposeTask extends CellposeTask {
                 options.add("--cluster");
             }
 
+            if (settings.cluster){
+                options.add("--mask_threshold");
+                options.add(""+settings.cellprob_threshold); // supposed to be new flag name
+            }
+
+            if (settings.diam_threshold != 12 ){ // 12 is default the value
+                options.add("--diam_threshold");
+                options.add(""+settings.diam_threshold);
+            }
+
         }
 
         if (settings.use3D) options.add("--do_3D");
@@ -66,15 +76,17 @@ public class DefaultCellposeTask extends CellposeTask {
         if (settings.useFastMode ) options.add("--fast_mode");
         if (settings.useResample ) options.add("--resample");
 
-        String[] flagsList = settings.additional_flags.split(",");
+        if (settings.additional_flags!=null) {
+            String[] flagsList = settings.additional_flags.split(",");
 
-        if (flagsList.length>1) {
-            for (int i=0 ;  i <flagsList.length ; i++) {
-                options.add(flagsList[i].toString().trim());
-            }
-        }else{
-            if(settings.additional_flags.length()>1){
-                options.add(settings.additional_flags.trim());
+            if (flagsList.length>1) {
+                for (int i=0 ;  i <flagsList.length ; i++) {
+                    options.add(flagsList[i].toString().trim());
+                }
+            }else{
+                if(settings.additional_flags.length()>1){
+                    options.add(settings.additional_flags.trim());
+                }
             }
         }
         Cellpose.execute(options, null);

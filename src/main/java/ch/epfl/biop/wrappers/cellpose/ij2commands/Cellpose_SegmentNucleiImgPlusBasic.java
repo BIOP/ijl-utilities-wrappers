@@ -25,7 +25,7 @@ public class Cellpose_SegmentNucleiImgPlusBasic implements Command{
         Cellpose_SegmentNucleiImgPlusAdvanced nucSeg = new Cellpose_SegmentNucleiImgPlusAdvanced();
         nucSeg.imp = imp;
         nucSeg.nuclei_channel = 1;
-        nucSeg.diameter = 30 ;
+        nucSeg.diameter = 17 ;
         nucSeg.cellproba_threshold = 0.0;
         nucSeg.flow_threshold = 0.4 ;
         nucSeg.dimensionMode = "3D" ;

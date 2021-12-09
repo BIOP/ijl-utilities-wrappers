@@ -23,9 +23,9 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
     int nuclei_channel = 1 ;
 
     @Parameter
-    int diameter = 30 ;
+    int diameter = 17 ;
 
-    @Parameter
+    @Parameter ( label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)" )
     double cellproba_threshold = 0.0 ;
 
     @Parameter
@@ -65,9 +65,9 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
             // create the ImageJ application context with all available services
             final ImageJ ij = new ImageJ();
             ij.ui().showUI();
-            ImagePlus imp = IJ.openImage("C:\\Users\\guiet\\Desktop\\CellPose_dataset\\CellDemoNuclei3D-iso.tif");
+            ImagePlus imp = IJ.openImage("https://imagej.net/images/blobs.gif");
             imp.show();
-            // IJ.run(imp, "Invert LUT", "");
+            IJ.run(imp, "Invert LUT", "");
             // will run on the current image
             ij.command().run(Cellpose_SegmentNucleiImgPlusAdvanced.class, true);
     }
