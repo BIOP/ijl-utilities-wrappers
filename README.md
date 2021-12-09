@@ -106,7 +106,7 @@ You should not get an error.
   - Select EnvType : ``conda`` or ``venv``
   - Select version : ``0.6`` or ``0.7``
 
-<img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeSetup.png" title="CellposeSetup" width="50%" align="left">
+<img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeSetup.png" title="CellposeSetup" width="50%" align="center">
 
 Congratulation you can now use Cellpose on your first image from Fiji! :)
 
@@ -114,7 +114,7 @@ Congratulation you can now use Cellpose on your first image from Fiji! :)
 
 The more "flexible" command is `Cellpose Advanced (own model)` which offers many parameters. 
 
-<img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeAdvParam.png" title="CellposeCommandAdvanced" width="50%" align="left">
+<img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeAdvParam.png" title="CellposeCommandAdvanced" width="50%" align="center">
 
 BUT in case you need more parameters, this command also comes with a string field for additional parameters following pattern : `--channel_axis,CHANNEL_AXIS,--dir_above`
 
