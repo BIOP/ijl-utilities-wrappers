@@ -67,6 +67,13 @@ A successful GPU installation was possible with Win10 & NVIDIA GeForce RTX 2080 
 | [CUDA Toolkit installer 11.3](https://developer.nvidia.com/cuda-11-3-1-download-archive) | [8.2.1](https://developer.nvidia.com/rdp/cudnn-archive) | 0.6 | [cellpose06_biop_gpu_113-821.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/cellpose06_biop_gpu_113-821.yml) |
 | [CUDA Toolkit installer 11.3](https://developer.nvidia.com/cuda-11-3-1-download-archive) | [8.2.1](https://developer.nvidia.com/rdp/cudnn-archive) | 0.7| [cellpose07_biop_gpu_113-821.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/cellpose07_biop_gpu_113-821.yml) |
 
+**NOTE** if you experience "tensors error" 
+Current fix (from [cellpose issue](https://github.com/MouseLand/cellpose/issues/378#issuecomment-976767543)) is : 
+- locate `dynamics.py`
+- in `line 104` replace :  
+  - `meds = torch.from_numpy(centers.astype(int)).to(device)` 
+  - by
+  - `meds = torch.from_numpy(centers.astype(int)).to(torch.long).to(device)`
 
 **(§)**: nvcc is required for the installation procedure and "the cudatoolkit packages available via Conda do not include [it]" ( [more about this issue here](https://horovod.readthedocs.io/en/stable/conda_include.html)). 
 To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you should get something close to :
@@ -126,6 +133,7 @@ For convenience 3 more commands exist:
 **NOTE** We recommand users to prepare in Fiji the minimal image to be processed by cellpose before using the plugin.
 For example, from a 4 channels image (with nuclei, membrane , proteinX, ... stainings) extract the membrane and nuclei channel, make a composite and run cellpose command on it.
 
+For more info about parameters please refer to [cellpose.readthedocs.io](https://cellpose.readthedocs.io/en/latest/settings.html#)
 
 
 <h1>Elastix</h1>
