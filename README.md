@@ -14,9 +14,9 @@
 
 **NOTE** : up to cellpose 0.6 (cellpose/omnipose 0.7 is under dev)
 
-The **_Cellpose_** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environment (either conda, or venv) from Fiji.
+The **Cellpose** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environment (either conda, or venv) from Fiji.
 
-Briefly, **_Cellpose_** wrapper sequentially:
+Briefly, **Cellpose** wrapper sequentially:
 - saves the current Fiji image in a temporary folder
 - starts the cellpose-env and runs Cellpose with defined parameters
 - opens the created label image in Fiji
@@ -81,10 +81,6 @@ To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you shoul
 
 **(§§)** : a yml file subtility I learnt on this journey, you can enforce a certain channel_name::package_name
 
-
-
-
-
 <h5> I.A.2.b. Mac </h5>
 
 **_Please contact us with successful procedure._**
@@ -94,13 +90,14 @@ To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you shoul
 **_Please contact us with successful procedure_**
 
 
-<h3> I.B. Fiji - Cellpose wrapper </h2>
+<h3> I.B. Fiji - Cellpose wrapper </h3>
 
 **NOTE** The Fiji - Cellpose wrapper is useless without a working Cellpose environment, please see installation abobe (I.A.). 
 To test if you have a working Cellpose environment:
 1 - Activate your environment
 2 - Type `python -m cellpose --help`
 You should not get an error.
+
 
 - Please use our update site **_(PTBIOP | https://biop.epfl.ch/Fiji-Update/)_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
 - Restart Fiji
@@ -109,7 +106,25 @@ You should not get an error.
   - Select EnvType : ``conda`` or ``venv``
   - Select version : ``0.6`` or ``0.7``
 
-Congratulation you can now use Cellpose on your first image from Fiji! :
+<img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeSetup.png" title="CellposeSetup" width="50%" align="left">
+
+Congratulation you can now use Cellpose on your first image from Fiji! :)
+
+<h2> II. Using Fiji - Cellpose wrapper</h2>
+
+The more "flexible" command is `Cellpose Advanced (own model)` which offers many parameters. 
+
+<img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeAdvParam.png" title="CellposeCommandAdvanced" width="50%" align="left">
+
+BUT in case you need more parameters, this command also comes with a string field for additional parameters following pattern : `--channel_axis,CHANNEL_AXIS,--dir_above`
+
+For convenience 3 more commands exist:
+- `Segment Nuclei`, no parameter, ideal to test on blobs
+- `Segment Nuclei Advanced`, some parameter available
+- `Cellpose Advanced` (same parameters as command `Cellpose Advanced (own model)` without possibility to select your own model)
+
+**NOTE** We recommand users to prepare in Fiji the minimal image to be processed by cellpose before using the plugin.
+For example, from a 4 channels image (with nuclei, membrane , proteinX, ... stainings) extract the membrane and nuclei channel, make a composite and run cellpose command on it.
 
 
 
