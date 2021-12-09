@@ -53,6 +53,16 @@ public class DefaultCellposeTask extends CellposeTask {
                 options.add("--cluster");
             }
 
+            if (settings.cluster){
+                options.add("--mask_threshold");
+                options.add(""+settings.cellprob_threshold); // supposed to be new flag name
+            }
+
+            if (settings.diam_threshold != 12 ){ // 12 is default the value
+                options.add("--diam_threshold");
+                options.add(""+settings.diam_threshold);
+            }
+
         }
 
         if (settings.use3D) options.add("--do_3D");

@@ -27,6 +27,7 @@ public class CellposeTaskSettings {
     boolean omni=false;
     boolean cluster=false;
     String additional_flags;
+    double diam_threshold;
 
     public CellposeTaskSettings setDatasetDir(String datasetDir) {
         this.datasetDir = datasetDir;
@@ -67,6 +68,10 @@ public class CellposeTaskSettings {
         this.anisotropy = anisotropy;
         return this;
     }
+    public CellposeTaskSettings setDiamThreshold(double diam_threshold) {
+        this.diam_threshold = diam_threshold;
+        return this;
+    }
 
     public CellposeTaskSettings setStitchThreshold(double stitch_threshold){
         this.stitch_threshold = stitch_threshold;
@@ -92,6 +97,7 @@ public class CellposeTaskSettings {
         this.cluster = cluster;
         return this;
     }
+
     public CellposeTaskSettings setFromPrefs() {
         String keyPrefix = Cellpose.class.getName() + ".";
         this.useGpu = Prefs.get(keyPrefix + "useGpu", Cellpose.useGpu);
@@ -101,7 +107,6 @@ public class CellposeTaskSettings {
         this.version = Prefs.get(keyPrefix + "Version", Cellpose.version);
         return this;
     }
-
 
     public CellposeTaskSettings setAdditionalFlags(String additional_flags) {
         this.additional_flags = additional_flags;
