@@ -37,6 +37,9 @@ public class CellposePrefsSet implements Command {
 	@Parameter
 	Boolean useResample = Cellpose.useResample;
 
+	@Parameter(required=true, choices={"0.6","0.7"})
+	String version = Cellpose.version;
+
 	@Override
 	public void run() {
 
@@ -47,6 +50,7 @@ public class CellposePrefsSet implements Command {
 		Cellpose.setUseMxnet( useMxnet );
 		Cellpose.setUseFastMode( useFastMode );
 		Cellpose.setUseResample( useResample );
+		Cellpose.setVersion(version);
 
 		if (ls!=null) {
 			ls.info(BiopWrappersCheck.isCellposeSet());
