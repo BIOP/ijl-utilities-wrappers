@@ -14,11 +14,17 @@ import org.scijava.plugin.Plugin;
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Cellpose Advanced")
 public class Cellpose_SegmentImgPlusAdvanced implements Command {
 
+    public static final String nuclei_model = "nuclei";
+    public static final String cyto_model = "cyto";
+    public static final String cyto2_model = "cyto2";
+    public static final String cyto2_omni_model = "cyto2_omni";
+    public static final String bact_omni_model = "bact_omni";
+
     @Parameter
     ImagePlus imp;
 
     // value defined from https://cellpose.readthedocs.io/en/latest/api.html
-    @Parameter ( label = "Diameter (default 17 for nuclei, 30 for cyto,0 for automatic dectection)" )
+    @Parameter ( label = "Diameter (default 17 for nuclei, 30 for cyto,0 for automatic detection)" )
     int diameter = 30;
 
     @Parameter ( label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)" )
@@ -53,13 +59,13 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command {
     @Parameter (label = "stitch_threshold (between 0 and 1, default -1)")
     double stitch_threshold = -1;
 
-    @Parameter
+    @Parameter(label="use omnipose mask reconstruction features")
     boolean omni;
 
-    @Parameter
+    @Parameter (label="use DBSCAN clustering")
     boolean cluster;
 
-    @Parameter(required = false , label="add more flags")
+    @Parameter(required = false , label="add more parameters")
     String additionnal_flags;
 
     @Parameter(type = ItemIO.OUTPUT)
@@ -70,13 +76,13 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command {
     // propose some default value when a model is selected
     public void modelchanged() {
 
-        if (model.equals("nuclei")) {
+        if (model.equals(nuclei_model)) {
             nuclei_channel = 1;
             cyto_channel = -1;
-        } else if (model.equals("bact_omni")) {
-            nuclei_channel = 1;
-            cyto_channel = -1;
-        } else if (model.equals("cyto")  || model.equals("cyto2") || model.equals("cyto2_omni")) {
+        } else if ((model.equals(bact_omni_model))) {
+            cyto_channel = 1;
+            nuclei_channel = -1;
+        } else if ((model.equals(cyto_model)) || (model.equals(cyto2_model)) || (model.equals(cyto2_omni_model))) {
             cyto_channel = 1;
             nuclei_channel = 2;
         }

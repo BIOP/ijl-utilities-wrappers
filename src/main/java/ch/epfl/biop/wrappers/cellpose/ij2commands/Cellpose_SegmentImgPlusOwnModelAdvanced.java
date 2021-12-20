@@ -21,11 +21,22 @@ import java.util.List;
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose> Cellpose Advanced (custom model)")
 public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
 
+    public static final String nuclei_model = "nuclei";
+    public static final String cyto_model = "cyto";
+    public static final String cyto2_model = "cyto2";
+    public static final String cyto2_omni_model = "cyto2_omni";
+    public static final String bact_omni_model = "bact_omni";
+    public static final String own_nuclei_model = "own model nuclei";
+    public static final String own_cyto_model = "own model cyto";
+    public static final String own_cyto2_model = "own model cyto2";
+    public static final String own_cyto2_omni_model = "own model cyto2_omni";
+    public static final String own_bact_omni_model = "own model bact_omni";
+
     @Parameter
     ImagePlus imp;
 
     // value defined from https://cellpose.readthedocs.io/en/latest/api.html
-    @Parameter ( label = "Diameter (default 17 for nuclei, 30 for cyto,0 for automatic dectection)" )
+    @Parameter ( label = "Diameter (default 17 for nuclei, 30 for cyto,0 for automatic detection)" )
     int diameter = 30;
 
     @Parameter ( label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)" )
@@ -43,16 +54,16 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
     @Parameter(required = false , label = "model_path to your owm model (default cellpose for pretrained model) ")
     File model_path = new File("cellpose");
 
-    @Parameter(choices = {"nuclei",
-                            "cyto",
-                            "cyto2",
-                            "cyto2_omni",
-                            "bact_omni",
-                            "own model nuclei",
-                            "own model cyto",
-                            "own model cyto2",
-                            "own model cyto2_ommi",
-                            "own model bact_omni"}, callback = "modelchanged")
+    @Parameter(choices = {nuclei_model,
+                            cyto_model,
+                            cyto2_model,
+                            cyto2_omni_model,
+                            bact_omni_model,
+                            own_nuclei_model,
+                            own_cyto_model,
+                            own_cyto2_model,
+                            own_cyto2_omni_model,
+                            own_bact_omni_model}, callback = "modelchanged")
     String model;
 
     @Parameter (label = "nuclei_channel (set to 0 if not necessary)")
@@ -67,13 +78,13 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
     @Parameter (label = "stitch_threshold (between 0 and 1, default -1)")
     double stitch_threshold = -1;
 
-    @Parameter
+    @Parameter(label="use omnipose mask reconstruction features")
     boolean omni;
 
-    @Parameter
+    @Parameter (label="use DBSCAN clustering")
     boolean cluster;
 
-    @Parameter(required = false , label="add more flags")
+    @Parameter(required = false , label="add more parameters")
     String additionnal_flags;
 
     @Parameter(type = ItemIO.OUTPUT)
@@ -84,22 +95,22 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
 
     // propose some default value when a model is selected
     public void modelchanged() {
-        if (model.equals("nuclei")) {
+        if (model.equals(nuclei_model)) {
             nuclei_channel = 1;
             cyto_channel = -1;
-        } else if ((model.equals("bact_omni"))) {
+        } else if ((model.equals(bact_omni_model))) {
             cyto_channel = 1;
             nuclei_channel = -1;
-        } else if ((model.equals("cyto")) || (model.equals("cyto2")) || (model.equals("cyto2_omni"))) {
+        } else if ((model.equals(cyto_model)) || (model.equals(cyto2_model)) || (model.equals(cyto2_omni_model))) {
             cyto_channel = 1;
             nuclei_channel = 2;
-        } else if (model.equals("own model nuclei")) {
+        } else if (model.equals(own_nuclei_model)) {
             nuclei_channel = 1;
             cyto_channel = -1;
-        } else if (model.equals("own model bact_omni")) {
+        } else if (model.equals(own_bact_omni_model)) {
             nuclei_channel = -1;
             cyto_channel = 1;
-        } else if ((model.equals("own model cyto")) || (model.equals("own model cyto2")) || (model.equals("own model cyto2_omni"))) {
+        } else if ((model.equals(own_cyto_model)) || (model.equals(own_cyto2_model)) || (model.equals(own_cyto2_omni_model))) {
             cyto_channel = 1;
             nuclei_channel = 2;
         }
@@ -134,22 +145,22 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
         // Add it to the settings
         settings.setDatasetDir(cellposeTempDir.toString());
 
-        if (model.equals("nuclei")) {
+        if (model.equals(nuclei_model)) {
             settings.setChannel1(nuclei_channel);
             //settings.setChannel2(-1) ;
-        } else if ((model.equals("bact_omni"))) {
+        } else if ((model.equals(bact_omni_model))) {
             settings.setChannel1(cyto_channel);
-        } else if ((model.equals("cyto")) || (model.equals("cyto2")) || (model.equals("cyto2_omni"))) {
+        } else if ((model.equals(cyto_model)) || (model.equals(cyto2_model)) || (model.equals(cyto2_omni_model))) {
             System.out.println("cyto_channel:" + cyto_channel + ":nuclei_channel:" + nuclei_channel);
             settings.setChannel1(cyto_channel);
             settings.setChannel2(nuclei_channel);
-        } else if ((model.equals("own model nuclei"))) {
+        } else if ((model.equals(own_nuclei_model))) {
             model = model_path.toString();
             settings.setChannel1(nuclei_channel);
-        } else if ((model.equals("own model bact_omni"))) {
+        } else if ((model.equals(own_bact_omni_model))) {
             model = model_path.toString();
             settings.setChannel1(cyto_channel);
-        } else if ((model.equals("own model cyto")) || (model.equals("own model cyto2")) || (model.equals("own model cyto2_omni"))) {
+        } else if ((model.equals(own_cyto_model)) || (model.equals(own_cyto2_model)) || (model.equals(own_cyto2_omni_model))) {
             model = model_path.toString();
             settings.setChannel1(cyto_channel);
             settings.setChannel2(nuclei_channel);
