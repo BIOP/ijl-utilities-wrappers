@@ -22,6 +22,7 @@ public class DefaultStardistTask extends StardistTask {
             options.add("--n_tiles");
             options.add("" + settings.n_tiles);
             options.add("" + settings.n_tiles);
+            options.add("" + settings.n_tiles);
         }
 
         if ((settings.pmin != (float) 3.0) || (settings.pmax != (float) 99.8)) {
