@@ -34,6 +34,9 @@ public class DefaultCellposeTask extends CellposeTask {
 
         if (settings.version.equals("0.7")) {
 
+            options.add("--mask_threshold"); // supposed to be new flag name
+            options.add(""+settings.cellprob_threshold);
+
             if (settings.anisotropy != 1.0){
                 options.add("--anisotropy");
                 options.add(""+settings.anisotropy);
@@ -51,11 +54,6 @@ public class DefaultCellposeTask extends CellposeTask {
 
             if (settings.cluster){
                 options.add("--cluster");
-            }
-
-            if (settings.cluster){
-                options.add("--mask_threshold");
-                options.add(""+settings.cellprob_threshold); // supposed to be new flag name
             }
 
             if (settings.diam_threshold != 12 ){ // 12 is default the value
