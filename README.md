@@ -22,8 +22,6 @@ Briefly, **Cellpose** wrapper sequentially:
 - opens the created label image in Fiji
 - cleans the temporary folder
 
-
-
 <h2> I. Installation</h2>
 You'll find here some instructions to install the **_Cellpose_** wrapper and some guidance to set up a Cellpose virtual environment.
 
@@ -140,8 +138,73 @@ For more info about parameters please refer to [cellpose.readthedocs.io](https:/
 
 <h1>Ilastik</h1>
 
+<h1>StarDist</h1>
+
+The **StarDist3D** wrapper is an ImageJ2 command that enables using a working StarDist virtual environment (either conda, or venv) from Fiji.
+
+Briefly, **StarDist3D** wrapper sequentially:
+- saves the current Fiji image in a temporary folder
+- starts the stardist-env and runs stardist with defined parameters
+- opens the created label image in Fiji
+- cleans the temporary folder
+
+<h2> I. Installation</h2>
+
+You can have a look to the [StarDist installation](https://github.com/stardist/stardist#installation), but for now it works from a branch of the project (@Scripts).
+Recommended way is to use yml file you can find below (or in `/resources`).
+
+<h3> I.A. StarDist Virtual Environment </h2>
+
+Please find below some  information, provided "as is" without any warranties of successful installation, nor further support.
+
+<h4> I.A.1. More on venv installation</h3>
+
+Please [find here a very detailed installation procedure with venv](https://c4science.ch/w/bioimaging_and_optics_platform_biop/computers-servers/software/gpu-deep-learning/virtualenv/).
+
+<h4> I.A.2. More on conda installation</h3>
+
+<h5> I.A.2.a. Windows </h5>
+**NOTE** : if you rely on conda, the StarDist3d wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions below : ](https://github.com/BIOP/ijl-utilities-wrappers/tree/master#-enable-conda-command-outside-conda-prompt-).
+
+<h6> Enable conda command outside conda prompt </h6>
+You need to follow this two steps procedure to enable Windows to use conda from cmd.exe.
+
+- 1-Into the environment variable , edit PATH , add path to your ``..\Anaconda3\condabin ``default would be ``C:\ProgramData\Anaconda3\condabin``
+- 2-Open a new PowerShell (and/or PowerShell (x86) ), run the following command once to initialize conda:
+  `` conda init``
+
+From now on you don't need to run a conda prompt you can simply activate a conda env from `` cmd.exe`` .
+
+To check if it works, you can:
+- 1.Press windows key, type ``cmd.exe`` (to get a command promt)
+- 2.Type ``conda env list``
+  You should get the list of your conda envs.
+
+<h6> Conda StarDist-GPU </h6>
+
+| CUDA Toolkit | cuDNN | Tensorflow | stardist / branch | yml |
+| ------------- | ------------- | ------------- | ------------- | ------------- |
+| [CUDA Toolkit installer 10.0](https://developer.nvidia.com/cuda-10.0-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork) ($)| 7.6.5 ($) | 1.15 ($)| 0.7.3 / @Scripts| [stardist_scripts.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/stardist_scripts.yml) ($)| 
+
+($) This combination CUDA Toolkit and CuDNN are required to work with Tensorflow 1.15 (lastest available on Fiji) to train model for StarDist2D.
+Other combinations might work but were not tested (yet).
+
+<h3> I.B. Fiji - StarDist3D wrapper </h3>
+
+**NOTE** The Fiji - StarDist3D wrapper is useless without a working StarDist3D environment, please see installation abobe (I.A.).
+To test if you have a working StarDist3D environment:
+1 - Activate your environment
+2 - Type `stardist-predict3d -h`
+You should not get an error and see available parameters
+
+- Please use our update site **_(PTBIOP | https://biop.epfl.ch/Fiji-Update/)_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
+- Restart Fiji
+- ``Plugins>BIOP>StarDist> StarDist setup...``
+  - Select the path to your working StarDist virtual environment
+  - Select EnvType : ``conda`` or ``venv``
+
+<h2> II. Using Fiji - StarDist3d wrapper</h2>
+
+
 
 <h1>Transformix</h1>
-
-
- 

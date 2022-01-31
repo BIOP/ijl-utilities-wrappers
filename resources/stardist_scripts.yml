@@ -1,0 +1,28 @@
+name: stardist_tf115_script_mini
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.7
+  - tensorflow-gpu=1.15.0
+  - nodejs>=6.11.5
+  - scipy
+  - scikit-image
+  - vispy
+  - ipython
+  - pyopengl
+  - pyside2
+  - matplotlib
+  - h5py==2.10.0
+  - notebook
+  - pip
+  - pip:
+    - jupyter-tensorboard
+    - git+https://github.com/stardist/stardist@scripts
+    - gputools
+    - tabulate==0.8.9
+    - albumentations==0.5.2
+    - pandas 
+    - scikit-learn
+    - keras>=2.1.2,<2.4
+prefix: "D:/conda_envs/stardist_tf115_script_minimal"

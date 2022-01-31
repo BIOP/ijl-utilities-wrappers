@@ -13,7 +13,7 @@ import java.io.File;
  * Checks whether the executable being wrapped are accessible
  */
 
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Define Env. and prefs.")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Cellpose setup...")
 public class CellposePrefsSet implements Command {
 
 	@Parameter
@@ -37,7 +37,7 @@ public class CellposePrefsSet implements Command {
 	@Parameter
 	Boolean useResample = Cellpose.useResample;
 
-	@Parameter(required=true, choices={"0.6","0.7"})
+	@Parameter(required=true, choices={"0.6","0.7","1.0"})
 	String version = Cellpose.version;
 
 	@Override
