@@ -109,7 +109,7 @@ You should not get an error.
 - ``Plugins>BIOP>Cellpose> Cellpose setup...`` 
   - Select the path to your working Cellpose virtual environment 
   - Select EnvType : ``conda`` or ``venv``
-  - Select version : ``0.6`` or ``0.7``
+  - Select version : ``0.6`` , ``0.7`` or ``1.0``
 
 <img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeSetup.png" title="CellposeSetup" width="50%" align="center">
 
