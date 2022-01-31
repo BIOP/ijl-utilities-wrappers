@@ -32,7 +32,7 @@ public class DefaultCellposeTask extends CellposeTask {
             options.add(""+settings.cellprob_threshold);
         }
 
-        if (settings.version.equals("0.7")) {
+        if (!settings.version.equals("0.6")) {
 
             options.add("--mask_threshold"); // supposed to be new flag name
             options.add(""+settings.cellprob_threshold);
@@ -72,7 +72,7 @@ public class DefaultCellposeTask extends CellposeTask {
         if (settings.useGpu) options.add("--use_gpu");
         if (settings.useMxnet) options.add("--mxnet");
         if (settings.useFastMode ) options.add("--fast_mode");
-        if (settings.useResample ) options.add("--resample");
+        if (settings.useResample && !settings.version.equals("1.0")) options.add("--resample");
 
         if (settings.additional_flags!=null) {
             String[] flagsList = settings.additional_flags.split(",");

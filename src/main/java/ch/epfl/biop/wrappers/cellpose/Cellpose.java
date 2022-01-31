@@ -23,7 +23,7 @@ public class Cellpose {
     static boolean defaultUseMxnet  = false;
     static boolean defaultUseFastMode = false;
     static boolean defaultUseResample = false;
-    static String defaultVersion = "0.6";
+    static String defaultVersion = "1.0";
 
     public static String envDirPath = Prefs.get(keyPrefix+"envDirPath", defaultEnvDirPath);
     public static String envType = Prefs.get(keyPrefix+"envType", defaultEnvType);
