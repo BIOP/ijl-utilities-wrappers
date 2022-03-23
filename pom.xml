@@ -104,7 +104,7 @@
 	</mailingLists>
 
 	<scm>
-		<connection>scm:git:git://github.com/BIOP/ijl-utilities-wrappers</connection>
+		<connection>scm:git:https://github.com/BIOP/ijl-utilities-wrappers</connection>
 		<developerConnection>scm:git:git@github.com:BIOP/ijl-utilities-wrappers</developerConnection>
 		<url>https://github.com/BIOP/ijl-utilities-wrappers</url>
     <tag>HEAD</tag>
