@@ -27,15 +27,15 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add("--flow_threshold");
         options.add("" + settings.flow_threshold);
 
-        if (settings.version.equals("0.6")) {
+        if (settings.version.equals("0.6")||settings.version.equals("2.0")) {
             options.add("--cellprob_threshold");
+            options.add(""+settings.cellprob_threshold);
+        }else{
+            options.add("--mask_threshold"); // supposed to be new flag name for 0.7 and 1.0 but not anymore in 2.0
             options.add(""+settings.cellprob_threshold);
         }
 
         if (!settings.version.equals("0.6")) {
-
-            options.add("--mask_threshold"); // supposed to be new flag name
-            options.add(""+settings.cellprob_threshold);
 
             if (settings.anisotropy != 1.0){
                 options.add("--anisotropy");
@@ -70,9 +70,9 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add("--no_npy");
 
         if (settings.useGpu) options.add("--use_gpu");
-        if (settings.useMxnet) options.add("--mxnet");
+        if (settings.useMxnet&& !settings.version.equals("2.0")) options.add("--mxnet");
         if (settings.useFastMode ) options.add("--fast_mode");
-        if (settings.useResample && !settings.version.equals("1.0")) options.add("--resample");
+        if (settings.useResample && !settings.version.equals("1.0")&& !settings.version.equals("2.0")) options.add("--resample");
 
         if (settings.additional_flags!=null) {
             String[] flagsList = settings.additional_flags.split(",");
