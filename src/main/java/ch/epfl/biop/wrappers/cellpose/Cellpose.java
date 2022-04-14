@@ -57,7 +57,8 @@ public class Cellpose {
             List<String> conda_activate_cmd = null;
 
             if (  IJ.isWindows()) {
-                conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", envDirPath);
+                //conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", envDirPath);
+                conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "CALL", "conda.bat", "activate", envDirPath);
             } else if ( IJ.isLinux() || IJ.isMacOSX() ){
                 // https://docs.conda.io/projects/conda/en/4.6.1/user-guide/tasks/manage-environments.html#id2
                 // conda_activate_cmd = Arrays.asList("bash", "-c", "conda", "source","activate", envDirPath);
