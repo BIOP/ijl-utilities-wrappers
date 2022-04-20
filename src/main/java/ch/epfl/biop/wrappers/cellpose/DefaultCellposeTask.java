@@ -27,13 +27,14 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add("--flow_threshold");
         options.add("" + settings.flow_threshold);
 
-        if (settings.version.equals("0.6")||settings.version.equals("2.0")) {
+        System.out.println( "Cellpose version is set to:"+settings.version );
+        if ( settings.version.equals("0.6") || settings.version.equals("2.0") ) {
             options.add("--cellprob_threshold");
-            options.add(""+settings.cellprob_threshold);
-        }else{
-            options.add("--mask_threshold"); // supposed to be new flag name for 0.7 and 1.0 but not anymore in 2.0
-            options.add(""+settings.cellprob_threshold);
+
+        }else if ( settings.version.equals("0.7") || settings.version.equals("1.0") ){
+            options.add("--mask_threshold"); // supposed to be new flag name for 0.7 and 1.0 but not anymore in 2.
         }
+        options.add(""+settings.cellprob_threshold);
 
         if (!settings.version.equals("0.6")) {
 
@@ -60,6 +61,8 @@ public class DefaultCellposeTask extends CellposeTask {
                 options.add("--diam_threshold");
                 options.add(""+settings.diam_threshold);
             }
+
+            options.add("--verbose");//we default the verbose now that logger is working
 
         }
 

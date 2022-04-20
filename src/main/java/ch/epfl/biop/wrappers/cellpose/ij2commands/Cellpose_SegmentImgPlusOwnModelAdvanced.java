@@ -32,6 +32,8 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
     public static final String own_cyto2_model = "own model cyto2";
     public static final String own_cyto2_omni_model = "own model cyto2_omni";
     public static final String own_bact_omni_model = "own model bact_omni";
+    public static final String tissuenet_model ="tissuenet";
+    public static final String livecell_model ="livecell";
 
     @Parameter
     ImagePlus imp;
@@ -60,6 +62,8 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
                             cyto2_model,
                             cyto2_omni_model,
                             bact_omni_model,
+                            tissuenet_model,
+                            livecell_model,
                             own_nuclei_model,
                             own_cyto_model,
                             own_cyto2_model,
