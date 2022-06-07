@@ -47,7 +47,7 @@ public class ConvertibleObject {
                 registerConverter(m);
             }
         }
-        System.out.println(this.getClass().getName());
+        //System.out.println(this.getClass().getName());
         states.put(this.getClass(), this);
 	}
 	
@@ -75,8 +75,7 @@ public class ConvertibleObject {
 			return null;
 		}
 		if (states.containsKey(c_out)) {
-			System.out.println("Found -> "+c_out.getName()+" State");
-			
+			//System.out.println("Found -> "+c_out.getName()+" State");
 			return states.get(c_out);
 		} else {
 			if (!states.isEmpty()) {
@@ -86,7 +85,7 @@ public class ConvertibleObject {
 						Class c_in = m.getParameterTypes()[0];
 						if (states.containsKey(c_in)) {
 							try {
-								System.out.println("NR Converting:"+c_in.getName()+"->"+c_out.getName());
+								//System.out.println("NR Converting:"+c_in.getName()+"->"+c_out.getName());
 								Object obj_out = m.invoke(this,states.get(c_in));
 								states.put(c_out, obj_out);
 								return obj_out;
@@ -101,7 +100,7 @@ public class ConvertibleObject {
 						Object obj_in = this.to(c_in, recursivityLevel-1);
 						if (obj_in!=null) {//states.containsKey(c_in)) {
 							try {
-								System.out.println("R Converting:"+c_in.getName()+"->"+c_out.getName());
+								//System.out.println("R Converting:"+c_in.getName()+"->"+c_out.getName());
 								Object obj_out = m.invoke(this,states.get(c_in));
 								states.put(c_out, obj_out);
 								return obj_out;

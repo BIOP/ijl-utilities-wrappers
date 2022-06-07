@@ -41,7 +41,7 @@ public class Transformix_TransformROIs implements Command {
 	public void run() {
 		
 		if (roisFromRoiManager) {
-			System.out.println("Fetching ROIs from Roi Manager");
+			//System.out.println("Fetching ROIs from Roi Manager");
 			cr_in = new ConvertibleRois();
 			cr_in.set(RoiManager.getRoiManager());
 		}

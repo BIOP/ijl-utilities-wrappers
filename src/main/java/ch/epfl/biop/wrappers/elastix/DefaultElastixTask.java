@@ -11,8 +11,17 @@ public class DefaultElastixTask extends ElastixTask {
     public void run() throws Exception {
         ArrayList<String> options = new ArrayList<>();
         options.add("-threads");options.add(""+settings.nThreads);
-        options.add("-f");options.add(settings.fixedImagePathSupplier.get());
-        options.add("-m");options.add(settings.movingImagePathSupplier.get());
+        if (settings.fixedImagePathSuppliers.size()==1) {
+            options.add("-f");options.add(settings.fixedImagePathSuppliers.get(0).get());
+            options.add("-m");options.add(settings.movingImagePathSuppliers.get(0).get());
+        } else {
+            for (int iCh = 0; iCh<settings.fixedImagePathSuppliers.size();iCh++) {
+                options.add("-f"+iCh);options.add(settings.fixedImagePathSuppliers.get(iCh).get());
+            }
+            for (int iCh = 0; iCh<settings.movingImagePathSuppliers.size();iCh++) {
+                options.add("-m"+iCh);options.add(settings.movingImagePathSuppliers.get(iCh).get());
+            }
+        }
         if (settings.initialTransformFilePath!=null) {
             options.add("-t0");options.add(settings.initialTransformFilePath);
         }

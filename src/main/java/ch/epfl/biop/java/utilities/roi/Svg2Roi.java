@@ -35,7 +35,7 @@ public class Svg2Roi {
 
     public static Roi getRoiFromSVGPathElement(SVGOMPathElement path, float sampleLength, float downscaleFactor ) {
         float total_path_length = path.getTotalLength();
-        System.out.println("---------------------------- downscaleFactor="+downscaleFactor);
+        //System.out.println("---------------------------- downscaleFactor="+downscaleFactor);
         int NTotalPts = (int) (total_path_length/ sampleLength);
 
         float[] xp = new float[NTotalPts];
