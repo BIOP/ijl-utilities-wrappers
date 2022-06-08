@@ -38,30 +38,32 @@ public class DefaultCellposeTask extends CellposeTask {
 
         if (!settings.version.equals("0.6")) {
 
-            if (settings.anisotropy != 1.0){
+            if (settings.anisotropy != 1.0) {
                 options.add("--anisotropy");
-                options.add(""+settings.anisotropy);
+                options.add("" + settings.anisotropy);
             }
 
-            if (settings.stitch_threshold>0){
+            if (settings.stitch_threshold > 0) {
                 options.add("--stitch_threshold");
-                options.add(""+settings.stitch_threshold);
+                options.add("" + settings.stitch_threshold);
                 settings.do3D(false); // has to be 2D!
             }
 
-            if (settings.omni){
+            if (settings.omni) {
                 options.add("--omni");
             }
 
-            if (settings.cluster){
+            if (settings.cluster) {
                 options.add("--cluster");
             }
 
-            if (settings.diam_threshold != 12 ){ // 12 is default the value
-                options.add("--diam_threshold");
-                options.add(""+settings.diam_threshold);
+            if (!settings.version.equals("2.0")) {
+                if (settings.diam_threshold != 12) { // 12 is default the value
+                    options.add("--diam_threshold");
+                    options.add("" + settings.diam_threshold);
+                }
             }
-
+        
             options.add("--verbose");//we default the verbose now that logger is working
 
         }
