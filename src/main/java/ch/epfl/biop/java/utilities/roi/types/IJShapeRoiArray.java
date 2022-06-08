@@ -37,7 +37,7 @@ public class IJShapeRoiArray {
         for (int i = 0; i< rois.size(); i++) {
             CompositeFloatPoly cfp = rois.get(i);
             int nPts = cfp.getNumberOfCtrlPts();
-            System.out.println("["+index+";"+(index+nPts)+"]");
+            //System.out.println("["+index+";"+(index+nPts)+"]");
             cfp.setControlPoints(controlPoints.subList(index,index+nPts));
             index+=nPts;
         }
