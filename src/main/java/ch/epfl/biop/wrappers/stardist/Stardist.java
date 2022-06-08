@@ -3,9 +3,11 @@ package ch.epfl.biop.wrappers.stardist;
 import ij.IJ;
 import ij.Prefs;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -63,20 +65,40 @@ public class Stardist {
         cmd.addAll( stardist_args_cmd);
 
         // input options
+        // input options
         cmd.addAll(options);
-        //
-        System.out.println( cmd );
 
-        // Now the cmd line is ready
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-        //pb.redirectOutput(NULL_FILE);
-        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+        System.out.println( cmd.toString().replace(",", "") );
+        ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
+
         Process p = pb.start();
-        if (outputHandler != null) {
-            outputHandler.accept(p.getInputStream());
-        }
+
+        Thread t = new Thread(Thread.currentThread().getName() + "-" + p.hashCode()) {
+            @Override
+            public void run() {
+                BufferedReader stdIn = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                try {
+                    for (String line = stdIn.readLine(); line != null; ) {
+                        System.out.println( line);
+                        line = stdIn.readLine();// you don't want to remove or comment that line! no you don't :P
+                    }
+                } catch (IOException e) {
+                    System.out.println(e.getMessage());
+                }
+            }
+        };
+        t.setDaemon(true);
+        t.start();
+
         p.waitFor();
+
+        int exitValue = p.exitValue();
+
+        if (exitValue != 0) {
+            System.out.println("Runner "+ stardistEnvDirectory+" exited with value "+exitValue+". Please check output above for indications of the problem.");
+        } else {
+            System.out.println( stardistEnvType + " , "+ stardistEnvDirectory + " run finished");
+        }
     }
 
     public static void execute(String singleCommand) throws IOException, InterruptedException {
