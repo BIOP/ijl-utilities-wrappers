@@ -1,5 +1,6 @@
 package ch.epfl.biop.wrappers.elastix;
 
+import ch.epfl.biop.java.utilities.image.ElastixMultiFile;
 import ij.ImagePlus;
 
 import java.io.BufferedReader;
@@ -104,7 +105,7 @@ public class RegisterHelper extends ConvertibleObject {
 
     public void setFixedImage(ImagePlus imp) {
         fixedImage.set(imp);
-        System.out.println("Fixed image fixé");
+        //System.out.println("Fixed image fixé");
         alignTaskSet = false;
     }
 
@@ -126,17 +127,15 @@ public class RegisterHelper extends ConvertibleObject {
     }
 
     public boolean checkParametersForAlignement() {
-        if (fixedImage.to(File.class)==null) {
+        if (fixedImage.to(ElastixMultiFile.class)==null) {
             System.err.println("Fixed image not set");
             return false;
         }
-        if (movingImage.to(File.class)==null) {
+        if (movingImage.to(ElastixMultiFile.class)==null) {
             System.err.println("Moving image not set");
             System.out.println("null ?"+(movingImage==null));
-
             System.out.println("null img ?"+(movingImage.to(ImagePlus.class)==null));
-            System.out.println("null file ?"+(movingImage.to(File.class)==null));
-            
+            System.out.println("null file ?"+(movingImage.to(ElastixMultiFile.class)==null));
             return false;
         } 
         if (transformFilesSupplier.size()==0) {
@@ -153,14 +152,6 @@ public class RegisterHelper extends ConvertibleObject {
         return true;
     }
 
-    public String fixedImagePathSupplier() {
-    	return ((File) fixedImage.to(File.class)).getAbsolutePath();
-    }
-    
-    public String movingImagePathSupplier() {
-    	return ((File) movingImage.to(File.class)).getAbsolutePath();
-    }
-
     String registerInfo = null;
 
     public void setExtraRegisterInfo(String registerInfo) {
@@ -170,8 +161,16 @@ public class RegisterHelper extends ConvertibleObject {
     public void align(ElastixTask align) throws Exception {
         if (!alignTaskSet) {
             if (checkParametersForAlignement()) {
-                ElastixTaskSettings settings = new ElastixTaskSettings().fixedImage(this::fixedImagePathSupplier)
-                        .movingImage(this::movingImagePathSupplier).outFolder(outputDir);
+                ElastixTaskSettings settings = new ElastixTaskSettings();
+                ElastixMultiFile emfMoving = ((ElastixMultiFile) movingImage.to(ElastixMultiFile.class));
+                for (File f : emfMoving.files) {
+                    settings.movingImage(() -> f.getAbsolutePath());
+                }
+                ElastixMultiFile emfFixed = ((ElastixMultiFile) fixedImage.to(ElastixMultiFile.class));
+                for (File f : emfFixed.files) {
+                    settings.fixedImage(() -> f.getAbsolutePath());
+                }
+                settings.outFolder(outputDir);
 
                 if (verbose) settings.verbose();
 
@@ -225,7 +224,7 @@ public class RegisterHelper extends ConvertibleObject {
             }
             zipOut.close();
             fos.close();
-            System.out.println(temp.getAbsolutePath());
+            //System.out.println(temp.getAbsolutePath());
             return new RHZipFile(temp);
         } catch (IOException e) {
             e.printStackTrace();
@@ -357,14 +356,14 @@ public class RegisterHelper extends ConvertibleObject {
                 	newFile = new File(pathOutputDir+File.separator+fileName);
                     newFile.deleteOnExit();
                 	transformFiles.put(Integer.valueOf(number), newFile);
-                    System.out.println(newFile.getAbsolutePath());
+                    //System.out.println(newFile.getAbsolutePath());
                 } else {
                     assert fileName.startsWith("RegisterParameters");
                     String number  = fileName.replaceAll(regexReParam, "$2");
                     newFile = File.createTempFile("rpa", ".txt");
                     newFile.deleteOnExit();
                 	registerFiles.put(Integer.valueOf(number), newFile);
-                    System.out.println(newFile.getAbsolutePath());
+                    //System.out.println(newFile.getAbsolutePath());
                     //newFile = new File("unzipTest/" + fileName);
                 }
                 FileOutputStream fos = new FileOutputStream(newFile);
@@ -402,7 +401,7 @@ public class RegisterHelper extends ConvertibleObject {
 	            BufferedReader file = new BufferedReader(new FileReader(f));
 	            String line;
 	            StringBuilder inputBuffer = new StringBuilder();
-                System.out.println(transformFiles.get(i-1).getAbsolutePath().replaceAll("\\\\","\\\\\\\\"));
+                //System.out.println(transformFiles.get(i-1).getAbsolutePath().replaceAll("\\\\","\\\\\\\\"));
 	            while ((line = file.readLine()) != null) {
 
 	            	putData=line.replaceAll(regexTr, "$1"+transformFiles.get(i-1).getAbsolutePath().replaceAll("\\\\","\\\\\\\\")+"$3");
@@ -415,7 +414,7 @@ public class RegisterHelper extends ConvertibleObject {
 	            fileOut.write(inputStr.getBytes());
 	            fileOut.close();
 				i=i+1;
-				System.out.println(f.getAbsolutePath());
+				//System.out.println(f.getAbsolutePath());
 	        }
 		} catch (IOException e) {
 			// TODO Auto-generated catch block

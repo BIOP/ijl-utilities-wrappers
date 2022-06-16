@@ -12,7 +12,7 @@ public class TransformixOutputRoisFile {
 
 		this.f=f;
 		if (tirf.shapeRoiList==null) {
-			System.out.println("C'est null dans le constructeur!!");
+			//System.out.println("shapeRoiList null in constructor");
 		}
 		this.shapeRoiList = tirf.shapeRoiList; // pass the connectivity data
 	}

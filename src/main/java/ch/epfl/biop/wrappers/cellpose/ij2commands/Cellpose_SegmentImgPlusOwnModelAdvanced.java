@@ -4,6 +4,7 @@ import ch.epfl.biop.wrappers.cellpose.CellposeTaskSettings;
 import ch.epfl.biop.wrappers.cellpose.DefaultCellposeTask;
 import ij.IJ;
 import ij.ImagePlus;
+import ij.ImageStack;
 import ij.io.FileSaver;
 import ij.measure.Calibration;
 import ij.plugin.Concatenator;
@@ -31,6 +32,8 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
     public static final String own_cyto2_model = "own model cyto2";
     public static final String own_cyto2_omni_model = "own model cyto2_omni";
     public static final String own_bact_omni_model = "own model bact_omni";
+    public static final String tissuenet_model ="tissuenet";
+    public static final String livecell_model ="livecell";
 
     @Parameter
     ImagePlus imp;
@@ -59,6 +62,8 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
                             cyto2_model,
                             cyto2_omni_model,
                             bact_omni_model,
+                            tissuenet_model,
+                            livecell_model,
                             own_nuclei_model,
                             own_cyto_model,
                             own_cyto2_model,
@@ -221,6 +226,15 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
             ArrayList<ImagePlus> imps = new ArrayList<>(impFrames);
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
                 ImagePlus cellpose_t_imp = IJ.openImage(cellpose_masks_paths.get(t_idx - 1).toString());
+                // make sure to make a 16-bit imp
+                // (issue with time-lapse, first frame have less than 254 objects and latest have more)
+                if (cellpose_t_imp.getBitDepth() != 16) {
+                    if (cellpose_t_imp.getNSlices() > 1) {
+                        cellpose_t_imp.getStack().setBitDepth(16);
+                    } else {
+                        cellpose_t_imp.setProcessor(cellpose_t_imp.getProcessor().convertToShort(false));
+                    }
+                }
                 imps.add(cellpose_t_imp.duplicate());
             }
             // Convert the ArrayList to an imp

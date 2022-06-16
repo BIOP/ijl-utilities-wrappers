@@ -27,39 +27,44 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add("--flow_threshold");
         options.add("" + settings.flow_threshold);
 
-        if (settings.version.equals("0.6")) {
+        System.out.println( "Cellpose version is set to:"+settings.version );
+        if ( settings.version.equals("0.6") || settings.version.equals("2.0") ) {
             options.add("--cellprob_threshold");
-            options.add(""+settings.cellprob_threshold);
+
+        }else if ( settings.version.equals("0.7") || settings.version.equals("1.0") ){
+            options.add("--mask_threshold"); // supposed to be new flag name for 0.7 and 1.0 but not anymore in 2.
         }
+        options.add(""+settings.cellprob_threshold);
 
         if (!settings.version.equals("0.6")) {
 
-            options.add("--mask_threshold"); // supposed to be new flag name
-            options.add(""+settings.cellprob_threshold);
-
-            if (settings.anisotropy != 1.0){
+            if (settings.anisotropy != 1.0) {
                 options.add("--anisotropy");
-                options.add(""+settings.anisotropy);
+                options.add("" + settings.anisotropy);
             }
 
-            if (settings.stitch_threshold>0){
+            if (settings.stitch_threshold > 0) {
                 options.add("--stitch_threshold");
-                options.add(""+settings.stitch_threshold);
+                options.add("" + settings.stitch_threshold);
                 settings.do3D(false); // has to be 2D!
             }
 
-            if (settings.omni){
+            if (settings.omni) {
                 options.add("--omni");
             }
 
-            if (settings.cluster){
+            if (settings.cluster) {
                 options.add("--cluster");
             }
 
-            if (settings.diam_threshold != 12 ){ // 12 is default the value
-                options.add("--diam_threshold");
-                options.add(""+settings.diam_threshold);
+            if (!settings.version.equals("2.0")) {
+                if (settings.diam_threshold != 12) { // 12 is default the value
+                    options.add("--diam_threshold");
+                    options.add("" + settings.diam_threshold);
+                }
             }
+        
+            options.add("--verbose");//we default the verbose now that logger is working
 
         }
 
@@ -70,9 +75,9 @@ public class DefaultCellposeTask extends CellposeTask {
         options.add("--no_npy");
 
         if (settings.useGpu) options.add("--use_gpu");
-        if (settings.useMxnet) options.add("--mxnet");
+        if (settings.useMxnet&& !settings.version.equals("2.0")) options.add("--mxnet");
         if (settings.useFastMode ) options.add("--fast_mode");
-        if (settings.useResample && !settings.version.equals("1.0")) options.add("--resample");
+        if (settings.useResample && !settings.version.equals("1.0")&& !settings.version.equals("2.0")) options.add("--resample");
 
         if (settings.additional_flags!=null) {
             String[] flagsList = settings.additional_flags.split(",");

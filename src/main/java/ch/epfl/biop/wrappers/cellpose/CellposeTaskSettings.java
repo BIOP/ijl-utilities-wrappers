@@ -104,7 +104,7 @@ public class CellposeTaskSettings {
         this.useMxnet = Prefs.get(keyPrefix + "useMxnet", Cellpose.useMxnet);
         this.useFastMode = Prefs.get(keyPrefix + "useFastMode", Cellpose.useFastMode);
         this.useResample = Prefs.get(keyPrefix + "useResample", Cellpose.useResample);
-        this.version = Prefs.get(keyPrefix + "Version", Cellpose.version);
+        this.version = Prefs.get(keyPrefix + "version", Cellpose.version);
         return this;
     }
 

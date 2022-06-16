@@ -215,7 +215,7 @@ public class TransformHelper {
                         (TransformixInputRoisFile) roisToTransform.to(TransformixInputRoisFile.class));// roisToTransform.to(TransformixInputRoisFile.class);
             	roisTransformed.clear();            	
             	roisTransformed.set(erf);
-            	System.out.println("Output rois set!");
+            	//System.out.println("Output rois set!");
             	//roisTransformed.set(roisToTransform.to(ArrayList.class));
             	//roisTransformed.elastixFileFormatToArray(erf);
             	//new File(this.outputDir.get()+File.separator+"outputpoints.txt"));

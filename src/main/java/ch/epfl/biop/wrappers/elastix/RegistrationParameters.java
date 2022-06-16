@@ -283,7 +283,47 @@ public class RegistrationParameters extends ConvertibleObject {
 	 */
 	//@RegisterParam
 	//String AutomaticTransformInitializationMethod;
-	
+
+	/*
+	// KNN specific
+		(Alpha 0.99)
+		(AvoidDivisionBy 0.0000000001)
+		(TreeType "KDTree")
+		(BucketSize 50)
+		(SplittingRule "ANN_KD_STD")
+		(ShrinkingRule "ANN_BD_SIMPLE")
+		(TreeSearchType "Standard")
+		(KNearestNeighbours 20)
+		(ErrorBound 10.0)
+	 */
+
+	@RegisterParam
+	public Float Alpha;
+
+	@RegisterParam
+	public Float AvoidDivisionBy;
+
+	@RegisterParam
+	public String TreeType;
+
+	@RegisterParam
+	public Integer BucketSize;
+
+	@RegisterParam
+	public String SplittingRule;
+
+	@RegisterParam
+	public String ShrinkingRule;
+
+	@RegisterParam
+	public String TreeSearchType;
+
+	@RegisterParam
+	public Integer KNearestNeighbours;
+
+	@RegisterParam
+	public Float ErrorBound;
+
 	static public boolean easyToWrite(Class c) {
 		boolean easy=false;
 		easy |= c.equals(int.class);
@@ -386,5 +426,120 @@ public class RegistrationParameters extends ConvertibleObject {
 	@Converter 
 	public static RegistrationParameters downCast(RegParamAffine_Fast rp) {
 		return rp;
-	}		
+	}
+
+	/**
+	 * For multi channel images!!
+	 * The α-mutual information metric computes true multi-channel α-mutual information. It does not use high-
+		dimensional joint histograms, but instead relies on k-nearest neighbour graphs to estimate α-MI. Details can
+		be found in Staring et al. [2009]. It is specified in the parameter file with:
+		(Registration "MultiResolutionRegistrationWithFeatures")
+		(FixedImagePyramid "FixedSmoothingImagePyramid" "FixedSmoothingImagePyramid")
+		(MovingImagePyramid "MovingSmoothingImagePyramid" "MovingSmoothingImagePyramid")
+		(Interpolator "BSplineInterpolator" "BSplineInterpolator")
+		(Metric "KNNGraphAlphaMutualInformation")
+		(ImageSampler "MultiInputRandomCoordinate")
+		// KNN specific
+		(Alpha 0.99)
+		(AvoidDivisionBy 0.0000000001)
+		(TreeType "KDTree")
+		(BucketSize 50)
+		(SplittingRule "ANN_KD_STD")
+		(ShrinkingRule "ANN_BD_SIMPLE")
+		(TreeSearchType "Standard")
+		(KNearestNeighbours 20)
+		(ErrorBound 10.0)
+		A complete list of the available parameters can be found in the doxygen documentation →
+		elx::KNNGraphAlphaMutualInformationMetric.
+	 * @param nChannels number of channels in the image
+	 * @return the edited registration parameters that supports multichannel registration
+	 */
+	public static RegistrationParameters useAlphaMutualInformation(RegistrationParameters rp, int nChannels) {
+		rp.Registration = "MultiResolutionRegistrationWithFeatures";
+		String fip = rp.FixedImagePyramid;
+		for (int iCh=0;iCh<nChannels-1;iCh++) {
+			rp.FixedImagePyramid = rp.FixedImagePyramid+" "+fip;
+		}
+		String mip = rp.MovingImagePyramid;
+		for (int iCh=0;iCh<nChannels-1;iCh++) {
+			rp.MovingImagePyramid = rp.MovingImagePyramid+" "+mip;
+		}
+		String interp = rp.Interpolator;
+		for (int iCh=0;iCh<nChannels-1;iCh++) {
+			rp.Interpolator = rp.Interpolator+" "+interp;
+		}
+		rp.Metric = "KNNGraphAlphaMutualInformation";
+		rp.ImageSampler = "MultiInputRandomCoordinate";
+		rp.Alpha = 0.99f;
+		rp.AvoidDivisionBy=0.0000000001f;
+		rp.TreeType="KDTree";
+		rp.BucketSize=50;
+		rp.SplittingRule="ANN_KD_STD";
+		rp.ShrinkingRule="ANN_BD_SIMPLE";
+		rp.TreeSearchType="Standard";
+		rp.KNearestNeighbours=20;
+		rp.ErrorBound=10.0f;
+		return rp;
+	}
+
+	@RegisterParam
+	Float Metric0Weight;
+
+	@RegisterParam
+	Float Metric1Weight;
+
+	@RegisterParam
+	Float Metric2Weight;
+
+	@RegisterParam
+	Float Metric3Weight;
+
+	@RegisterParam
+	Float Metric4Weight;
+
+	@RegisterParam
+	Float Metric5Weight;
+
+	@RegisterParam
+	Float Metric6Weight;
+
+	/**
+	 * (Registration "MultiMetricMultiResolutionRegistration")
+	 * Other parts of the parameter file should look like:
+	 * (FixedImagePyramid "FixedSmoothingImagePyramid" "FixedSmoothingImagePyramid" ...)
+	 * (MovingImagePyramid "MovingSmoothingImagePyramid" "MovingSmoothingImagePyramid" ... )
+	 * (Interpolator "BSplineInterpolator" "BSplineInterpolator" ...)
+	 * (Metric "AdvancedMattesMutualInformation" "AdvancedMeanSquareDifference" ...)
+	 * (ImageSampler "RandomCoordinate" "RandomCoordinate" ...)
+	 * (Metric0Weight 0.125)
+	 * (Metric1Weight 0.125)
+	 * (Metric2Weight 0.125
+	 * @param rps registration parameters to combine in a multichannel registration
+	 * @return the combined registration
+	 */
+	public static RegistrationParameters combineRegistrationParameters(RegistrationParameters... rps) {
+		int nChannels = rps.length;
+		RegistrationParameters model = rps[0];
+		model.Registration = "MultiMetricMultiResolutionRegistration";
+		//double weight = 1.0/((double)nChannels);
+		for (int iCh=1;iCh<nChannels;iCh++) {
+			model.FixedImagePyramid = model.FixedImagePyramid+" "+rps[iCh].FixedImagePyramid;
+			model.MovingImagePyramid = model.MovingImagePyramid+" "+rps[iCh].MovingImagePyramid;
+			model.Interpolator = model.Interpolator+" "+rps[iCh].Interpolator;
+			model.Metric = model.Metric+" "+rps[iCh].Metric;
+			model.ImageSampler = model.ImageSampler+" "+rps[iCh].ImageSampler;
+			// RAAAAAAAAAAAAAAAAAAAAAAAAHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH!!!!!
+			switch (iCh) {
+				case 0: model.Metric0Weight = 1f;break;
+				case 1: model.Metric1Weight = 1f;break;
+				case 2: model.Metric2Weight = 1f;break;
+				case 3: model.Metric3Weight = 1f;break;
+				case 4: model.Metric4Weight = 1f;break;
+				case 5: model.Metric5Weight = 1f;break;
+				case 6: model.Metric6Weight = 1f;break;
+			}
+		}
+
+		return model;
+	}
 }

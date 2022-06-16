@@ -1,12 +1,13 @@
 package ch.epfl.biop.wrappers.elastix;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Supplier;
 
 public class ElastixTaskSettings {
-    public Supplier<String> fixedImagePathSupplier,
-            movingImagePathSupplier,
-            outputFolderSupplier;
+    public List<Supplier<String>> fixedImagePathSuppliers = new ArrayList<>();
+    public List<Supplier<String>> movingImagePathSuppliers = new ArrayList<>();
+    public Supplier<String> outputFolderSupplier;
 
     public  String initialTransformFilePath;
 
@@ -34,12 +35,12 @@ public class ElastixTaskSettings {
     }
 
     public ElastixTaskSettings fixedImage(Supplier<String> fImgSupplier) {
-        this.fixedImagePathSupplier = fImgSupplier;
+        this.fixedImagePathSuppliers.add(fImgSupplier);
         return this;
     }
 
     public ElastixTaskSettings movingImage(Supplier<String> mImgSupplier) {
-        this.movingImagePathSupplier = mImgSupplier;
+        this.movingImagePathSuppliers.add(mImgSupplier);
         return this;
     }
 
