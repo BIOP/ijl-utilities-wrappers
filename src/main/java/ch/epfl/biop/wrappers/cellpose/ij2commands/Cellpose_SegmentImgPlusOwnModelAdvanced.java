@@ -32,64 +32,64 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
     public static final String own_cyto2_model = "own model cyto2";
     public static final String own_cyto2_omni_model = "own model cyto2_omni";
     public static final String own_bact_omni_model = "own model bact_omni";
-    public static final String tissuenet_model ="tissuenet";
-    public static final String livecell_model ="livecell";
+    public static final String tissuenet_model = "tissuenet";
+    public static final String livecell_model = "livecell";
 
     @Parameter
     ImagePlus imp;
 
     // value defined from https://cellpose.readthedocs.io/en/latest/api.html
-    @Parameter ( label = "Diameter (default 17 for nuclei, 30 for cyto,0 for automatic detection)" )
+    @Parameter(label = "Diameter (default 17 for nuclei, 30 for cyto,0 for automatic detection)")
     int diameter = 30;
 
-    @Parameter ( label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)" )
+    @Parameter(label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)")
     double cellproba_threshold = 0.0;
 
-    @Parameter ( label = "flow_threshold (default 0.4)" )
+    @Parameter(label = "flow_threshold (default 0.4)")
     double flow_threshold = 0.4;
 
-    @Parameter ( label = "Anisotropy between xy and z (1 means none)" )
+    @Parameter(label = "Anisotropy between xy and z (1 means none)")
     double anisotropy = 1.0;
 
-    @Parameter ( label = "Diameter threshold (default 12)" )
+    @Parameter(label = "Diameter threshold (default 12)")
     double diam_threshold = 12.0;
 
-    @Parameter(required = false , label = "model_path to your owm model (default cellpose for pretrained model) ")
+    @Parameter(required = false, label = "model_path to your owm model (default cellpose for pretrained model) ")
     File model_path = new File("cellpose");
 
     @Parameter(choices = {nuclei_model,
-                            cyto_model,
-                            cyto2_model,
-                            cyto2_omni_model,
-                            bact_omni_model,
-                            tissuenet_model,
-                            livecell_model,
-                            own_nuclei_model,
-                            own_cyto_model,
-                            own_cyto2_model,
-                            own_cyto2_omni_model,
-                            own_bact_omni_model}, callback = "modelchanged")
+            cyto_model,
+            cyto2_model,
+            cyto2_omni_model,
+            bact_omni_model,
+            tissuenet_model,
+            livecell_model,
+            own_nuclei_model,
+            own_cyto_model,
+            own_cyto2_model,
+            own_cyto2_omni_model,
+            own_bact_omni_model}, callback = "modelchanged")
     String model;
 
-    @Parameter (label = "nuclei_channel (set to 0 if not necessary)")
+    @Parameter(label = "nuclei_channel (set to 0 if not necessary)")
     int nuclei_channel;
 
-    @Parameter (label = "cyto_channel (set to 0 if not necessary)")
+    @Parameter(label = "cyto_channel (set to 0 if not necessary)")
     int cyto_channel;
 
     @Parameter(choices = {"2D", "3D"})
     String dimensionMode;
 
-    @Parameter (label = "stitch_threshold (between 0 and 1, default -1)")
+    @Parameter(label = "stitch_threshold (between 0 and 1, default -1)")
     double stitch_threshold = -1;
 
-    @Parameter(label="use omnipose mask reconstruction features")
+    @Parameter(label = "use omnipose mask reconstruction features")
     boolean omni;
 
-    @Parameter (label="use DBSCAN clustering")
+    @Parameter(label = "use DBSCAN clustering")
     boolean cluster;
 
-    @Parameter(required = false , label="add more parameters")
+    @Parameter(required = false, label = "add more parameters")
     String additionnal_flags;
 
     @Parameter(type = ItemIO.OUTPUT)
@@ -143,7 +143,7 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
         File[] contents = cellposeTempDir.listFiles();
         if (contents != null) {
             for (File f : contents) {
-               f.delete();
+                f.delete();
             }
         }
 

@@ -16,44 +16,44 @@ import java.io.File;
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Cellpose setup...")
 public class CellposePrefsSet implements Command {
 
-	@Parameter
-	LogService ls;
+    @Parameter
+    LogService ls;
 
-	@Parameter(required=true, style="directory")
-	File cellposeEnvDirectory = new File(Cellpose.envDirPath);
+    @Parameter(required = true, style = "directory")
+    File cellposeEnvDirectory = new File(Cellpose.envDirPath);
 
-	@Parameter(required=true, choices={"conda","venv"})
-	String envType = Cellpose.envType;
+    @Parameter(required = true, choices = {"conda", "venv"})
+    String envType = Cellpose.envType;
 
-	@Parameter
-	Boolean useGpu = Cellpose.useGpu ;
+    @Parameter
+    Boolean useGpu = Cellpose.useGpu;
 
-	@Parameter
-	Boolean useMxnet = Cellpose.useMxnet ;
+    @Parameter
+    Boolean useMxnet = Cellpose.useMxnet;
 
-	@Parameter
-	Boolean useFastMode = Cellpose.useFastMode;
+    @Parameter
+    Boolean useFastMode = Cellpose.useFastMode;
 
-	@Parameter
-	Boolean useResample = Cellpose.useResample;
+    @Parameter
+    Boolean useResample = Cellpose.useResample;
 
-	@Parameter(required=true, choices={"0.6","0.7","1.0","2.0"})
-	String version = Cellpose.version;
+    @Parameter(required = true, choices = {"0.6", "0.7", "1.0", "2.0"})
+    String version = Cellpose.version;
 
-	@Override
-	public void run() {
+    @Override
+    public void run() {
 
-		Cellpose.setEnvDirPath(cellposeEnvDirectory);
-		Cellpose.setEnvType(envType);
+        Cellpose.setEnvDirPath(cellposeEnvDirectory);
+        Cellpose.setEnvType(envType);
 
-		Cellpose.setUseGpu( useGpu );
-		Cellpose.setUseMxnet( useMxnet );
-		Cellpose.setUseFastMode( useFastMode );
-		Cellpose.setUseResample( useResample );
-		Cellpose.setVersion(version);
+        Cellpose.setUseGpu(useGpu);
+        Cellpose.setUseMxnet(useMxnet);
+        Cellpose.setUseFastMode(useFastMode);
+        Cellpose.setUseResample(useResample);
+        Cellpose.setVersion(version);
 
-		if (ls!=null) {
-			ls.info(BiopWrappersCheck.isCellposeSet());
-		}
-	}
+        if (ls != null) {
+            ls.info(BiopWrappersCheck.isCellposeSet());
+        }
+    }
 }

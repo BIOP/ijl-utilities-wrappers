@@ -71,9 +71,9 @@ public class StarDist3D_SegmentImgPlus_Advanced implements Command {
         // System.out.println( model_path.toString() );
         settings.setModelPath( model_path.toString() );
         settings.setOutputPath( stardistTempDir.toString() );
-        if (x_tiles >-1) settings.setXTiles(x_tiles);
-        if (y_tiles >-1) settings.setYTiles(y_tiles);
-        if (z_tiles >-1) settings.setZTiles(z_tiles);
+        if (x_tiles > -1) settings.setXTiles(x_tiles);
+        if (y_tiles > -1) settings.setYTiles(y_tiles);
+        if (z_tiles > -1) settings.setZTiles(z_tiles);
         settings.setPmin (min_norm);
         settings.setPmax(max_norm);
         if (prob_thresh >-1) settings.setProbThresh(prob_thresh);

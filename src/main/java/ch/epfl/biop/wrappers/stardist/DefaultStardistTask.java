@@ -18,7 +18,7 @@ public class DefaultStardistTask extends StardistTask {
         options.add("-o");
         options.add("" + settings.output_path);
 
-        if ( (settings.x_tiles > -1)&&(settings.y_tiles > -1)&&(settings.z_tiles > -1) ){
+        if ((settings.x_tiles > -1) && (settings.y_tiles > -1) && (settings.z_tiles > -1)) {
             options.add("--n_tiles");
             options.add("" + settings.z_tiles);
             options.add("" + settings.y_tiles);
@@ -27,8 +27,8 @@ public class DefaultStardistTask extends StardistTask {
 
         if ((settings.pmin != (float) 3.0) || (settings.pmax != (float) 99.8)) {
             options.add("--pnorm");
-            options.add("" + settings.pmin );
-            options.add("" + settings.pmax );
+            options.add("" + settings.pmin);
+            options.add("" + settings.pmax);
         }
 
         if (settings.prob_thresh > -1) {

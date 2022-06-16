@@ -8,7 +8,7 @@ public class StardistTaskSettings {
     int x_tiles = -1;
     int y_tiles = -1;
     int z_tiles = -1;
-    float pmin = (float) 3.0 ;
+    float pmin = (float) 3.0;
     float pmax = (float) 99.8;
     float prob_thresh = -1;
     float nms_thresh = -1;
@@ -37,10 +37,12 @@ public class StardistTaskSettings {
         this.y_tiles = y_tiles;
         return this;
     }
+
     public StardistTaskSettings setZTiles(int z_tiles) {
         this.z_tiles = z_tiles;
         return this;
     }
+
     public StardistTaskSettings setPmin(float pmin) {
         this.pmin = pmin;
         return this;

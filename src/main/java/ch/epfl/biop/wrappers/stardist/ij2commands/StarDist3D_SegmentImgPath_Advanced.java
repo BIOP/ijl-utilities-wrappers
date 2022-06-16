@@ -3,8 +3,6 @@ package ch.epfl.biop.wrappers.stardist.ij2commands;
 
 import ch.epfl.biop.wrappers.stardist.DefaultStardistTask;
 import ch.epfl.biop.wrappers.stardist.StardistTaskSettings;
-import ij.ImagePlus;
-import org.scijava.ItemIO;
 import org.scijava.command.Command;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
@@ -17,34 +15,32 @@ public class StarDist3D_SegmentImgPath_Advanced implements Command {
     @Parameter
     File image_path;
 
-    @Parameter (style="directory")
+    @Parameter(style = "directory")
     File model_path;
 
-    @Parameter (style="directory")
+    @Parameter(style = "directory")
     File output_path;
 
     @Parameter
-    int x_tiles=-1;
+    int x_tiles = -1;
 
     @Parameter
-    int y_tiles=-1;
+    int y_tiles = -1;
 
     @Parameter
-    int z_tiles=-1;
+    int z_tiles = -1;
 
-    @Parameter (style="format:#.0")
-    float min_norm= (float) 3.0;
+    @Parameter(style = "format:#.0")
+    float min_norm = (float) 3.0;
 
-    @Parameter (style="format:#.0")
+    @Parameter(style = "format:#.0")
     float max_norm = (float) 99.8;
 
     @Parameter
-    float prob_thresh = -1 ;
+    float prob_thresh = -1;
 
     @Parameter
     float nms_thresh = -1;
-
-    Boolean verbose = true;
 
     @Override
     public void run() {
@@ -53,16 +49,16 @@ public class StarDist3D_SegmentImgPath_Advanced implements Command {
         // and a StarDist task
         DefaultStardistTask stardistTask = new DefaultStardistTask();
 
-        settings.setImagePath( image_path.toString() );
-        settings.setModelPath( model_path.toString() );
-        settings.setOutputPath( output_path.toString() );
-        if (x_tiles >-1) settings.setXTiles(x_tiles);
-        if (y_tiles >-1) settings.setYTiles(y_tiles);
-        if (z_tiles >-1) settings.setZTiles(z_tiles);
-        settings.setPmin (min_norm);
+        settings.setImagePath(image_path.toString());
+        settings.setModelPath(model_path.toString());
+        settings.setOutputPath(output_path.toString());
+        if (x_tiles > -1) settings.setXTiles(x_tiles);
+        if (y_tiles > -1) settings.setYTiles(y_tiles);
+        if (z_tiles > -1) settings.setZTiles(z_tiles);
+        settings.setPmin(min_norm);
         settings.setPmax(max_norm);
-        if (prob_thresh >-1) settings.setProbThresh(prob_thresh);
-        if (nms_thresh >-1) settings.setNmsThresh(nms_thresh);
+        if (prob_thresh > -1) settings.setProbThresh(prob_thresh);
+        if (nms_thresh > -1) settings.setNmsThresh(nms_thresh);
 
         stardistTask.setSettings(settings);
 
