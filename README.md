@@ -27,17 +27,17 @@ You'll find here some instructions to install the **_Cellpose_** wrapper and som
 
 **NOTE** : if you rely on conda, the Cellpose wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions below : ](https://github.com/BIOP/ijl-utilities-wrappers/tree/master#-enable-conda-command-outside-conda-prompt-).
 
-<h3> I.A. Cellpose Virtual Environment </h2>
+<h4> I.A. Cellpose Virtual Environment </h4>
 
 You can find [instructions to install Cellpose environment on Cellpose repo](https://github.com/MouseLand/cellpose)
 
 Please find below some  information, provided "as is" without any warranties of successful installation, nor further support.
 
-<h4> I.A.1. More on venv installation</h3>
+<h4> I.A.1. More on venv installation</h4>
 
 Please [find here a very detailed installation procedure with venv](https://c4science.ch/w/bioimaging_and_optics_platform_biop/computers-servers/software/gpu-deep-learning/virtualenv/).
 
-<h4> I.A.2. More on conda installation</h3>
+<h4> I.A.2. More on conda installation</h4>
 
 <h5> I.A.2.a. Windows </h5>
 **NOTE** : if you rely on conda, the Cellpose wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions below : ](https://github.com/BIOP/ijl-utilities-wrappers/tree/master#-enable-conda-command-outside-conda-prompt-).
@@ -109,7 +109,7 @@ You should not get an error.
 - ``Plugins>BIOP>Cellpose> Define Env. & prefs.`` 
   - Select the path to your working Cellpose virtual environment 
   - Select EnvType : ``conda`` or ``venv``
-  - Select version : ``0.6`` or ``0.7``
+  - Select version : ``0.6`` , ``0.7`` , ``1.0`` or ``2.0``.
 
 <img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeSetup.png" title="CellposeSetup" width="50%" align="center">
 
@@ -185,6 +185,7 @@ To check if it works, you can:
 | CUDA Toolkit | cuDNN | Tensorflow | stardist / branch | yml |
 | ------------- | ------------- | ------------- | ------------- | ------------- |
 | [CUDA Toolkit installer 10.0](https://developer.nvidia.com/cuda-10.0-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork) ($)| 7.6.5 ($) | 1.15 ($)| 0.7.3 / @Scripts| [stardist_scripts.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/stardist_scripts.yml) ($)| 
+| [CUDA Toolkit installer 10.0](https://developer.nvidia.com/cuda-10.0-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork) ($)| 7.6.5 ($) | 1.15 ($)| 0.8.3 | [stardist0.8_TF1.15.yml file](https://github.com/BIOP/ijl-utilities-wrappers/blob/master/resources/stardist0.8_TF1.15.yml) ($)| 
 
 ($) This combination CUDA Toolkit and CuDNN are required to work with Tensorflow 1.15 (lastest available on Fiji) to train model for StarDist2D.
 Other combinations might work but were not tested (yet).
@@ -205,6 +206,9 @@ You should not get an error and see available parameters
 
 <h2> II. Using Fiji - StarDist3d wrapper</h2>
 
+The more "flexible" command is `StarDist3D... Advanced (own model)` which offers many parameters.
+
+<img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/master/resources/stardist3D_advanced.png" title="StarDist3DAdvanced" width="50%" align="center">
 
 
 <h1>Transformix</h1>
