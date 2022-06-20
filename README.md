@@ -5,7 +5,7 @@
 * Cellpose
 * Elastix
 * Ilastik
-* StarDist3D
+* [StarDist3D](https://github.com/BIOP/ijl-utilities-wrappers/blob/master/README.md#stardist)
 * Transformix
 * Java Converter Utilities
 ** Images
@@ -13,7 +13,7 @@
 
 <h1>Cellpose</h1> 
 
-**NOTE** : up to cellpose 0.6 (cellpose/omnipose 0.7 is under dev)
+**NOTE** : up to cellpose 2.0
 
 The **Cellpose** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environment (either conda, or venv) from Fiji.
 
@@ -26,7 +26,8 @@ Briefly, **Cellpose** wrapper sequentially:
 <h2> I. Installation</h2>
 You'll find here some instructions to install the **_Cellpose_** wrapper and some guidance to set up a Cellpose virtual environment.
 
-**NOTE** : if you rely on conda, the Cellpose wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions below : ](https://github.com/BIOP/ijl-utilities-wrappers/tree/master#-enable-conda-command-outside-conda-prompt-).
+**NOTE** : if you rely on conda, the Cellpose wrapper requires to enable the conda command outside of conda prompt 
+[cf installation instructions below](https://github.com/BIOP/ijl-utilities-wrappers/tree/master#-enable-conda-command-outside-conda-prompt-).
 
 <h4> I.A. Cellpose Virtual Environment </h4>
 
