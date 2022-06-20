@@ -1,0 +1,37 @@
+name: stardist0.8_TF1.15
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.7
+  - tensorflow-gpu=1.15.0
+  - cudnn==7.6.5
+  - nodejs
+  - ipywidgets
+  - qtpy
+  - qtconsole
+  - scipy
+  - scikit-image
+  - vispy
+  - ipython
+  - pyopengl
+  - pyside2
+  - matplotlib
+  - h5py
+  - notebook
+  - pip
+  - pip:
+    - jupyter-tensorboard
+    - stardist==0.8.3
+    - gputools
+    - tabulate
+    - albumentations
+    - napari
+    - stardist-napari
+    - pandas 
+    - ezomero
+    - scikit-learn
+    - scikit-tensor-py3
+    - keras>=2.1.2,<2.4
+    - astropy
+prefix: "D:/conda_envs/StarDist0.8-115"
