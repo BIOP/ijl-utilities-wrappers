@@ -2,11 +2,10 @@
 
 # Wrappers for FIJI
 
-* Cellpose
-* Elastix
-* Ilastik
+* [Cellpose](https://github.com/BIOP/ijl-utilities-wrappers/blob/master/README.md#cellpose)
+* [Elastix](https://github.com/BIOP/ijl-utilities-wrappers/blob/master/README.md#elastix)
 * [StarDist3D](https://github.com/BIOP/ijl-utilities-wrappers/blob/master/README.md#stardist)
-* Transformix
+* [Transformix](https://github.com/BIOP/ijl-utilities-wrappers/blob/master/README.md#transformix)
 * Java Converter Utilities
 ** Images
 ** Rois
