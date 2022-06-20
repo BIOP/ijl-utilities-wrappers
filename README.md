@@ -134,10 +134,8 @@ For example, from a 4 channels image (with nuclei, membrane , proteinX, ... stai
 
 For more info about parameters please refer to [cellpose.readthedocs.io](https://cellpose.readthedocs.io/en/latest/settings.html#)
 
-
 <h1>Elastix</h1>
-
-<h1>Ilastik</h1>
+*TODO*
 
 <h1>StarDist</h1>
 
@@ -213,3 +211,4 @@ The more "flexible" command is `StarDist3D... Advanced (own model)` which offers
 
 
 <h1>Transformix</h1>
+*TODO*
