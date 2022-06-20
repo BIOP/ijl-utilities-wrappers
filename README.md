@@ -5,6 +5,7 @@
 * Cellpose
 * Elastix
 * Ilastik
+* StarDist3D
 * Transformix
 * Java Converter Utilities
 ** Images
