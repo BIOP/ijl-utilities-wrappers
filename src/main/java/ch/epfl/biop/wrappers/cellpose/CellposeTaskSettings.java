@@ -14,18 +14,18 @@ public class CellposeTaskSettings {
     int diameter = 30;
     double flow_threshold = 0.4;
     double cellprob_threshold = 0.0;
-    double anisotropy = 1 ;
-    double stitch_threshold = 0 ;
+    double anisotropy = 1;
+    double stitch_threshold = 0;
 
-    boolean use3D=false;
+    boolean use3D = false;
 
     boolean useGpu;
     boolean useFastMode;
     boolean useResample;
     boolean useMxnet;
     String version;
-    boolean omni=false;
-    boolean cluster=false;
+    boolean omni = false;
+    boolean cluster = false;
     String additional_flags;
     double diam_threshold;
 
@@ -68,12 +68,13 @@ public class CellposeTaskSettings {
         this.anisotropy = anisotropy;
         return this;
     }
+
     public CellposeTaskSettings setDiamThreshold(double diam_threshold) {
         this.diam_threshold = diam_threshold;
         return this;
     }
 
-    public CellposeTaskSettings setStitchThreshold(double stitch_threshold){
+    public CellposeTaskSettings setStitchThreshold(double stitch_threshold) {
         this.stitch_threshold = stitch_threshold;
         return this;
     }

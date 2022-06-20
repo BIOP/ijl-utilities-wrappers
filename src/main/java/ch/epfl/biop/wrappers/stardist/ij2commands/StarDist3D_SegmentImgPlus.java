@@ -37,8 +37,8 @@ public class StarDist3D_SegmentImgPlus implements Command {
     @Override
     public void run() {
         StarDist3D_SegmentImgPlus_Advanced stardist3D = new StarDist3D_SegmentImgPlus_Advanced();
-        stardist3D.imp = imp ;
-        stardist3D.model_path = model_path ;
+        stardist3D.imp = imp;
+        stardist3D.model_path = model_path;
         stardist3D.run();
         stardist_imp = stardist3D.stardist_imp;
     }

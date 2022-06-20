@@ -14,30 +14,30 @@ import org.scijava.plugin.Plugin;
 import java.io.File;
 
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Segment Nuclei Adv.")
-public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
+public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command {
 
     @Parameter
     ImagePlus imp;
 
     @Parameter
-    int nuclei_channel = 1 ;
+    int nuclei_channel = 1;
 
     @Parameter
-    int diameter = 17 ;
+    int diameter = 17;
 
-    @Parameter ( label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)" )
-    double cellproba_threshold = 0.0 ;
+    @Parameter(label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)")
+    double cellproba_threshold = 0.0;
 
     @Parameter
-    double flow_threshold = 0.4 ;
+    double flow_threshold = 0.4;
 
-    @Parameter(choices = {"2D","3D"})
-    String dimensionMode ;
+    @Parameter(choices = {"2D", "3D"})
+    String dimensionMode;
 
-    @Parameter (type= ItemIO.OUTPUT)
-    ImagePlus cellpose_imp ;
+    @Parameter(type = ItemIO.OUTPUT)
+    ImagePlus cellpose_imp;
 
-    Boolean verbose=true ;
+    Boolean verbose = true;
 
     @Override
     public void run() {
@@ -49,26 +49,26 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command{
         nucleiCellpose.flow_threshold = flow_threshold;
 
         nucleiCellpose.model = "nuclei";
-        nucleiCellpose.nuclei_channel = nuclei_channel ;
-        nucleiCellpose.cyto_channel = -1 ;
+        nucleiCellpose.nuclei_channel = nuclei_channel;
+        nucleiCellpose.cyto_channel = -1;
 
-        nucleiCellpose.dimensionMode  = dimensionMode;
+        nucleiCellpose.dimensionMode = dimensionMode;
 
         nucleiCellpose.run();
 
-        cellpose_imp = nucleiCellpose.cellpose_imp ;
+        cellpose_imp = nucleiCellpose.cellpose_imp;
     }
 
 
     public static void main(final String... args) {
 
-            // create the ImageJ application context with all available services
-            final ImageJ ij = new ImageJ();
-            ij.ui().showUI();
-            ImagePlus imp = IJ.openImage("https://imagej.net/images/blobs.gif");
-            imp.show();
-            IJ.run(imp, "Invert LUT", "");
-            // will run on the current image
-            ij.command().run(Cellpose_SegmentNucleiImgPlusAdvanced.class, true);
+        // create the ImageJ application context with all available services
+        final ImageJ ij = new ImageJ();
+        ij.ui().showUI();
+        ImagePlus imp = IJ.openImage("https://imagej.net/images/blobs.gif");
+        imp.show();
+        IJ.run(imp, "Invert LUT", "");
+        // will run on the current image
+        ij.command().run(Cellpose_SegmentNucleiImgPlusAdvanced.class, true);
     }
 }

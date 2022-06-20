@@ -1,6 +1,6 @@
 package ch.epfl.biop.wrappers.stardist;
 
-abstract public class  StardistTask {
+abstract public class StardistTask {
 
     protected StardistTaskSettings settings;
 

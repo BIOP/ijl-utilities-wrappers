@@ -23,10 +23,10 @@ public class StarDist3D_SegmentImgPath implements Command {
     @Parameter
     File image_path;
 
-    @Parameter (style="directory")
+    @Parameter(style = "directory")
     File model_path;
 
-    @Parameter (style="directory")
+    @Parameter(style = "directory")
     File output_path;
 
     @Override
@@ -36,7 +36,7 @@ public class StarDist3D_SegmentImgPath implements Command {
 
         stardist3d.image_path = image_path;
         stardist3d.model_path = model_path;
-        stardist3d.output_path= output_path;
+        stardist3d.output_path = output_path;
 
         stardist3d.run();
 

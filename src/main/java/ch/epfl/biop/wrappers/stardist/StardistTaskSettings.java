@@ -2,12 +2,13 @@ package ch.epfl.biop.wrappers.stardist;
 
 public class StardistTaskSettings {
 
-
     String image_path;
     String model_path;
     String output_path;
-    int n_tiles = -1;
-    float pmin = (float) 3.0 ;
+    int x_tiles = -1;
+    int y_tiles = -1;
+    int z_tiles = -1;
+    float pmin = (float) 3.0;
     float pmax = (float) 99.8;
     float prob_thresh = -1;
     float nms_thresh = -1;
@@ -27,8 +28,18 @@ public class StardistTaskSettings {
         return this;
     }
 
-    public StardistTaskSettings setNTiles(int n_tiles) {
-        this.n_tiles = n_tiles;
+    public StardistTaskSettings setXTiles(int x_tiles) {
+        this.x_tiles = x_tiles;
+        return this;
+    }
+
+    public StardistTaskSettings setYTiles(int y_tiles) {
+        this.y_tiles = y_tiles;
+        return this;
+    }
+
+    public StardistTaskSettings setZTiles(int z_tiles) {
+        this.z_tiles = z_tiles;
         return this;
     }
 
