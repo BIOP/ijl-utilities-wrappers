@@ -7,12 +7,15 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import ij.IJ;
 import ij.Prefs;
+
+import static java.io.File.separatorChar;
 
 public class Cellpose {
 
@@ -102,12 +105,15 @@ public class Cellpose {
                 // Everything need to be in one big string
 
                 //Activate the conda env
-                conda_activate_cmd = Arrays.asList("conda", "activate", envDirPath );
-                conda_activate_cmd.add("&&");// to have a second line
+                //conda_activate_cmd = new ArrayList<String>(Arrays.asList("conda", "activate", envDirPath+separatorChar+"python.exe" ));
+                conda_activate_cmd = new ArrayList<String>(Arrays.asList(envDirPath+separatorChar+"python" ));
+                //conda_activate_cmd.add(";");// to have a second command
+
                 // cellpose and params
-                List<String> cellpose_args_cmd = Arrays.asList("python", "-m", "cellpose");
+                List<String> cellpose_args_cmd = new ArrayList<String>(Arrays.asList( "-m","cellpose"));
+                cellpose_args_cmd.addAll(options);
                 conda_activate_cmd.addAll(cellpose_args_cmd);
-                conda_activate_cmd.addAll(options);
+
                 // convert to a string
                 conda_activate_cmd = conda_activate_cmd.stream().map(s -> {
                     if (s.trim().contains(" "))
@@ -117,9 +123,7 @@ public class Cellpose {
 
                 // The last part needs to be sent as a single string, otherwise it does not run
                 String cmdString = conda_activate_cmd.toString().replace(",","");
-
                 cmd.add(cmdString.substring(1, cmdString.length()-1));
-
             }
 
         } else if (envType.equals("venv")) { // venv
@@ -134,7 +138,7 @@ public class Cellpose {
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
 
         Process p = pb.start();
-
+        System.out.println( "prout");
         Thread t = new Thread(Thread.currentThread().getName() + "-" + p.hashCode()) {
             @Override
             public void run() {
