@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import ij.IJ;
 import ij.Prefs;
@@ -77,9 +78,10 @@ public class Cellpose {
             if (IJ.isWindows()) {
                 //conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", envDirPath);
                 conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "CALL", "conda.bat", "activate", envDirPath);
-            } else if (IJ.isLinux() || IJ.isMacOSX()) {
+            } else if ( IJ.isMacOSX()) {
                 // https://docs.conda.io/projects/conda/en/4.6.1/user-guide/tasks/manage-environments.html#id2
-                // conda_activate_cmd = Arrays.asList("bash", "-c", "conda", "source","activate", envDirPath);
+                conda_activate_cmd = Arrays.asList("bash", "-c", "conda", "activate", envDirPath , ";", "python");
+            }else if (IJ.isLinux()){
                 throw new UnsupportedOperationException("Linux and MacOS not supported yet");
             }
             cmd.addAll(conda_activate_cmd);
@@ -91,13 +93,28 @@ public class Cellpose {
             System.out.println("Virtual env type unrecognized!");
         }
 
-        // After starting the env we can now use cellpose
-        cmd.add("&");// to have a second line
-        List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", "-m", "cellpose");
-        cmd.addAll(cellpose_args_cmd);
+        if (IJ.isWindows()) {
+            // After starting the env we can now use cellpose
+            cmd.add("&");// to have a second line
+            List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", "-m", "cellpose");
+            cmd.addAll(cellpose_args_cmd);
+            // input options
+            cmd.addAll(options);
 
-        // input options
-        cmd.addAll(options);
+        } else if ( IJ.isMacOSX()) {
+
+            options = options.stream().map(s -> {
+                if (s.trim().contains(" "))
+                    return "\"" + s.trim() + "\"";
+                return s;
+            }).collect(Collectors.toList());
+
+            // The last part needs to be sent as a single string, otherwise it does not run
+            String cmdString = options.toString().replace(",","");
+
+            cmd.add(cmdString.substring(1, cmdString.length()-1));
+
+        }
 
         System.out.println(cmd.toString().replace(",", ""));
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
