@@ -67,53 +67,67 @@ public class Cellpose {
 
     static void execute(List<String> options, Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
         List<String> cmd = new ArrayList<>();
+        List<String> start_cmd = null ;
 
         // Get the prefs about the env type
         String envType = Prefs.get(keyPrefix + "envType", Cellpose.envType);
+
+        // start terminal
+        if (IJ.isWindows()) {
+            start_cmd=  Arrays.asList("cmd.exe", "/C");
+        } else if ( IJ.isMacOSX()) {
+            start_cmd = Arrays.asList("bash", "-c");
+        }else if (IJ.isLinux()){
+            throw new UnsupportedOperationException("Linux not supported yet");
+        }
+        cmd.addAll( start_cmd );
+
 
         // Depending of the env type
         if (envType.equals("conda")) {
             List<String> conda_activate_cmd = null;
 
             if (IJ.isWindows()) {
-                //conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", envDirPath);
-                conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "CALL", "conda.bat", "activate", envDirPath);
+                // Activate the conda env
+                conda_activate_cmd = Arrays.asList("CALL", "conda.bat", "activate", envDirPath);
+                cmd.addAll(conda_activate_cmd);
+                // After starting the env we can now use cellpose
+                cmd.add("&");// to have a second line
+                List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", "-m", "cellpose");
+                cmd.addAll(cellpose_args_cmd);
+                // input options
+                cmd.addAll(options);
+
             } else if ( IJ.isMacOSX()) {
-                // https://docs.conda.io/projects/conda/en/4.6.1/user-guide/tasks/manage-environments.html#id2
-                conda_activate_cmd = Arrays.asList("bash", "-c", "conda", "activate", envDirPath , ";", "python");
-            }else if (IJ.isLinux()){
-                throw new UnsupportedOperationException("Linux and MacOS not supported yet");
+                // Everything need to be in one big string
+
+                //Activate the conda env
+                conda_activate_cmd = Arrays.asList("conda", "activate", envDirPath );
+                conda_activate_cmd.add("&&");// to have a second line
+                // cellpose and params
+                List<String> cellpose_args_cmd = Arrays.asList("python", "-m", "cellpose");
+                conda_activate_cmd.addAll(cellpose_args_cmd);
+                conda_activate_cmd.addAll(options);
+                // convert to a string
+                conda_activate_cmd = conda_activate_cmd.stream().map(s -> {
+                    if (s.trim().contains(" "))
+                        return "\"" + s.trim() + "\"";
+                    return s;
+                }).collect(Collectors.toList());
+
+                // The last part needs to be sent as a single string, otherwise it does not run
+                String cmdString = conda_activate_cmd.toString().replace(",","");
+
+                cmd.add(cmdString.substring(1, cmdString.length()-1));
+
             }
-            cmd.addAll(conda_activate_cmd);
 
         } else if (envType.equals("venv")) { // venv
             List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(envDirPath, "Scripts/activate").toString());
             cmd.addAll(venv_activate_cmd);
+
         } else {
             System.out.println("Virtual env type unrecognized!");
-        }
-
-        if (IJ.isWindows()) {
-            // After starting the env we can now use cellpose
-            cmd.add("&");// to have a second line
-            List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", "-m", "cellpose");
-            cmd.addAll(cellpose_args_cmd);
-            // input options
-            cmd.addAll(options);
-
-        } else if ( IJ.isMacOSX()) {
-
-            options = options.stream().map(s -> {
-                if (s.trim().contains(" "))
-                    return "\"" + s.trim() + "\"";
-                return s;
-            }).collect(Collectors.toList());
-
-            // The last part needs to be sent as a single string, otherwise it does not run
-            String cmdString = options.toString().replace(",","");
-
-            cmd.add(cmdString.substring(1, cmdString.length()-1));
-
         }
 
         System.out.println(cmd.toString().replace(",", ""));
