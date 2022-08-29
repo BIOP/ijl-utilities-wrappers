@@ -93,7 +93,7 @@ public class Cellpose {
 
         // After starting the env we can now use cellpose
         cmd.add("&");// to have a second line
-        List<String> cellpose_args_cmd = Arrays.asList("python", "-m", "cellpose");
+        List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", "-m", "cellpose");
         cmd.addAll(cellpose_args_cmd);
 
         // input options
