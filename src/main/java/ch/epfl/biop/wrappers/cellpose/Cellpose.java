@@ -7,7 +7,6 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -66,7 +65,7 @@ public class Cellpose {
         Prefs.set(keyPrefix + "version", version);
     }
 
-    private static final File NULL_FILE = new File((System.getProperty("os.name").startsWith("Windows") ? "NUL" : "/dev/null"));
+    //private static final File NULL_FILE = new File((System.getProperty("os.name").startsWith("Windows") ? "NUL" : "/dev/null"));
 
     static void execute(List<String> options, Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
         List<String> cmd = new ArrayList<>();
@@ -95,40 +94,39 @@ public class Cellpose {
                 conda_activate_cmd = Arrays.asList("CALL", "conda.bat", "activate", envDirPath);
                 cmd.addAll(conda_activate_cmd);
                 // After starting the env we can now use cellpose
-                cmd.add("&");// to have a second line
+                cmd.add("&");// to have a second command
                 List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", "-m", "cellpose");
                 cmd.addAll(cellpose_args_cmd);
                 // input options
                 cmd.addAll(options);
 
             } else if ( IJ.isMacOSX()) {
-                // Everything need to be in one big string
-
-                //Activate the conda env
-                //conda_activate_cmd = new ArrayList<String>(Arrays.asList("conda", "activate", envDirPath+separatorChar+"python.exe" ));
-                conda_activate_cmd = new ArrayList<String>(Arrays.asList(envDirPath+separatorChar+"python" ));
-                //conda_activate_cmd.add(";");// to have a second command
-
-                // cellpose and params
-                List<String> cellpose_args_cmd = new ArrayList<String>(Arrays.asList( "-m","cellpose"));
+                // instead of conda activate (so much headache!!!) specify the python to use
+                String python_path = envDirPath+separatorChar+"bin"+separatorChar+"python";
+                List<String> cellpose_args_cmd = new ArrayList<>(Arrays.asList( python_path , "-m","cellpose"));
                 cellpose_args_cmd.addAll(options);
-                conda_activate_cmd.addAll(cellpose_args_cmd);
 
                 // convert to a string
-                conda_activate_cmd = conda_activate_cmd.stream().map(s -> {
+                cellpose_args_cmd = cellpose_args_cmd.stream().map(s -> {
                     if (s.trim().contains(" "))
                         return "\"" + s.trim() + "\"";
                     return s;
                 }).collect(Collectors.toList());
-
                 // The last part needs to be sent as a single string, otherwise it does not run
-                String cmdString = conda_activate_cmd.toString().replace(",","");
+                String cmdString = cellpose_args_cmd.toString().replace(",","");
+
+                // finally add to cmd
                 cmd.add(cmdString.substring(1, cmdString.length()-1));
             }
 
         } else if (envType.equals("venv")) { // venv
-            List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(envDirPath, "Scripts/activate").toString());
-            cmd.addAll(venv_activate_cmd);
+
+            if (IJ.isWindows()) {
+                List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(envDirPath, "Scripts/activate").toString());
+                cmd.addAll(venv_activate_cmd);
+            } else if ( IJ.isMacOSX()) {
+                throw new UnsupportedOperationException("Mac not supported yet");
+            }
 
         } else {
             System.out.println("Virtual env type unrecognized!");
@@ -138,7 +136,6 @@ public class Cellpose {
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
 
         Process p = pb.start();
-        System.out.println( "prout");
         Thread t = new Thread(Thread.currentThread().getName() + "-" + p.hashCode()) {
             @Override
             public void run() {
