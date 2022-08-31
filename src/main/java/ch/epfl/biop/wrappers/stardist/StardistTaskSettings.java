@@ -1,7 +1,10 @@
 package ch.epfl.biop.wrappers.stardist;
 
 public class StardistTaskSettings {
+    final public static String MODE2D = "2D";
+    final public static String MODE3D = "3D";
 
+    String dimension = MODE3D;
     String image_path;
     String model_path;
     String output_path;
@@ -12,6 +15,11 @@ public class StardistTaskSettings {
     float pmax = (float) 99.8;
     float prob_thresh = -1;
     float nms_thresh = -1;
+
+    public StardistTaskSettings setMode2D(){
+        this.dimension = MODE2D;
+        return this;
+    }
 
     public StardistTaskSettings setImagePath(String image_path) {
         this.image_path = image_path;

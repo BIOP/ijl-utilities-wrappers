@@ -100,15 +100,17 @@ public class Stardist {
                 cmd.addAll(conda_activate_cmd);
                 // After starting the env we can now use cellpose
                 cmd.add("&");// to have a second command
-                List<String> args_cmd = Arrays.asList("stardist-predict3d");
+                List<String> args_cmd = Arrays.asList(options.get(0));
+                options.remove(0);
                 cmd.addAll(args_cmd);
                 // input options
                 cmd.addAll(options);
 
             } else if ( IJ.isMacOSX()) {
                 // instead of conda activate (so much headache!!!) specify the python to use
-                String python_path = stardistEnvDirectory+separatorChar+"bin"+separatorChar+"python";
-                List<String> cellpose_args_cmd = new ArrayList<>(Arrays.asList( python_path , "stardist-predict3d"));
+                String python_path = stardistEnvDirectory+separatorChar+"bin"+separatorChar+options.get(0);
+                options.remove(0);
+                List<String> cellpose_args_cmd = new ArrayList<>(Arrays.asList( python_path));
                 cellpose_args_cmd.addAll(options);
 
                 // convert to a string
