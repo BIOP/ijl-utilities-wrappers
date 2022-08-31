@@ -125,7 +125,7 @@ public class Cellpose {
                 List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(envDirPath, "Scripts/activate").toString());
                 cmd.addAll(venv_activate_cmd);
             } else if ( IJ.isMacOSX()) {
-                throw new UnsupportedOperationException("Mac not supported yet");
+                throw new UnsupportedOperationException("Mac not supported yet with virtual environment. Please try conda instead.");
             }
 
         } else {
