@@ -34,16 +34,16 @@ public class StarDist2D_SegmentImgPlus_Advanced implements Command {
     int y_tiles=-1;
 
 
-    @Parameter (style="format:#.0")
+    @Parameter (style = "format:#.00")
     float min_norm= (float) 3.0;
 
-    @Parameter (style="format:#.0")
+    @Parameter (style = "format:#.00")
     float max_norm = (float) 99.8;
 
-    @Parameter
+    @Parameter(style = "format:#.00")
     float prob_thresh = -1 ;
 
-    @Parameter
+    @Parameter(style = "format:#.00")
     float nms_thresh = -1;
 
     @Parameter(type = ItemIO.OUTPUT)
