@@ -91,6 +91,16 @@ To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you shoul
 
 You can find [instructions to install Cellpose environment on Cellpose repo](https://github.com/MouseLand/cellpose) which work just fine for **CPU ONLY**.
 
+Briefly , using line below
+>conda create -n cellpose
+> 
+>conda activate cellpose
+> 
+>pip install cellpose
+
+would do the job to have a working cellpose env (in CPU mode)!
+
+
 <h5> I.A.2.c. Linux </h5>
 
 **_Please contact us with successful procedure_**
@@ -112,7 +122,7 @@ You should not get an error.
   - Select EnvType : ``conda`` or ``venv``
   - Select version : ``0.6`` , ``0.7`` , ``1.0`` or ``2.0``.
 
-NOTE : on MAC, for a default anaconda install and a default cellpose install path should be something like: ``/opt/anaconda3/envs/cellpose`` .
+NOTE : on MacOS, for a default anaconda install and a default cellpose install path should be something like: ``/opt/anaconda3/envs/cellpose`` .
   
 <img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeSetup.png" title="CellposeSetup" width="50%" align="center">
 
@@ -227,6 +237,9 @@ You should not get an error and see available parameters
 - ``Plugins>BIOP>StarDist> StarDist setup...``
   - Select the path to your working StarDist virtual environment
   - Select EnvType : ``conda`` or ``venv``
+
+NOTE : on MacOS, for a default anaconda install and a default StarDist install, the path should be something like: ``/opt/anaconda3/envs/stardist_py37`` (following the example above).
+
 
 <h2> II. Using Fiji - StarDist3D wrapper</h2>
 
