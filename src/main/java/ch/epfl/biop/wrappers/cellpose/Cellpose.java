@@ -129,7 +129,7 @@ public class Cellpose {
             }
 
         } else {
-            System.out.println("Virtual env type unrecognized!");
+            throw new UnsupportedOperationException("Virtual env type unrecognized!");
         }
 
         System.out.println(cmd.toString().replace(",", ""));
