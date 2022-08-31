@@ -93,6 +93,11 @@ public class Stardist {
         if (stardistEnvType.equals("conda")) {
             List<String> conda_activate_cmd = null;
 
+            // Because of i) the way we call stardist on Mac AND ii) to be able to use 2d or 3D,
+            // options , set from DefaultStarDistTask contains as first element if we use stardist-precdict3D or 2D.
+            String stardist_cmd = options.get(0);
+            options.remove(0);
+
             if (IJ.isWindows()) {
                 // Activate the conda env
                 conda_activate_cmd = Arrays.asList("CALL", "conda.bat", "activate", stardistEnvDirectory);
@@ -100,16 +105,15 @@ public class Stardist {
                 cmd.addAll(conda_activate_cmd);
                 // After starting the env we can now use cellpose
                 cmd.add("&");// to have a second command
-                List<String> args_cmd = Arrays.asList(options.get(0));
-                options.remove(0);
+                List<String> args_cmd = Arrays.asList(stardist_cmd);
+
                 cmd.addAll(args_cmd);
                 // input options
                 cmd.addAll(options);
 
             } else if ( IJ.isMacOSX()) {
                 // instead of conda activate (so much headache!!!) specify the python to use
-                String python_path = stardistEnvDirectory+separatorChar+"bin"+separatorChar+options.get(0);
-                options.remove(0);
+                String python_path = stardistEnvDirectory+separatorChar+"bin"+separatorChar+stardist_cmd;
                 List<String> cellpose_args_cmd = new ArrayList<>(Arrays.asList( python_path));
                 cellpose_args_cmd.addAll(options);
 
