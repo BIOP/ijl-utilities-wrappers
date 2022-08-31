@@ -89,7 +89,7 @@ To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you shoul
 
 <h5> I.A.2.b. Mac </h5>
 
-**_Please contact us with successful procedure._**
+You can find [instructions to install Cellpose environment on Cellpose repo](https://github.com/MouseLand/cellpose) which work just fine for **CPU ONLY**.
 
 <h5> I.A.2.c. Linux </h5>
 
@@ -105,13 +105,15 @@ To test if you have a working Cellpose environment:
 You should not get an error.
 
 
-- Please use our update site **_(PTBIOP | https://biop.epfl.ch/Fiji-Update/)_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
+- Please use our update site **_( PTBIOP | https://biop.epfl.ch/Fiji-Update/ )_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
 - Restart Fiji
 - ``Plugins>BIOP>Cellpose> Define Env. & prefs.`` 
   - Select the path to your working Cellpose virtual environment 
   - Select EnvType : ``conda`` or ``venv``
   - Select version : ``0.6`` , ``0.7`` , ``1.0`` or ``2.0``.
 
+NOTE : on MAC, for a default anaconda install and a default cellpose install path should be something like: ``/opt/anaconda3/envs/cellpose`` .
+  
 <img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeSetup.png" title="CellposeSetup" width="50%" align="center">
 
 Congratulation you can now use Cellpose on your first image from Fiji! :)
@@ -189,6 +191,29 @@ To check if it works, you can:
 ($) This combination CUDA Toolkit and CuDNN are required to work with Tensorflow 1.15 (lastest available on Fiji) to train model for StarDist2D.
 Other combinations might work but were not tested (yet).
 
+<h5> I.A.2.b. MAC OSX </h5>
+
+The following procedure was validated on a Mac mini, M1 Chip 8-core CPU + 8-core GPU, 256GB SSD, 8GB Ram for **CPU** **ONLY** install.
+
+First create a conda env in python 3.7 (otherwise I got issue with tensorflow)
+>conda create -n stardist_py37 python=3.7
+
+Then activate the conda env
+>conda activate stardist_py37
+
+Install tensorflow
+>conda install tensorflow
+
+Install Stardist:
+>pip install stardist==0.8.3
+
+Finally,  I ran into an issue (OMP: Error #15: Initializing libomp.dylib, but found libomp.dylib already initialized)
+and I was lucky enough to found a fix using : 
+> conda install nomkl
+
+With all that I got a running conda env capable to run stardist-predict2D or -predict3D, in CPU.
+
+
 <h3> I.B. Fiji - StarDist3D wrapper </h3>
 
 **NOTE** The Fiji - StarDist3D wrapper is useless without a working StarDist3D environment, please see installation abobe (I.A.).
@@ -203,7 +228,7 @@ You should not get an error and see available parameters
   - Select the path to your working StarDist virtual environment
   - Select EnvType : ``conda`` or ``venv``
 
-<h2> II. Using Fiji - StarDist3d wrapper</h2>
+<h2> II. Using Fiji - StarDist3D wrapper</h2>
 
 The more "flexible" command is `StarDist3D... Advanced (own model)` which offers many parameters.
 

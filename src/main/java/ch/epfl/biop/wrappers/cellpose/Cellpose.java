@@ -9,9 +9,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import ij.IJ;
 import ij.Prefs;
+
+import static java.io.File.separatorChar;
 
 public class Cellpose {
 
@@ -62,48 +65,77 @@ public class Cellpose {
         Prefs.set(keyPrefix + "version", version);
     }
 
-    private static final File NULL_FILE = new File((System.getProperty("os.name").startsWith("Windows") ? "NUL" : "/dev/null"));
+    //private static final File NULL_FILE = new File((System.getProperty("os.name").startsWith("Windows") ? "NUL" : "/dev/null"));
 
     static void execute(List<String> options, Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
         List<String> cmd = new ArrayList<>();
+        List<String> start_cmd = null ;
 
         // Get the prefs about the env type
         String envType = Prefs.get(keyPrefix + "envType", Cellpose.envType);
+
+        // start terminal
+        if (IJ.isWindows()) {
+            start_cmd=  Arrays.asList("cmd.exe", "/C");
+        } else if ( IJ.isMacOSX()) {
+            start_cmd = Arrays.asList("bash", "-c");
+        }else if (IJ.isLinux()){
+            throw new UnsupportedOperationException("Linux not supported yet");
+        }
+        cmd.addAll( start_cmd );
+
 
         // Depending of the env type
         if (envType.equals("conda")) {
             List<String> conda_activate_cmd = null;
 
             if (IJ.isWindows()) {
-                //conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", envDirPath);
-                conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "CALL", "conda.bat", "activate", envDirPath);
-            } else if (IJ.isLinux() || IJ.isMacOSX()) {
-                // https://docs.conda.io/projects/conda/en/4.6.1/user-guide/tasks/manage-environments.html#id2
-                // conda_activate_cmd = Arrays.asList("bash", "-c", "conda", "source","activate", envDirPath);
-                throw new UnsupportedOperationException("Linux and MacOS not supported yet");
+                // Activate the conda env
+                conda_activate_cmd = Arrays.asList("CALL", "conda.bat", "activate", envDirPath);
+                cmd.addAll(conda_activate_cmd);
+                // After starting the env we can now use cellpose
+                cmd.add("&");// to have a second command
+                List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", "-m", "cellpose");
+                cmd.addAll(cellpose_args_cmd);
+                // input options
+                cmd.addAll(options);
+
+            } else if ( IJ.isMacOSX()) {
+                // instead of conda activate (so much headache!!!) specify the python to use
+                String python_path = envDirPath+separatorChar+"bin"+separatorChar+"python";
+                List<String> cellpose_args_cmd = new ArrayList<>(Arrays.asList( python_path , "-m","cellpose"));
+                cellpose_args_cmd.addAll(options);
+
+                // convert to a string
+                cellpose_args_cmd = cellpose_args_cmd.stream().map(s -> {
+                    if (s.trim().contains(" "))
+                        return "\"" + s.trim() + "\"";
+                    return s;
+                }).collect(Collectors.toList());
+                // The last part needs to be sent as a single string, otherwise it does not run
+                String cmdString = cellpose_args_cmd.toString().replace(",","");
+
+                // finally add to cmd
+                cmd.add(cmdString.substring(1, cmdString.length()-1));
             }
-            cmd.addAll(conda_activate_cmd);
 
         } else if (envType.equals("venv")) { // venv
-            List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(envDirPath, "Scripts/activate").toString());
-            cmd.addAll(venv_activate_cmd);
+
+            if (IJ.isWindows()) {
+                List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(envDirPath, "Scripts/activate").toString());
+                cmd.addAll(venv_activate_cmd);
+            } else if ( IJ.isMacOSX()) {
+                throw new UnsupportedOperationException("Mac not supported yet with virtual environment. Please try conda instead.");
+            }
+
         } else {
-            System.out.println("Virtual env type unrecognized!");
+            throw new UnsupportedOperationException("Virtual env type unrecognized!");
         }
-
-        // After starting the env we can now use cellpose
-        cmd.add("&");// to have a second line
-        List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", "-m", "cellpose");
-        cmd.addAll(cellpose_args_cmd);
-
-        // input options
-        cmd.addAll(options);
 
         System.out.println(cmd.toString().replace(",", ""));
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
 
         Process p = pb.start();
-
         Thread t = new Thread(Thread.currentThread().getName() + "-" + p.hashCode()) {
             @Override
             public void run() {

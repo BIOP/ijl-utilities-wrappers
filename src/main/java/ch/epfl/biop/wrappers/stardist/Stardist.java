@@ -12,6 +12,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
+import static java.io.File.separatorChar;
 
 public class Stardist {
 
@@ -36,39 +39,76 @@ public class Stardist {
 
     static void execute(List<String> options, Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
         List<String> cmd = new ArrayList<>();
+        List<String> start_cmd = null;
 
         // Get the prefs about the env type
         String stardistEnvDirectory = Prefs.get(keyPrefix + "Stardist_envDirPath", Stardist.stardistEnvDirectory);
         String stardistEnvType = Prefs.get(keyPrefix + "Stardist_envType", Stardist.stardistEnvType);
 
+        // start terminal
+        if (IJ.isWindows()) {
+            start_cmd = Arrays.asList("cmd.exe", "/C");
+        } else if (IJ.isMacOSX()) {
+            start_cmd = Arrays.asList("bash", "-c");
+        } else if (IJ.isLinux()) {
+            throw new UnsupportedOperationException("Linux not supported yet");
+        }
+        cmd.addAll(start_cmd);
+
+
         // Depending of the env type
         if (stardistEnvType.equals("conda")) {
             List<String> conda_activate_cmd = null;
 
+            // Because of i) the way we call stardist on Mac AND ii) to be able to use 2d or 3D,
+            // options , set from DefaultStarDistTask contains as first element if we use stardist-precdict3D or 2D.
+            String stardist_cmd = options.get(0);
+            options.remove(0);
+
             if (IJ.isWindows()) {
-                conda_activate_cmd = Arrays.asList("cmd.exe", "/C", "conda", "activate", stardistEnvDirectory);
-            } else if (IJ.isLinux() || IJ.isMacOSX()) {
-                // https://docs.conda.io/projects/conda/en/4.6.1/user-guide/tasks/manage-environments.html#id2
-                // conda_activate_cmd = Arrays.asList("bash", "-c", "conda", "source","activate", envDirPath);
-                throw new UnsupportedOperationException("Linux and MacOS not supported yet");
+                // Activate the conda env
+                conda_activate_cmd = Arrays.asList("CALL", "conda.bat", "activate", stardistEnvDirectory);
+                //conda_activate_cmd = Arrays.asList("conda", "activate", stardistEnvDirectory);
+                cmd.addAll(conda_activate_cmd);
+                // After starting the env we can now use cellpose
+                cmd.add("&");// to have a second command
+                List<String> args_cmd = Arrays.asList(stardist_cmd);
+
+                cmd.addAll(args_cmd);
+                // input options
+                cmd.addAll(options);
+
+            } else if (IJ.isMacOSX()) {
+                // instead of conda activate (so much headache!!!) specify the python to use
+                String python_path = stardistEnvDirectory + separatorChar + "bin" + separatorChar + stardist_cmd;
+                List<String> cellpose_args_cmd = new ArrayList<>(Arrays.asList(python_path));
+                cellpose_args_cmd.addAll(options);
+
+                // convert to a string
+                cellpose_args_cmd = cellpose_args_cmd.stream().map(s -> {
+                    if (s.trim().contains(" "))
+                        return "\"" + s.trim() + "\"";
+                    return s;
+                }).collect(Collectors.toList());
+                // The last part needs to be sent as a single string, otherwise it does not run
+                String cmdString = cellpose_args_cmd.toString().replace(",", "");
+
+                // finally add to cmd
+                cmd.add(cmdString.substring(1, cmdString.length() - 1));
             }
-            cmd.addAll(conda_activate_cmd);
 
         } else if (stardistEnvType.equals("venv")) { // venv
-            List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(stardistEnvDirectory, "Scripts/activate").toString());
-            cmd.addAll(venv_activate_cmd);
+
+            if (IJ.isWindows()) {
+                List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(stardistEnvDirectory, "Scripts/activate").toString());
+                cmd.addAll(venv_activate_cmd);
+            } else if (IJ.isMacOSX()) {
+                throw new UnsupportedOperationException("Mac not supported yet with virtual environment. Please try conda instead.");
+            }
+
         } else {
-            System.out.println("Virtual env type unrecognized!");
+            throw new UnsupportedOperationException("Virtual env type unrecognized!");
         }
-
-        // After starting the env we can now use stardist script
-        cmd.add("&");// to have a second line
-        List<String> stardist_args_cmd = Arrays.asList("stardist-predict3d");
-        cmd.addAll(stardist_args_cmd);
-
-        // input options
-        // input options
-        cmd.addAll(options);
 
         System.out.println(cmd.toString().replace(",", ""));
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
