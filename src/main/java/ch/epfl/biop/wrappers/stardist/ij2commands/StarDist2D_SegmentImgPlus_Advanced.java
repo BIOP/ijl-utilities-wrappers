@@ -18,8 +18,8 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>StarDist>StarDist3D... (Advanced) ")
-public class StarDist3D_SegmentImgPlus_Advanced implements Command {
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>StarDist>StarDist2D... (Advanced) ")
+public class StarDist2D_SegmentImgPlus_Advanced implements Command {
 
     @Parameter
     ImagePlus imp;
@@ -33,13 +33,11 @@ public class StarDist3D_SegmentImgPlus_Advanced implements Command {
     @Parameter
     int y_tiles=-1;
 
-    @Parameter
-    int z_tiles=-1;
 
-    @Parameter(style = "format:#.00")
+    @Parameter (style = "format:#.00")
     float min_norm= (float) 3.0;
 
-    @Parameter(style = "format:#.00")
+    @Parameter (style = "format:#.00")
     float max_norm = (float) 99.8;
 
     @Parameter(style = "format:#.00")
@@ -68,12 +66,14 @@ public class StarDist3D_SegmentImgPlus_Advanced implements Command {
         File stardistTempDir = new File(tempDir, "StarDistTemp");
         stardistTempDir.mkdir();
 
+        settings.setMode2D();
+
         // System.out.println( model_path.toString() );
         settings.setModelPath( model_path.toString() );
         settings.setOutputPath( stardistTempDir.toString() );
         if (x_tiles > -1) settings.setXTiles(x_tiles);
         if (y_tiles > -1) settings.setYTiles(y_tiles);
-        if (z_tiles > -1) settings.setZTiles(z_tiles);
+
         settings.setPmin (min_norm);
         settings.setPmax(max_norm);
         if (prob_thresh >-1) settings.setProbThresh(prob_thresh);
