@@ -105,13 +105,15 @@ To test if you have a working Cellpose environment:
 You should not get an error.
 
 
-- Please use our update site **_(PTBIOP | https://biop.epfl.ch/Fiji-Update/)_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
+- Please use our update site **_( PTBIOP | https://biop.epfl.ch/Fiji-Update/ )_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
 - Restart Fiji
 - ``Plugins>BIOP>Cellpose> Define Env. & prefs.`` 
   - Select the path to your working Cellpose virtual environment 
   - Select EnvType : ``conda`` or ``venv``
   - Select version : ``0.6`` , ``0.7`` , ``1.0`` or ``2.0``.
 
+NOTE : on MAC, for a default anaconda install and a default cellpose install path should be something like: ``/opt/anaconda3/envs/cellpose`` .
+  
 <img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeSetup.png" title="CellposeSetup" width="50%" align="center">
 
 Congratulation you can now use Cellpose on your first image from Fiji! :)
