@@ -29,6 +29,8 @@ public class DefaultStardistTask extends StardistTask {
                 options.add("" + settings.z_tiles);
                 options.add("" + settings.y_tiles);
                 options.add("" + settings.x_tiles);
+            } else {
+                System.out.println("Please specify all dimensions");
             }
         }else if (settings.dimension.equals(MODE2D)){
             if ((settings.x_tiles > -1) && (settings.y_tiles > -1) ) {
