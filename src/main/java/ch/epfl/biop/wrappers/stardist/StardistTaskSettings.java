@@ -21,6 +21,11 @@ public class StardistTaskSettings {
         return this;
     }
 
+    public StardistTaskSettings setMode3D(){
+        this.dimension = MODE3D;
+        return this;
+    }
+
     public StardistTaskSettings setImagePath(String image_path) {
         this.image_path = image_path;
         return this;
