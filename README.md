@@ -91,7 +91,7 @@ To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you shoul
 
 You can find [instructions to install Cellpose environment on Cellpose repo](https://github.com/MouseLand/cellpose) which work just fine for **CPU ONLY**.
 
-Briefly , using line below
+Briefly , using the lines below:
 >conda create -n cellpose
 > 
 >conda activate cellpose
