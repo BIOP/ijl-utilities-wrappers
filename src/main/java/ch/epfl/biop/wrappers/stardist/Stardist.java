@@ -48,11 +48,9 @@ public class Stardist {
         // start terminal
         if (IJ.isWindows()) {
             start_cmd = Arrays.asList("cmd.exe", "/C");
-        } else if (IJ.isMacOSX()) {
+        } else if (IJ.isMacOSX() || IJ.isLinux()) {
             start_cmd = Arrays.asList("bash", "-c");
-        } else if (IJ.isLinux()) {
-            throw new UnsupportedOperationException("Linux not supported yet");
-        }
+        } 
         cmd.addAll(start_cmd);
 
 
@@ -78,7 +76,7 @@ public class Stardist {
                 // input options
                 cmd.addAll(options);
 
-            } else if (IJ.isMacOSX()) {
+            } else if (IJ.isMacOSX() || IJ.isLinux()) {
                 // instead of conda activate (so much headache!!!) specify the python to use
                 String python_path = stardistEnvDirectory + separatorChar + "bin" + separatorChar + stardist_cmd;
                 List<String> cellpose_args_cmd = new ArrayList<>(Arrays.asList(python_path));
@@ -102,8 +100,8 @@ public class Stardist {
             if (IJ.isWindows()) {
                 List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(stardistEnvDirectory, "Scripts/activate").toString());
                 cmd.addAll(venv_activate_cmd);
-            } else if (IJ.isMacOSX()) {
-                throw new UnsupportedOperationException("Mac not supported yet with virtual environment. Please try conda instead.");
+            } else if (IJ.isMacOSX() || IJ.isLinux()) {
+                throw new UnsupportedOperationException("Mac/Unix not supported yet with virtual environment. Please try conda instead.");
             }
 
         } else {
