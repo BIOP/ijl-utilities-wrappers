@@ -11,19 +11,9 @@ public class DefaultStardistTask extends StardistTask {
         ArrayList<String> options = new ArrayList<>();
 
         if(settings.dimension.equals(MODE2D))
-            if (IJ.isWindows()) {
-                options.add("stardist-predict2D");
-            }
-            else {
-                options.add("stardist-predict2d");  
-            }
+            options.add("stardist-predict2d");
         else {
-            if(IJ.isWindows()) {
-                options.add("stardist-predict3D"); 
-            }
-            else {
-                options.add("stardist-predict3d");
-            }
+            options.add("stardist-predict3d");
         }
         options.add("-i");
         options.add("" + settings.image_path);
