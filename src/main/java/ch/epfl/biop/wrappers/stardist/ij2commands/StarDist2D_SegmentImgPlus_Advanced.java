@@ -33,7 +33,6 @@ public class StarDist2D_SegmentImgPlus_Advanced implements Command {
     @Parameter
     int y_tiles=-1;
 
-
     @Parameter (style = "format:#.00")
     float min_norm= (float) 3.0;
 
@@ -123,7 +122,7 @@ public class StarDist2D_SegmentImgPlus_Advanced implements Command {
         ImagePlus[] impsArray = imps.toArray(new ImagePlus[0]);
         stardist_imp = Concatenator.run(impsArray);
         stardist_imp.setCalibration(cal);
-        stardist_imp.setTitle(imp.getShortTitle() + "-stardist3D");
+        stardist_imp.setTitle(imp.getShortTitle() + "-stardist2D");
 
         // Delete the created files and folder
         for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
