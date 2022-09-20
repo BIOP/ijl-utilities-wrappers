@@ -1,6 +1,5 @@
 package ch.epfl.biop.wrappers.cellpose.ij2commands;
 
-import ij.IJ;
 import ij.ImagePlus;
 
 import java.io.File;
@@ -67,7 +66,7 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command {
     boolean cluster;
 
     @Parameter(required = false, label = "add more parameters")
-    String additionnal_flags;
+    String additional_flags = "";
 
     @Parameter(type = ItemIO.OUTPUT)
     ImagePlus cellpose_imp;
@@ -106,7 +105,7 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command {
         cellpose.stitch_threshold = stitch_threshold;
         cellpose.omni = omni;
         cellpose.cluster = cluster;
-        cellpose.additionnal_flags = additionnal_flags;
+        cellpose.additional_flags = additional_flags;
 
         cellpose.run();
 
