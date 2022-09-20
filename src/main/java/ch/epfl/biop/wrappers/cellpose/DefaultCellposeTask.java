@@ -80,7 +80,7 @@ public class DefaultCellposeTask extends CellposeTask {
         if (settings.useResample && !settings.version.equals("1.0") && !settings.version.equals("2.0"))
             options.add("--resample");
 
-        if (settings.additional_flags != null) {
+        if (settings.additional_flags != "") {
             String[] flagsList = settings.additional_flags.split(",");
 
             if (flagsList.length > 1) {

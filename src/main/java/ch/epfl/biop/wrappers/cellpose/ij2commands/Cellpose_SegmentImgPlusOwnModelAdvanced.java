@@ -4,7 +4,6 @@ import ch.epfl.biop.wrappers.cellpose.CellposeTaskSettings;
 import ch.epfl.biop.wrappers.cellpose.DefaultCellposeTask;
 import ij.IJ;
 import ij.ImagePlus;
-import ij.ImageStack;
 import ij.io.FileSaver;
 import ij.measure.Calibration;
 import ij.plugin.Concatenator;
@@ -90,7 +89,7 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
     boolean cluster;
 
     @Parameter(required = false, label = "add more parameters")
-    String additionnal_flags;
+    String additional_flags = "";
 
     @Parameter(type = ItemIO.OUTPUT)
     ImagePlus cellpose_imp;
@@ -181,7 +180,7 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
         settings.setStitchThreshold(stitch_threshold);
         settings.setOmni(omni);
         settings.setCluster(cluster);
-        settings.setAdditionalFlags(additionnal_flags);
+        settings.setAdditionalFlags(additional_flags);
 
         if (dimensionMode.equals("3D")) {
             if (imp.getNSlices() > 1) settings.setDo3D();

@@ -26,7 +26,7 @@ public class CellposeTaskSettings {
     String version;
     boolean omni = false;
     boolean cluster = false;
-    String additional_flags;
+    String additional_flags = "";
     double diam_threshold;
 
     public CellposeTaskSettings setDatasetDir(String datasetDir) {
