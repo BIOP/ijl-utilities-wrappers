@@ -120,7 +120,7 @@ public class Cellpose {
         } else if (envType.equals("venv")) { // venv
 
             if (IJ.isWindows()) {
-                List<String> venv_activate_cmd = Arrays.asList("cmd.exe", "/C", new File(envDirPath, "Scripts/activate").toString());
+                List<String> venv_activate_cmd = Arrays.asList(new File(envDirPath, "Scripts/activate").toString());
                 cmd.addAll(venv_activate_cmd);
             } else if ( IJ.isMacOSX() || IJ.isLinux()) {
                 throw new UnsupportedOperationException("Mac/Unix not supported yet with virtual environment. Please try conda instead.");
