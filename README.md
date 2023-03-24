@@ -155,6 +155,10 @@ Briefly, **StarDist3D** wrapper sequentially:
 - opens the created label image in Fiji
 - cleans the temporary folder
 
+
+**BIOP StarDist3D model**(s) (and training dataset) can be found on the [zenodo repository](https://zenodo.org/record/6645978#.ZB1L8nbMIQ8)
+
+
 ## I. Installation
 
 You can have a look to the [StarDist installation](https://github.com/stardist/stardist#installation), but for now it works from a branch of the project (@Scripts).
