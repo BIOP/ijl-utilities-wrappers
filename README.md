@@ -116,7 +116,7 @@ You should not get an error.
 
 - Please use our update site **_( PTBIOP | https://biop.epfl.ch/Fiji-Update/ )_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
 - Restart Fiji
-- ``Plugins>BIOP>Cellpose> Define Env. & prefs.`` 
+- ``Plugins>BIOP>Cellpose>Cellpose setup...`` 
   - Select the path to your working Cellpose virtual environment 
   - Select EnvType : ``conda`` or ``venv``
   - Select version : ``0.6`` , ``0.7`` , ``1.0`` or ``2.0``.
