@@ -227,13 +227,14 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
                 ImagePlus cellpose_t_imp = IJ.openImage(cellpose_masks_paths.get(t_idx - 1).toString());
                 // make sure to make a 16-bit imp
                 // (issue with time-lapse, first frame have less than 254 objects and latest have more)
-                if (cellpose_t_imp.getBitDepth() != 16) {
+                if (cellpose_t_imp.getBitDepth() != 32 ) {
                     if (cellpose_t_imp.getNSlices() > 1) {
-                        cellpose_t_imp.getStack().setBitDepth(16);
+                        cellpose_t_imp.getStack().setBitDepth(32);
                     } else {
-                        cellpose_t_imp.setProcessor(cellpose_t_imp.getProcessor().convertToShort(false));
+                        cellpose_t_imp.setProcessor(cellpose_t_imp.getProcessor().convertToFloat());
                     }
                 }
+
                 imps.add(cellpose_t_imp.duplicate());
             }
             // Convert the ArrayList to an imp
