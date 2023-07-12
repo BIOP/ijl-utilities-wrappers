@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.scijava</groupId>
 		<artifactId>pom-scijava</artifactId>
-		<version>33.2.0</version>
+		<version>36.0.0</version>
 		<relativePath />
 	</parent>
 
@@ -133,7 +133,7 @@
 		<main-class>ch.epfl.biop.DummyCommand</main-class>
 		<license.licenseName>N/A</license.licenseName>
 		<license.copyrightOwners>N/A</license.copyrightOwners>
-		<scijava.app.directory>C:\Fiji.app</scijava.app.directory>
+		<!-- <scijava.app.directory>C:\Fiji.app</scijava.app.directory> -->
 
 		<!-- NB: Deploy releases to the SciJava Maven repository. -->
 		<releaseProfiles>sign,deploy-to-scijava</releaseProfiles>
