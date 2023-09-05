@@ -33,10 +33,6 @@ You can find [instructions to install Cellpose environment on Cellpose repo](htt
 
 Please find below some  information, provided "as is" without any warranties of successful installation, nor further support.
 
-#### I.A.1. More on venv installation
-
-Please [find here a very detailed installation procedure with venv](https://c4science.ch/w/bioimaging_and_optics_platform_biop/computers-servers/software/gpu-deep-learning/virtualenv/).
-
 #### I.A.2. More on conda installation
 
 ##### I.A.2.a. Windows
@@ -87,7 +83,7 @@ To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you shoul
 
 **(§§)** : a yml file subtility I learnt on this journey, you can enforce a certain channel_name::package_name
 
-##### I.A.2.b. Mac
+##### I.A.2.b. Mac 
 
 You can find [instructions to install Cellpose environment on Cellpose repo](https://github.com/MouseLand/cellpose) which work just fine for **CPU ONLY**.
 
@@ -103,7 +99,7 @@ would do the job to have a working cellpose env (in CPU mode)!
 
 ##### I.A.2.c. Linux
 
-**_Please contact us with successful procedure_**
+Installation following Mac instructions worked for a couple of testers (no support)
 
 
 ### I.B. Fiji - Cellpose wrapper
@@ -122,7 +118,7 @@ You should not get an error.
   - Select EnvType : ``conda`` or ``venv``
   - Select version : ``0.6`` , ``0.7`` , ``1.0`` or ``2.0``.
 
-NOTE : on MacOS, for a default anaconda install and a default cellpose install path should be something like: ``/opt/anaconda3/envs/cellpose`` .
+**NOTE** : on MacOS, for a default anaconda install and a default cellpose install path should be something like: ``/opt/anaconda3/envs/cellpose`` .
   
 <img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeSetup.png" title="CellposeSetup" width="50%" align="center">
 
