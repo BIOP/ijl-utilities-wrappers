@@ -5,6 +5,7 @@
 /.project
 /.idea/
 /target/
+/__pycache__/
 .idea
 travisify.tmp.bak
 pom.xml.releaseBackup
