@@ -1,7 +1,9 @@
 #!/usr/bin/env python
-# This simple python file is added in order to add a command line interface to the DeepSlice environment
 
 import argparse
+
+from DeepSlice.read_and_write import QuickNII_functions
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="This is a command line interface to DeepSlice (https://github.com/PolarBean/DeepSlice)")
@@ -24,6 +26,8 @@ def parse_arguments():
     # enforce_index_spacing
     return parser.parse_args()
 
+
+# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     args = parse_arguments()
     from DeepSlice import DSModel
@@ -41,7 +45,15 @@ if __name__ == '__main__':
     if args.enforce_index_spacing is not None:
         model.enforce_index_spacing(section_thickness=args.enforce_index_spacing)
     # now we save which will produce a json file which can be placed in the same directory as your images and then opened with QuickNII.
+
+    # saves json only
     if args.output_folder is not None:
-        model.save_predictions(args.output_folder)
+        filename = args.output_folder
     else:
-        model.save_predictions(args.input_folder + 'results')
+        filename = args.input_folder + 'results'
+
+    target = model.config["target_volumes"][model.species]["name"]
+    aligner = model.config["DeepSlice_version"]["prerelease"]
+    QuickNII_functions.write_QUINT_JSON(
+        df=model.predictions, filename=filename, aligner=aligner, target=target
+    )
