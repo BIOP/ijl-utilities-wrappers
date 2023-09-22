@@ -42,6 +42,7 @@ public class DeepSlice {
     }
 
     public static void setVersion(String version) {
+        DeepSlice.version = version; // RAAAH!
         Prefs.set(keyPrefix + "version", version);
     }
 
