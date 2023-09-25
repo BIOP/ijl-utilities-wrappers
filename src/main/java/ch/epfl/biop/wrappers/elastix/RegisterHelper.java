@@ -159,9 +159,10 @@ public class RegisterHelper extends ConvertibleObject {
     }
 
     public void align(ElastixTask align) throws Exception {
+        ElastixTaskSettings settings = new ElastixTaskSettings();
         if (!alignTaskSet) {
             if (checkParametersForAlignement()) {
-                ElastixTaskSettings settings = new ElastixTaskSettings();
+
                 ElastixMultiFile emfMoving = ((ElastixMultiFile) movingImage.to(ElastixMultiFile.class));
                 for (File f : emfMoving.files) {
                     settings.movingImage(() -> f.getAbsolutePath());
@@ -183,15 +184,15 @@ public class RegisterHelper extends ConvertibleObject {
                 if (this.initialTransformFilePath!=null) {
                     settings.addInitialTransform(initialTransformFilePath);
                 }
-                align.setSettings(settings);
                 alignTaskSet = true;
             } else {
                 align = null;
+                alignTaskSet = false;
             }
         }
         if (alignTaskSet) {
             assert align != null;
-            align.run();
+            align.run(settings);
         }
     }
     

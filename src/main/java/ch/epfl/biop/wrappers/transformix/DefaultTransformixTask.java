@@ -2,9 +2,9 @@ package ch.epfl.biop.wrappers.transformix;
 
 import java.util.ArrayList;
 
-public class DefaultTransformixTask extends TransformixTask {
+public class DefaultTransformixTask implements TransformixTask {
 
-    public void run() throws Exception {
+    public void run(TransformixTaskSettings settings) throws Exception {
         ArrayList<String> options = new ArrayList<>();
         options.add("-threads");options.add(""+settings.nThreads);
         if (!settings.imagePathSupplier.get().equals("")) {

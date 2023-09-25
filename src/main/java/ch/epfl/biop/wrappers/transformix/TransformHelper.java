@@ -176,10 +176,11 @@ public class TransformHelper {
     }
     
     public void transform(TransformixTask task) {
+        TransformixTaskSettings transformSettings = new TransformixTaskSettings().transform(this.transformFile)
+                .outFolder(this.outputDir);
         if (!transformTaskSet) {
             if (checkParametersForTransformation()) {
-                TransformixTaskSettings transformSettings = new TransformixTaskSettings().transform(this.transformFile)
-                        .outFolder(this.outputDir);
+
 
                 if (verbose) transformSettings.verbose();
 
@@ -194,15 +195,16 @@ public class TransformHelper {
                 }
                 
                 //transform = new TransformixTask(transformSettings);//transformBuilder.build();
-                task.setSettings(transformSettings);
+                //task.setSettings(transformSettings);
                 transformTaskSet = true;
             } else {
                 task = null;
+                transformTaskSet = false;
             }
         }
         if (transformTaskSet) {
             try {
-                task.run();
+                task.run(transformSettings);
             } catch (Exception e) {
                 e.printStackTrace();
             }

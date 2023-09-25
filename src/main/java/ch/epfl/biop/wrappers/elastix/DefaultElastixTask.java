@@ -1,14 +1,12 @@
 package ch.epfl.biop.wrappers.elastix;
 
-import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class DefaultElastixTask extends ElastixTask {
+public class DefaultElastixTask implements ElastixTask {
 
     @Override
-    public void run() throws Exception {
+    public void run(ElastixTaskSettings settings) throws Exception {
         ArrayList<String> options = new ArrayList<>();
         options.add("-threads");options.add(""+settings.nThreads);
         if (settings.fixedImagePathSuppliers.size()==1) {
