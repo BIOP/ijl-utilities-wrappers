@@ -26,18 +26,19 @@ public class DeepSlice {
 
     static String defaultEnvDirPath = "C:/Users/username/.conda/envs/deepslice";//"E:/conda-envs/CellPoseGPU3";
     static String defaultEnvType = "conda";
-    static String defaultVersion = "1.1";
+    static String defaultVersion = "1.1.5";
 
     public static String envDirPath = Prefs.get(keyPrefix + "envDirPath", defaultEnvDirPath);
     public static String envType = Prefs.get(keyPrefix + "envType", defaultEnvType);
     public static String version = Prefs.get(keyPrefix + "version", defaultVersion);
 
     public static void setEnvDirPath(File f) {
-        envDirPath = f.getAbsolutePath();
+        DeepSlice.envDirPath = f.getAbsolutePath();
         Prefs.set(keyPrefix + "envDirPath", envDirPath);
     }
 
     public static void setEnvType(String envType) {
+        DeepSlice.envType = envType;
         Prefs.set(keyPrefix + "envType", envType);
     }
 
