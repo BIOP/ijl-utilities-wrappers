@@ -1,5 +1,6 @@
 package ch.epfl.biop.wrappers.stardist;
 
+import ch.epfl.biop.wrappers.Conda;
 import ij.IJ;
 import ij.Prefs;
 
@@ -65,7 +66,7 @@ public class Stardist {
 
             if (IJ.isWindows()) {
                 // Activate the conda env
-                conda_activate_cmd = Arrays.asList("CALL", "conda.bat", "activate", stardistEnvDirectory);
+                conda_activate_cmd = Arrays.asList("CALL", Conda.getWindowsCondaCommand(), "activate", stardistEnvDirectory);
                 //conda_activate_cmd = Arrays.asList("conda", "activate", stardistEnvDirectory);
                 cmd.addAll(conda_activate_cmd);
                 // After starting the env we can now use cellpose

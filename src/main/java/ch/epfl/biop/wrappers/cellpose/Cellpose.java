@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import ch.epfl.biop.wrappers.Conda;
 import ij.IJ;
 import ij.Prefs;
 
@@ -89,7 +90,7 @@ public class Cellpose {
 
             if (IJ.isWindows()) {
                 // Activate the conda env
-                conda_activate_cmd = Arrays.asList("CALL", "conda.bat", "activate", envDirPath);
+                conda_activate_cmd = Arrays.asList("CALL", Conda.getWindowsCondaCommand(), "activate", envDirPath);
                 cmd.addAll(conda_activate_cmd);
                 // After starting the env we can now use cellpose
                 cmd.add("&");// to have a second command
