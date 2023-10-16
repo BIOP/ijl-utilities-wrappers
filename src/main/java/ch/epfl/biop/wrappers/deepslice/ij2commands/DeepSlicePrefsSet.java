@@ -21,14 +21,14 @@ public class DeepSlicePrefsSet implements Command {
     @Parameter
     LogService ls;
 
-    @Parameter(style = "directory")
-    File deepSliceEnvDirectory = new File(Cellpose.envDirPath);
+    @Parameter(style = "directory", persist = false)
+    File deepSliceEnvDirectory = new File(DeepSlice.envDirPath);
 
     //@Parameter(required = true, choices = {"conda", "venv"})
     String envType = "conda";//DeepSlice.envType;
 
 
-    @Parameter(choices = {"1.1.5"})
+    @Parameter(choices = {"1.1.5"}, persist = false)
     String version = DeepSlice.version;
 
     @Override

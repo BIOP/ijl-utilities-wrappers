@@ -19,25 +19,25 @@ public class CellposePrefsSet implements Command {
     @Parameter
     LogService ls;
 
-    @Parameter(required = true, style = "directory")
+    @Parameter(required = true, style = "directory", persist = false)
     File cellposeEnvDirectory = new File(Cellpose.envDirPath);
 
-    @Parameter(required = true, choices = {"conda", "venv"})
+    @Parameter(required = true, choices = {"conda", "venv"}, persist = false)
     String envType = Cellpose.envType;
 
-    @Parameter
+    @Parameter(persist = false)
     Boolean useGpu = Cellpose.useGpu;
 
-    @Parameter
+    @Parameter(persist = false)
     Boolean useMxnet = Cellpose.useMxnet;
 
-    @Parameter
+    @Parameter(persist = false)
     Boolean useFastMode = Cellpose.useFastMode;
 
-    @Parameter
+    @Parameter(persist = false)
     Boolean useResample = Cellpose.useResample;
 
-    @Parameter(required = true, choices = {"0.6", "0.7", "1.0", "2.0"})
+    @Parameter(choices = {"0.6", "0.7", "1.0", "2.0"}, persist = false)
     String version = Cellpose.version;
 
     @Override

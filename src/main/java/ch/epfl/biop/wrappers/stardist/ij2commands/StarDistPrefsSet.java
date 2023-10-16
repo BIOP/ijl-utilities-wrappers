@@ -14,10 +14,10 @@ public class StarDistPrefsSet implements Command {
     @Parameter
     LogService ls;
 
-    @Parameter(required = true, style = "directory")
+    @Parameter(style = "directory", persist = false)
     File stardistEnvDirectory = new File(Stardist.stardistEnvDirectory);
 
-    @Parameter(required = true, choices = {"conda", "venv"})
+    @Parameter(choices = {"conda", "venv"}, persist = false)
     String envType = Stardist.stardistEnvType;
 
     @Override
