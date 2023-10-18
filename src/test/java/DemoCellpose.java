@@ -69,7 +69,7 @@ public class DemoCellpose {
                 "imp",nuc3D_imp,
                 "nuclei_channel",1,
                 "diameter" , 30,
-                "cellproba_threshold", 0.0,
+                "cellprob_threshold", 0.0,
                 "flow_threshold" , 0.4,
                 "dimensionMode","3D").get().getOutput("cellpose_imp");
         nucLabel3D_imp.show();
@@ -85,7 +85,7 @@ public class DemoCellpose {
         ImagePlus cytoLabel_imp = (ImagePlus) ij.command().run(Cellpose_SegmentImgPlusAdvanced.class, true,
                 "imp",cyto_3D_imp,
                 "diameter" , 55,
-                "cellproba_threshold", 0.0,
+                "cellprob_threshold", 0.0,
                 "flow_threshold" , 0.4,
                 "model" , "cyto (no nuclei)",
                 "nuclei_channel",-1,
@@ -100,7 +100,7 @@ public class DemoCellpose {
         ImagePlus cytoLabel2chs_imp = (ImagePlus) ij.command().run(Cellpose_SegmentImgPlusAdvanced.class, true,
                 "imp",imp,
                 "diameter" , 55,
-                "cellproba_threshold", 0.0,
+                "cellprob_threshold", 0.0,
                 "flow_threshold" , 0.4,
                 "model" , "cyto",
                 "nuclei_channel",1,

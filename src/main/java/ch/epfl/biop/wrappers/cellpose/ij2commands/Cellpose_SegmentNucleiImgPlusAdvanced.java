@@ -25,8 +25,8 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command {
     @Parameter
     int diameter = 17;
 
-    @Parameter(label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)")
-    double cellproba_threshold = 0.0;
+    @Parameter(label = "cellprob_threshold / mask_threshold (v0.6 / v0.7)")
+    double cellprob_threshold = 0.0;
 
     @Parameter
     double flow_threshold = 0.4;
@@ -45,7 +45,7 @@ public class Cellpose_SegmentNucleiImgPlusAdvanced implements Command {
         Cellpose_SegmentImgPlusAdvanced nucleiCellpose = new Cellpose_SegmentImgPlusAdvanced();
         nucleiCellpose.imp = imp;
         nucleiCellpose.diameter = diameter;
-        nucleiCellpose.cellproba_threshold = cellproba_threshold;
+        nucleiCellpose.cellprob_threshold = cellprob_threshold;
         nucleiCellpose.flow_threshold = flow_threshold;
 
         nucleiCellpose.model = "nuclei";
