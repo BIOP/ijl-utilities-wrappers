@@ -21,10 +21,10 @@ public class BiopWrappersSet implements Command {
 	@Parameter
 	LogService ls;
 	
-	@Parameter(required=false)
+	@Parameter(required=false, persist = false)
 	File elastixExecutable = new File(Elastix.exePath);
 	
-	@Parameter(required=false)
+	@Parameter(required=false, persist = false)
 	File transformixExecutable = new File(Transformix.exePath);
 	
 	@Override
