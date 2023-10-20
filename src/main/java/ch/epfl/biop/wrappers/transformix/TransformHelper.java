@@ -180,7 +180,8 @@ public class TransformHelper {
                 .outFolder(this.outputDir);
         if (!transformTaskSet) {
             if (checkParametersForTransformation()) {
-
+                transformSettings = new TransformixTaskSettings().transform(this.transformFile)
+                        .outFolder(this.outputDir); // THIS SHOULD BE HERE!!!
 
                 if (verbose) transformSettings.verbose();
 
