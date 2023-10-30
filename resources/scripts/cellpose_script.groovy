@@ -12,7 +12,7 @@ IJ.runMacro("close('\\\\Others');")
 def cellCellpose = new Cellpose_SegmentImgPlusOwnModelAdvanced();
 cellCellpose.imp = imp;
 cellCellpose.diameter = 50;
-//cellCellpose.cellproba_threshold = 0;
+//cellCellpose.cellprob_threshold = 0;
 //cellCellpose.flow_threshold = 0.4;
 cellCellpose.model = "cyto2";
 cellCellpose.nuclei_channel = 2 ;

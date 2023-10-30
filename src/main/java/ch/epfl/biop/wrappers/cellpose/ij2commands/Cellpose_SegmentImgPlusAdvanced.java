@@ -27,8 +27,8 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command {
     @Parameter(label = "Diameter (default 17 for nuclei, 30 for cyto,0 for automatic detection)")
     int diameter = 30;
 
-    @Parameter(label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)")
-    double cellproba_threshold = 0.0;
+    @Parameter(label = "cellprob_threshold / mask_threshold (v0.6 / v0.7)")
+    double cellprob_threshold = 0.0;
 
     @Parameter(label = "flow_threshold (default 0.4)")
     double flow_threshold = 0.4;
@@ -93,7 +93,7 @@ public class Cellpose_SegmentImgPlusAdvanced implements Command {
         Cellpose_SegmentImgPlusOwnModelAdvanced cellpose = new Cellpose_SegmentImgPlusOwnModelAdvanced();
         cellpose.imp = imp;
         cellpose.diameter = diameter;
-        cellpose.cellproba_threshold = cellproba_threshold;
+        cellpose.cellprob_threshold = cellprob_threshold;
         cellpose.flow_threshold = flow_threshold;
         cellpose.anisotropy = anisotropy;
         cellpose.diam_threshold = diam_threshold;
