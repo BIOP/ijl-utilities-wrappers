@@ -11,7 +11,7 @@
 
 	<groupId>ch.epfl.biop</groupId>
 	<artifactId>ijl-utilities-wrappers</artifactId>
-	<version>0.9.5-SNAPSHOT</version>
+	<version>0.9.5</version>
 
 	<name>Wrappers for native shell task execution + ROIs and images conversion</name>
 	<description>Wrappers for ImageJ: Elastix, Transformix, Ilastik (add next here). </description>
@@ -107,7 +107,7 @@
 		<connection>scm:git:https://github.com/BIOP/ijl-utilities-wrappers</connection>
 		<developerConnection>scm:git:git@github.com:BIOP/ijl-utilities-wrappers</developerConnection>
 		<url>https://github.com/BIOP/ijl-utilities-wrappers</url>
-    <tag>HEAD</tag>
+    <tag>ijl-utilities-wrappers-0.9.5</tag>
   </scm>
 
 	<issueManagement>
