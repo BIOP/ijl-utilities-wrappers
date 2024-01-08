@@ -43,7 +43,11 @@ if __name__ == '__main__':
     # alternatively if you know the precise spacing (ie; 1, 2, 4, indicates that section 3 has been left out of the series) Then you can use
     # Furthermore if you know the exact section thickness in microns this can be included instead of None
     if args.enforce_index_spacing is not None:
-        model.enforce_index_spacing(section_thickness=args.enforce_index_spacing)
+        if args.enforce_index_spacing=="None":
+            model.enforce_index_spacing(section_thickness=None)
+        else:
+            model.enforce_index_spacing(section_thickness=float(args.enforce_index_spacing))
+
     # now we save which will produce a json file which can be placed in the same directory as your images and then opened with QuickNII.
 
     # saves json only

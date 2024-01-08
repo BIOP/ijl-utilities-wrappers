@@ -6,6 +6,8 @@ package ch.epfl.biop.wrappers.deepslice;
 public class DeepSliceTaskSettings {
     public String model;
     public String input_folder, output_folder;
-    public boolean ensemble, section_numbers, propagate_angles, enforce_index_order;
-    public int enforce_index_spacing;
+    public boolean ensemble, section_numbers, propagate_angles;
+    public boolean enforce_index_order;
+    public boolean use_enforce_index_spacing;
+    public String enforce_index_spacing;
 }

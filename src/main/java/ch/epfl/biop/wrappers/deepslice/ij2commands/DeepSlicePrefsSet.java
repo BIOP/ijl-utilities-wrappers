@@ -1,7 +1,6 @@
 package ch.epfl.biop.wrappers.deepslice.ij2commands;
 
 import ch.epfl.biop.wrappers.BiopWrappersCheck;
-import ch.epfl.biop.wrappers.cellpose.Cellpose;
 import ch.epfl.biop.wrappers.deepslice.DeepSlice;
 import org.scijava.command.Command;
 import org.scijava.log.LogService;
@@ -24,19 +23,13 @@ public class DeepSlicePrefsSet implements Command {
     @Parameter(style = "directory", persist = false)
     File deepSliceEnvDirectory = new File(DeepSlice.envDirPath);
 
-    //@Parameter(required = true, choices = {"conda", "venv"})
-    String envType = "conda";//DeepSlice.envType;
-
-
-    @Parameter(choices = {"1.1.5"}, persist = false)
+    @Parameter(choices = {"1.1.5.1"}, persist = false)
     String version = DeepSlice.version;
 
     @Override
     public void run() {
 
         DeepSlice.setEnvDirPath(deepSliceEnvDirectory);
-        DeepSlice.setEnvType(envType);
-
         DeepSlice.setVersion(version);
 
         if (ls != null) {

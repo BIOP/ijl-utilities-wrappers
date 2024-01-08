@@ -21,9 +21,9 @@ public class DefaultDeepSliceTask extends DeepSliceTask {
         if (settings.section_numbers) options.add("--section_numbers");
         if (settings.propagate_angles) options.add("--propagate_angles");
         if (settings.enforce_index_order) options.add("--enforce_index_order");
-        if (settings.enforce_index_spacing>0) {
+        if (settings.use_enforce_index_spacing) {
             options.add("--enforce_index_spacing");
-            options.add(Integer.toString(settings.enforce_index_spacing));
+            options.add(settings.enforce_index_spacing);
         }
 
         DeepSlice.execute(options, null);

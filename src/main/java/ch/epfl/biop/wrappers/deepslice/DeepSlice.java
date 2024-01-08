@@ -15,6 +15,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -26,21 +27,15 @@ public class DeepSlice {
     public static String keyPrefix = DeepSlice.class.getName() + ".";
 
     static String defaultEnvDirPath = "C:/Users/username/.conda/envs/deepslice";//"E:/conda-envs/CellPoseGPU3";
-    static String defaultEnvType = "conda";
-    static String defaultVersion = "1.1.5";
+    static String defaultVersion = "1.1.5.1";
 
     public static String envDirPath = Prefs.get(keyPrefix + "envDirPath", defaultEnvDirPath);
-    public static String envType = Prefs.get(keyPrefix + "envType", defaultEnvType);
+
     public static String version = Prefs.get(keyPrefix + "version", defaultVersion);
 
     public static void setEnvDirPath(File f) {
         DeepSlice.envDirPath = f.getAbsolutePath();
         Prefs.set(keyPrefix + "envDirPath", envDirPath);
-    }
-
-    public static void setEnvType(String envType) {
-        DeepSlice.envType = envType;
-        Prefs.set(keyPrefix + "envType", envType);
     }
 
     public static void setVersion(String version) {
@@ -99,70 +94,49 @@ public class DeepSlice {
         }
 
         List<String> cmd = new ArrayList<>();
-        List<String> start_cmd = null ;
-
-        // Get the prefs about the env type
-        String envType = Prefs.get(keyPrefix + "envType", DeepSlice.envType);
+        List<String> start_cmd;
 
         // start terminal
         if (IJ.isWindows()) {
             start_cmd=  Arrays.asList("cmd.exe", "/C");
         } else if ( IJ.isMacOSX() || IJ.isLinux()) {
             start_cmd = Arrays.asList("bash", "-c");
+        } else {
+            IJ.error("OS unrecognized!!");
+            start_cmd = Collections.singletonList("");
         }
         cmd.addAll( start_cmd );
 
+        List<String> conda_activate_cmd;
 
-        // Depending of the env type
-        if (envType.equals("conda")) {
-            List<String> conda_activate_cmd;
+        if (IJ.isWindows()) {
+            // Activate the conda env
+            conda_activate_cmd = Arrays.asList("CALL", Conda.getWindowsCondaCommand(), "activate", envDirPath);
+            cmd.addAll(conda_activate_cmd);
+            // After starting the env we can now use deepslice
+            cmd.add("&");// to have a second command
+            List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", getDeepSliceCLIScriptPath());
+            cmd.addAll(cellpose_args_cmd);
+            // input options
+            cmd.addAll(options);
 
-            if (IJ.isWindows()) {
-                // Activate the conda env
-                conda_activate_cmd = Arrays.asList("CALL", Conda.getWindowsCondaCommand(), "activate", envDirPath);
-                cmd.addAll(conda_activate_cmd);
-                // After starting the env we can now use deepslice
-                cmd.add("&");// to have a second command
-                List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", getDeepSliceCLIScriptPath());
-                cmd.addAll(cellpose_args_cmd);
-                // input options
-                cmd.addAll(options);
+        } else if ( IJ.isMacOSX() || IJ.isLinux()) {
+            // instead of conda activate (so much headache!!!) specify the python to use
+            String python_path = envDirPath+separatorChar+"bin"+separatorChar+"python";
+            List<String> cellpose_args_cmd = new ArrayList<>(Arrays.asList( python_path , getDeepSliceCLIScriptPath()));
+            cellpose_args_cmd.addAll(options);
 
-            } else if ( IJ.isMacOSX() || IJ.isLinux()) {
-                // instead of conda activate (so much headache!!!) specify the python to use
-                String python_path = envDirPath+separatorChar+"bin"+separatorChar+"python";
-                List<String> cellpose_args_cmd = new ArrayList<>(Arrays.asList( python_path , getDeepSliceCLIScriptPath()));
-                cellpose_args_cmd.addAll(options);
+            // convert to a string
+            cellpose_args_cmd = cellpose_args_cmd.stream().map(s -> {
+                if (s.trim().contains(" "))
+                    return "\"" + s.trim() + "\"";
+                return s;
+            }).collect(Collectors.toList());
+            // The last part needs to be sent as a single string, otherwise it does not run
+            String cmdString = cellpose_args_cmd.toString().replace(",","");
 
-                // convert to a string
-                cellpose_args_cmd = cellpose_args_cmd.stream().map(s -> {
-                    if (s.trim().contains(" "))
-                        return "\"" + s.trim() + "\"";
-                    return s;
-                }).collect(Collectors.toList());
-                // The last part needs to be sent as a single string, otherwise it does not run
-                String cmdString = cellpose_args_cmd.toString().replace(",","");
-
-                // finally add to cmd
-                cmd.add(cmdString.substring(1, cmdString.length()-1));
-            }
-
-        } else if (envType.equals("venv")) { // venv
-
-            if (IJ.isWindows()) {
-                List<String> venv_activate_cmd = Arrays.asList(new File(envDirPath, "Scripts/activate").toString());
-                cmd.addAll(venv_activate_cmd);
-                cmd.add("&");// to have a second command
-                List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", getDeepSliceCLIScriptPath());
-                cmd.addAll(cellpose_args_cmd);
-                cmd.addAll(options);
-
-            } else if ( IJ.isMacOSX() || IJ.isLinux()) {
-                throw new UnsupportedOperationException("Mac/Unix not supported yet with virtual environment. Please try conda instead.");
-            }
-
-        } else {
-            throw new UnsupportedOperationException("Virtual env type unrecognized!");
+            // finally add to cmd
+            cmd.add(cmdString.substring(1, cmdString.length()-1));
         }
 
         System.out.println(cmd.toString().replace(",", ""));
@@ -192,7 +166,7 @@ public class DeepSlice {
         if (exitValue != 0) {
             System.out.println("Runner " + envDirPath + " exited with value " + exitValue + ". Please check output above for indications of the problem.");
         } else {
-            System.out.println(envType + " , " + envDirPath + " run finished");
+            System.out.println("conda , " + envDirPath + " run finished");
         }
 
     }

@@ -18,6 +18,8 @@ On top of this, some converters that facilite the transmission of data to these 
       * [I.A. Cellpose Virtual Environment](#ia-cellpose-virtual-environment)
       * [I.A.2. Conda installation](#ia2-conda-installation)
         * [I.A.2.a. Windows](#ia2a-windows)
+          * [Enable conda command outside conda prompt](#enable-conda-command-outside-conda-prompt)
+          * [Conda cellpose-GPU](#conda-cellpose-gpu)
         * [I.A.2.b. Mac](#ia2b-mac)
         * [I.A.2.c. Linux](#ia2c-linux)
     * [I.B. Fiji - Cellpose wrapper](#ib-fiji---cellpose-wrapper)
@@ -28,6 +30,8 @@ On top of this, some converters that facilite the transmission of data to these 
       * [I.A.1. More on venv installation](#ia1-more-on-venv-installation)
       * [I.A.2. More on conda installation](#ia2-more-on-conda-installation)
         * [I.A.2.a. Windows](#ia2a-windows-1)
+          * [Enable conda command outside conda prompt](#enable-conda-command-outside-conda-prompt-1)
+          * [Conda StarDist-GPU](#conda-stardist-gpu)
         * [I.A.2.b. MAC OSX](#ia2b-mac-osx)
     * [I.B. Fiji - StarDist3D wrapper](#ib-fiji---stardist3d-wrapper)
   * [II. Using Fiji - StarDist3D wrapper](#ii-using-fiji---stardist3d-wrapper)
@@ -35,6 +39,7 @@ On top of this, some converters that facilite the transmission of data to these 
   * [I. Installation](#i-installation-2)
       * [I.A. Conda installation](#ia-conda-installation)
         * [I.A.2.a. Windows](#ia2a-windows-2)
+          * [Enable conda command outside conda prompt](#enable-conda-command-outside-conda-prompt-2)
         * [I.A.2.b. Mac](#ia2b-mac-1)
         * [I.A.2.c. Linux](#ia2c-linux-1)
   * [II. Using Fiji - DeepSlice wrapper](#ii-using-fiji---deepslice-wrapper)
@@ -300,8 +305,15 @@ You need to install DeepSlice in a conda env that has python 3.7 (versions above
 ```
 conda create --name deep_slice python=3.7
 conda activate deep_slice
-pip install DeepSlice
+pip install deepslice==1.1.5
 ```
+
+If you don't want to pin a deepslice version, replace the last line by:
+
+```
+pip install deepslice
+```
+
 
 ##### I.A.2.a. Windows
 **NOTE** : if you rely on conda, the DeepSlice wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions](#enable-conda-command-outside-conda-prompt).
