@@ -5,7 +5,9 @@ import ij.IJ;
 import ij.Prefs;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -86,6 +88,8 @@ public class DeepSlice {
         return f.exists();
     }
 
+
+
     static void execute(List<String> options, Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
         if (!ensureScriptIsCopied()) {
             System.err.println("The CLI script to DeepSlice could not be copied to the env folder ("+envDirPath+")");
@@ -107,18 +111,21 @@ public class DeepSlice {
         }
         cmd.addAll( start_cmd );
 
-        List<String> conda_activate_cmd;
-
         if (IJ.isWindows()) {
-            // Activate the conda env
-            conda_activate_cmd = Arrays.asList("CALL", Conda.getWindowsCondaCommand(), "activate", envDirPath);
-            cmd.addAll(conda_activate_cmd);
-            // After starting the env we can now use deepslice
-            cmd.add("&");// to have a second command
-            List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", getDeepSliceCLIScriptPath());
-            cmd.addAll(cellpose_args_cmd);
-            // input options
-            cmd.addAll(options);
+            // I have an issue with PyImageJ and process builder. I need to make a temp file instead of the above code.
+            cmd.clear();
+            File batchFile = File.createTempFile("tempDeepSlice", ".bat");
+            BufferedWriter writer = new BufferedWriter(new FileWriter(batchFile));
+            writer.write(Conda.getWindowsCondaCommand());
+            writer.write(" activate \""+envDirPath+"\" ");
+            writer.write("& ");
+            writer.write("python -Xutf8 \""+getDeepSliceCLIScriptPath()+"\" ");
+            for (String arg: options) {
+                writer.write(arg+" ");
+            }
+            writer.close();
+            cmd.add(batchFile.getAbsolutePath());
+            batchFile.deleteOnExit();
 
         } else if ( IJ.isMacOSX() || IJ.isLinux()) {
             // instead of conda activate (so much headache!!!) specify the python to use
