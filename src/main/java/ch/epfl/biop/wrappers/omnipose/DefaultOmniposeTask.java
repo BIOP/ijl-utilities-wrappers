@@ -1,43 +1,57 @@
 package ch.epfl.biop.wrappers.omnipose;
 
-
+import ch.epfl.biop.wrappers.ExecutePythonInConda;
 import java.util.ArrayList;
+import java.util.List;
 
 public class DefaultOmniposeTask extends OmniposeTask{
 
-
     public void run() throws Exception {
-        ArrayList<String> options = new ArrayList<>();
 
         String conda_env_path = settings.conda_env_path;
 
-        options.add("--dir");
-        options.add("" + settings.datasetDir);
+        ArrayList<String> arguments = new ArrayList<>();
 
-        options.add("--pretrained_model");
-        options.add("" + settings.model);
+        arguments.add("-m");
+        arguments.add("omnipose");
 
-        options.add("--diameter");
-        options.add("" + settings.diameter);
+        arguments.add("--dir");
+        arguments.add("" + settings.datasetDir);
 
-        options.add("--verbose");//we default the verbose now that logger is working
-        options.add("--save_tif");
-        options.add("--no_npy");
+        arguments.add("--pretrained_model");
+        arguments.add("" + settings.model);
+
+        arguments.add("--chan");
+        arguments.add("" + settings.ch1);
+
+        if (settings.ch2 != -1) {
+            arguments.add("--chan2");
+            arguments.add("" + settings.ch2);
+        }
+
+        arguments.add("--diameter");
+        arguments.add("" + settings.diameter);
+
+        arguments.add("--verbose");//we default the verbose now that logger is working
+        arguments.add("--save_tif");
+        arguments.add("--no_npy");
 
         if (settings.additional_flags != "") {
             String[] flagsList = settings.additional_flags.split(",");
 
             if (flagsList.length > 1) {
                 for (int i = 0; i < flagsList.length; i++) {
-                    options.add(flagsList[i].toString().trim());
+                    arguments.add(flagsList[i].toString().trim());
                 }
             } else {
                 if (settings.additional_flags.length() > 1) {
-                    options.add(settings.additional_flags.trim());
+                    arguments.add(settings.additional_flags.trim());
                 }
             }
         }
-        Omnipose.execute(conda_env_path , options, null);
+
+
+        ExecutePythonInConda.execute(conda_env_path , arguments, null);
     }
 
 }
