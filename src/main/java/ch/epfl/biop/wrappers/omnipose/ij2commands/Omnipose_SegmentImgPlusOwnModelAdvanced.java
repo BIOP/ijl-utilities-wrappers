@@ -10,12 +10,18 @@ import ij.measure.Calibration;
 import ij.plugin.Concatenator;
 import ij.plugin.Duplicator;
 import net.imagej.ImageJ;
+
 import org.scijava.ItemIO;
+import org.scijava.ItemVisibility;
 import org.scijava.command.Command;
+import org.scijava.platform.PlatformService;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
+import org.scijava.widget.Button;
 
 import java.io.File;
+import java.io.IOException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,7 +38,7 @@ public class Omnipose_SegmentImgPlusOwnModelAdvanced implements Command {
         }
     }
 
-    static String default_conda_env_path;// =
+    static String default_conda_env_path;
 
     @Parameter
     ImagePlus imp;
@@ -40,23 +46,73 @@ public class Omnipose_SegmentImgPlusOwnModelAdvanced implements Command {
     @Parameter(label = "conda environnment path" ,style="directory")
     File conda_env_path = new File(default_conda_env_path);
 
-    @Parameter(label = "model, (leave empty to use your own model)" )
+    @Parameter (visibility=ItemVisibility.MESSAGE)
+    String message = "You can use the pretrained model, specify the model name below";
+    @Parameter(label = "--pretrained_model" )
     String model = "cyto2_omni" ;
 
-    @Parameter(required = false, label = "model_path to your owm model (default omnipose for pretrained model) ")
-    File model_path = new File("omnipose");
+    @Parameter (visibility=ItemVisibility.MESSAGE)
+    String message0 ="You can access the list of models by clicking on the button below.";
+
+    @Parameter( label="List of omnipose models", callback="openModelsPage")
+    private Button openModelsPage;
+
+    @Parameter (visibility=ItemVisibility.MESSAGE)
+    String message1 = "OR To use your own model, specify the path below AND leave --pretrained_model empty";
+    @Parameter(required = false, label = "model_path")
+    File model_path = new File("path/to/own_omnipose_model");
 
     // value defined from https://omnipose.readthedocs.io/en/latest/api.html
-    @Parameter(label = "Diameter (default 17 for nuclei, 30 for cyto,0 for automatic detection)")
+    @Parameter(label = "--diameter")
     int diameter = 30;
 
-    @Parameter(required = false, label = "add more parameters")
-    String additional_flags = "--omni --cluster";
+    @Parameter(label = "--chan")
+    int ch1 = 0;
+
+    @Parameter(label = "--chan2")
+    int ch2 = -1;
+
+    @Parameter (visibility=ItemVisibility.MESSAGE )
+    String message2 = "You can add more flags to the command line by adding them here. For example: --omni, --cluster";
+
+    @Parameter(required = false, label = "To add more parameters (use comma separated list of flags)")
+    String additional_flags = "--omni, --cluster";
+
+    @Parameter (visibility=ItemVisibility.MESSAGE)
+    String message3 ="You can access the full list of parameters by clicking on the button below.";
+
+    @Parameter( label="List of all parameters", callback="openCliPage")
+    private Button CliPageButton;
 
     @Parameter(type = ItemIO.OUTPUT)
     ImagePlus omnipose_imp;
 
+    // necessary to open the cli page
+    @Parameter
+    PlatformService ps;
+
     Boolean verbose = true;
+
+    private void openCliPage() {
+
+        try {
+            ps.open(new URL("https://omnipose.readthedocs.io/cli.html"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private void openModelsPage() {
+
+        try {
+            ps.open(new URL("https://omnipose.readthedocs.io/models.html"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
 
     @Override
     public void run() {
@@ -85,14 +141,14 @@ public class Omnipose_SegmentImgPlusOwnModelAdvanced implements Command {
         settings.setCondaEnvDir(conda_env_path.toString());
         settings.setDatasetDir(omniposeTempDir.toString());
 
-        System.out.println("############");
         if ( model==null || model.trim().equals("") ){
             System.out.println("Using custom model");
             model = model_path.toString();
         }
         settings.setModel(model);
-
         settings.setDiameter(diameter);
+        settings.setChannel1(ch1);
+        if (ch2 > -1 ) settings.setChannel2(ch2);
         settings.setAdditionalFlags(additional_flags);
 
         // settings are done , so we can now process the imp with omnipose
@@ -151,6 +207,9 @@ public class Omnipose_SegmentImgPlusOwnModelAdvanced implements Command {
             omnipose_imp = Concatenator.run(impsArray);
             omnipose_imp.setCalibration(cal);
             omnipose_imp.setTitle(imp.getShortTitle() + "-omnipose");
+
+            //add a LUT
+            IJ.run(omnipose_imp, "3-3-2 RGB", "");
 
             // Delete the created files and folder
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {

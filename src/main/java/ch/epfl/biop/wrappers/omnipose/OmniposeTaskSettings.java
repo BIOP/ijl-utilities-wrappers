@@ -5,7 +5,7 @@ public class OmniposeTaskSettings {
     String conda_env_path;
     String datasetDir;
     String model;
-    int ch1;
+    int ch1 = 0;
     int ch2 = -1;
 
     // value defined from https://omnipose.readthedocs.io/cli.html
