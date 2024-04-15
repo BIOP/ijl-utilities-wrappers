@@ -49,8 +49,6 @@ public class DefaultOmniposeTask extends OmniposeTask{
                 }
             }
         }
-
-
         ExecutePythonInConda.execute(conda_env_path , arguments, null);
     }
 
