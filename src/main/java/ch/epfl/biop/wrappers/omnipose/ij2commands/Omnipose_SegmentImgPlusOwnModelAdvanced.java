@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Omnipose> Omnipose Advanced (custom model) ...")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose> Omnipose ...")
 public class Omnipose_SegmentImgPlusOwnModelAdvanced implements Command {
     static {
         if (IJ.isLinux()) {
@@ -43,7 +43,7 @@ public class Omnipose_SegmentImgPlusOwnModelAdvanced implements Command {
     @Parameter
     ImagePlus imp;
 
-    @Parameter(label = "conda environnment path" ,style="directory")
+    @Parameter(label = "conda environment path" ,style="directory")
     File conda_env_path = new File(default_conda_env_path);
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
@@ -232,7 +232,6 @@ public class Omnipose_SegmentImgPlusOwnModelAdvanced implements Command {
         final ImageJ ij = new ImageJ();
         ij.ui().showUI();
         // will run on the current image
-        //IJ.openImage("D:/Docker/local_drive/omnipose/test_prediction/Image_B16872 WT.vsi [40x_DAPI, DBA, Corin, SDC2_02].tif");
         ij.command().run(Omnipose_SegmentImgPlusOwnModelAdvanced.class, true);
 
     }

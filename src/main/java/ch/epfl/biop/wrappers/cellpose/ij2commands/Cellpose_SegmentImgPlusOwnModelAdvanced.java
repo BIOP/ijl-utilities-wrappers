@@ -2,6 +2,7 @@ package ch.epfl.biop.wrappers.cellpose.ij2commands;
 
 import ch.epfl.biop.wrappers.cellpose.CellposeTaskSettings;
 import ch.epfl.biop.wrappers.cellpose.DefaultCellposeTask;
+
 import ij.IJ;
 import ij.ImagePlus;
 import ij.io.FileSaver;
@@ -9,115 +10,106 @@ import ij.measure.Calibration;
 import ij.plugin.Concatenator;
 import ij.plugin.Duplicator;
 import net.imagej.ImageJ;
+
 import org.scijava.ItemIO;
+import org.scijava.ItemVisibility;
 import org.scijava.command.Command;
+import org.scijava.platform.PlatformService;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
+import org.scijava.widget.Button;
 
 import java.io.File;
+import java.io.IOException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose> Cellpose Advanced (custom model)")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose> Cellpose ...")
 public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
+    static {
+        if (IJ.isLinux()) {
+            default_conda_env_path = "/home/biop/conda/envs/cellpose"; // to ease setting on biop-desktop    }
+        } else if (IJ.isWindows()) {
+            default_conda_env_path = "C:/Users/username/.conda/envs/cellpose";
+        } else if (IJ.isMacOSX()) {
+            default_conda_env_path = "/Users/username/.conda/envs/cellpose";
+        }
+    }
 
-    public static final String nuclei_model = "nuclei";
-    public static final String cyto_model = "cyto";
-    public static final String cyto2_model = "cyto2";
-    public static final String cyto2_omni_model = "cyto2_omni";
-    public static final String bact_omni_model = "bact_omni";
-    public static final String own_nuclei_model = "own model nuclei";
-    public static final String own_cyto_model = "own model cyto";
-    public static final String own_cyto2_model = "own model cyto2";
-    public static final String own_cyto2_omni_model = "own model cyto2_omni";
-    public static final String own_bact_omni_model = "own model bact_omni";
-    public static final String tissuenet_model = "tissuenet";
-    public static final String livecell_model = "livecell";
+    static String default_conda_env_path;
 
     @Parameter
     ImagePlus imp;
 
-    // value defined from https://cellpose.readthedocs.io/en/latest/api.html
-    @Parameter(label = "Diameter (default 17 for nuclei, 30 for cyto,0 for automatic detection)")
+    @Parameter(label = "conda environment path" ,style="directory")
+    File conda_env_path = new File(default_conda_env_path);
+
+    @Parameter (visibility=ItemVisibility.MESSAGE)
+    String message = "You can use the pretrained model, specify the model name below";
+    @Parameter(label = "--pretrained_model" )
+    String model = "cyto2" ;
+
+    @Parameter (visibility=ItemVisibility.MESSAGE)
+    String message0 ="You can access the list of models by clicking on the button below.";
+
+    @Parameter( label="List of cellpose models", callback="openModelsPage")
+    private Button openModelsPage;
+
+    @Parameter (visibility=ItemVisibility.MESSAGE)
+    String message1 = "OR To use your own model, specify the path below AND leave --pretrained_model empty";
+    @Parameter(required = false, label = "model_path")
+    File model_path = new File("path/to/own_cellpose_model");
+
+    // value defined from https://omnipose.readthedocs.io/en/latest/api.html
+    @Parameter(label = "--diameter")
     int diameter = 30;
 
-    @Parameter(label = "cellproba_threshold / mask_threshold (v0.6 / v0.7)")
-    double cellproba_threshold = 0.0;
+    @Parameter(label = "--chan")
+    int ch1 = 0;
 
-    @Parameter(label = "flow_threshold (default 0.4)")
-    double flow_threshold = 0.4;
+    @Parameter(label = "--chan2")
+    int ch2 = -1;
 
-    @Parameter(label = "Anisotropy between xy and z (1 means none)")
-    double anisotropy = 1.0;
+    @Parameter (visibility=ItemVisibility.MESSAGE )
+    String message2 = "You can add more flags to the command line by adding them here. For example: --omni, --cluster";
 
-    @Parameter(label = "Diameter threshold (default 12)")
-    double diam_threshold = 12.0;
+    @Parameter(required = false, label = "To add more parameters (use comma separated list of flags)")
+    String additional_flags = "--use_gpu, --do_3D";
 
-    @Parameter(required = false, label = "model_path to your owm model (default cellpose for pretrained model) ")
-    File model_path = new File("cellpose");
+    @Parameter (visibility=ItemVisibility.MESSAGE)
+    String message3 ="You can access the full list of parameters by clicking on the button below.";
 
-    @Parameter(choices = {nuclei_model,
-            cyto_model,
-            cyto2_model,
-            cyto2_omni_model,
-            bact_omni_model,
-            tissuenet_model,
-            livecell_model,
-            own_nuclei_model,
-            own_cyto_model,
-            own_cyto2_model,
-            own_cyto2_omni_model,
-            own_bact_omni_model}, callback = "modelchanged")
-    String model;
-
-    @Parameter(label = "nuclei_channel (set to 0 if not necessary)")
-    int nuclei_channel;
-
-    @Parameter(label = "cyto_channel (set to 0 if not necessary)")
-    int cyto_channel;
-
-    @Parameter(choices = {"2D", "3D"})
-    String dimensionMode;
-
-    @Parameter(label = "stitch_threshold (between 0 and 1, default -1)")
-    double stitch_threshold = -1;
-
-    @Parameter(label = "use omnipose mask reconstruction features")
-    boolean omni;
-
-    @Parameter(label = "use DBSCAN clustering")
-    boolean cluster;
-
-    @Parameter(required = false, label = "add more parameters")
-    String additional_flags = "";
+    @Parameter( label="List of all parameters", callback="openCliPage")
+    private Button CliPageButton;
 
     @Parameter(type = ItemIO.OUTPUT)
     ImagePlus cellpose_imp;
 
+    // necessary to open the cli page
+    @Parameter
+    PlatformService ps;
+
     Boolean verbose = true;
 
+    private void openCliPage() {
 
-    // propose some default value when a model is selected
-    public void modelchanged() {
-        if (model.equals(nuclei_model)) {
-            nuclei_channel = 1;
-            cyto_channel = -1;
-        } else if ((model.equals(bact_omni_model))) {
-            cyto_channel = 1;
-            nuclei_channel = -1;
-        } else if ((model.equals(cyto_model)) || (model.equals(cyto2_model)) || (model.equals(cyto2_omni_model))) {
-            cyto_channel = 1;
-            nuclei_channel = 2;
-        } else if (model.equals(own_nuclei_model)) {
-            nuclei_channel = 1;
-            cyto_channel = -1;
-        } else if (model.equals(own_bact_omni_model)) {
-            nuclei_channel = -1;
-            cyto_channel = 1;
-        } else if ((model.equals(own_cyto_model)) || (model.equals(own_cyto2_model)) || (model.equals(own_cyto2_omni_model))) {
-            cyto_channel = 1;
-            nuclei_channel = 2;
+        try {
+            ps.open(new URL("https://cellpose.readthedocs.io/en/latest/cli.html"));
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+
+    }
+
+    private void openModelsPage() {
+
+        try {
+            ps.open(new URL("https://cellpose.readthedocs.io/en/latest/models.html"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
 
 
@@ -125,8 +117,6 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
     public void run() {
         // Prepare cellPose settings
         CellposeTaskSettings settings = new CellposeTaskSettings();
-        // this is necessary
-        settings.setFromPrefs();
         // and a cellpose task
         DefaultCellposeTask cellposeTask = new DefaultCellposeTask();
 
@@ -147,45 +137,18 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
         }
 
         // Add it to the settings
+        settings.setCondaEnvDir(conda_env_path.toString());
         settings.setDatasetDir(cellposeTempDir.toString());
 
-        if (model.equals(nuclei_model)) {
-            settings.setChannel1(nuclei_channel);
-            //settings.setChannel2(-1) ;
-        } else if ((model.equals(bact_omni_model))) {
-            settings.setChannel1(cyto_channel);
-        } else if ((model.equals(cyto_model)) || (model.equals(cyto2_model)) || (model.equals(cyto2_omni_model))) {
-            System.out.println("cyto_channel:" + cyto_channel + ":nuclei_channel:" + nuclei_channel);
-            settings.setChannel1(cyto_channel);
-            settings.setChannel2(nuclei_channel);
-        } else if ((model.equals(own_nuclei_model))) {
+        if ( model==null || model.trim().equals("") ){
+            System.out.println("Using custom model");
             model = model_path.toString();
-            settings.setChannel1(nuclei_channel);
-        } else if ((model.equals(own_bact_omni_model))) {
-            model = model_path.toString();
-            settings.setChannel1(cyto_channel);
-        } else if ((model.equals(own_cyto_model)) || (model.equals(own_cyto2_model)) || (model.equals(own_cyto2_omni_model))) {
-            model = model_path.toString();
-            settings.setChannel1(cyto_channel);
-            settings.setChannel2(nuclei_channel);
         }
-
         settings.setModel(model);
-
         settings.setDiameter(diameter);
-        settings.setCellProbTh(cellproba_threshold);
-        settings.setFlowTh(flow_threshold);
-        settings.setAnisotropy(anisotropy);
-        settings.setDiamThreshold(diam_threshold);
-        settings.setStitchThreshold(stitch_threshold);
-        settings.setOmni(omni);
-        settings.setCluster(cluster);
+        settings.setChannel1(ch1);
+        if (ch2 > -1 ) settings.setChannel2(ch2);
         settings.setAdditionalFlags(additional_flags);
-
-        if (dimensionMode.equals("3D")) {
-            if (imp.getNSlices() > 1) settings.setDo3D();
-            else System.out.println("NOTE : Can't use 3D mode, on 2D image");
-        }
 
         // settings are done , so we can now process the imp with cellpose
         cellposeTask.setSettings(settings);
@@ -244,6 +207,9 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
             cellpose_imp.setCalibration(cal);
             cellpose_imp.setTitle(imp.getShortTitle() + "-cellpose");
 
+            //add a LUT
+            IJ.run(cellpose_imp, "3-3-2 RGB", "");
+
             // Delete the created files and folder
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
                 t_imp_paths.get(t_idx - 1).delete();
@@ -265,7 +231,6 @@ public class Cellpose_SegmentImgPlusOwnModelAdvanced implements Command {
         final ImageJ ij = new ImageJ();
         ij.ui().showUI();
         // will run on the current image
-        //ij.command().run(CellposePrefsSet.class, true);
         ij.command().run(Cellpose_SegmentImgPlusOwnModelAdvanced.class, true);
 
     }
