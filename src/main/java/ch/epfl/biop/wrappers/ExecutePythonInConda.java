@@ -15,8 +15,6 @@ import java.util.stream.Collectors;
 
 import static java.io.File.separatorChar;
 
-//TODO : make a single class to start conda env and execute module
-
 public class ExecutePythonInConda {
 
     public static void execute(String envDirPath, List<String> arguments , Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
