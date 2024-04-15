@@ -1,4 +1,5 @@
 #@ImagePlus imp
+#@File(style="directory" , label="Select conda environment") conda_env_path
 #@CommandService command
 #@Output labels
 #@RoiManager rm
@@ -9,26 +10,26 @@ rm.reset()
 IJ.runMacro("close('\\\\Others');")
 
 // cellpose parameters
-def cellCellpose = new Cellpose_SegmentImgPlusOwnModelAdvanced();
-cellCellpose.imp = imp;
-cellCellpose.diameter = 50;
-//cellCellpose.cellproba_threshold = 0;
-//cellCellpose.flow_threshold = 0.4;
-cellCellpose.model = "cyto2";
-cellCellpose.nuclei_channel = 2 ;
-cellCellpose.cyto_channel = 1 ;
-cellCellpose.dimensionMode  = "2D";
+def cp = new Cellpose();
+cp.conda_env_path = conda_env_path ;
+cp.imp = imp;
+cp.diameter = 50;
+cp.model = "cyto3";
+cp.ch1 = 1 ;
+cp.ch2 = 2 ;
+cp.additional_flags= "--use_gpu, --do_3D, --anisotropy, 4 , --restore_type , denoise_cyto3";
 // cellpose run
-cellCellpose.run();
+cp.run();
 // get the output labels image
-cell_cellpose_imp = cellCellpose.cellpose_imp ;
-cell_cellpose_imp.show()
+cp_imp = cp.cellpose_imp ;
+cp_imp.show()
 
-IJ.run(cell_cellpose_imp, "Label image to ROIs", "");
-IJ.run(cell_cellpose_imp, "glasbey_inverted", "");
-cell_cellpose_imp.setDisplayRange(0, 12);
+IJ.run(cp_imp, "Label image to ROIs", "");
+IJ.run(cp_imp, "glasbey_inverted", "");
+
+cp_imp.setDisplayRange(0, 12);
 
 return
 
-import ch.epfl.biop.wrappers.cellpose.ij2commands.Cellpose_SegmentImgPlusOwnModelAdvanced
+import ch.epfl.biop.wrappers.cellpose.ij2commands.Cellpose
 import ij.IJ;
