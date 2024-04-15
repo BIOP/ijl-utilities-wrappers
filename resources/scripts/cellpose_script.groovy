@@ -11,7 +11,9 @@ IJ.runMacro("close('\\\\Others');")
 
 // cellpose parameters
 def cp = new Cellpose();
-cp.conda_env_path = conda_env_path ;
+cp.conda_env_path = conda_env_path
+// Or comment the line avove and set the path manually
+//cp.conda_env_path = new File ( "D:/conda/cellpose/" ) ;
 cp.imp = imp;
 cp.diameter = 50;
 cp.model = "cyto3";
