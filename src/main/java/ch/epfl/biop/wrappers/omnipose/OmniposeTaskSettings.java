@@ -10,8 +10,6 @@ public class OmniposeTaskSettings {
 
     // value defined from https://omnipose.readthedocs.io/cli.html
     int diameter = 30;
-    boolean omni = false;
-    boolean cluster = false;
     String additional_flags = "";
 
     public OmniposeTaskSettings setCondaEnvDir(String conda_env_path) {
@@ -41,16 +39,6 @@ public class OmniposeTaskSettings {
 
     public OmniposeTaskSettings setDiameter(int diameter) {
         this.diameter = diameter;
-        return this;
-    }
-
-    public OmniposeTaskSettings setOmni(boolean omni) {
-        this.omni = omni;
-        return this;
-    }
-
-    public OmniposeTaskSettings setCluster(boolean cluster) {
-        this.cluster = cluster;
         return this;
     }
     
