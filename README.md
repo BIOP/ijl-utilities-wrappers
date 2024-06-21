@@ -303,17 +303,12 @@ The DeepSlice wrapper requires a functioning conda environment with the DeepSlic
 You need to install DeepSlice in a conda env that has python 3.7 (versions above do not work). You need to create an environment and install DeepSlice with pip. 
 
 ```
-conda create --name deep_slice python=3.7
-conda activate deep_slice
-pip install deepslice==1.1.5
+conda create -n deepslice python=3.7
+conda activate deepslice
+conda install pip
+pip install DeepSlice==1.1.5 # pinned version for which this wrapper has been tested
+pip install urllib3==1.26.6 # see https://github.com/PolarBean/DeepSlice/issues/46
 ```
-
-If you don't want to pin a deepslice version, replace the last line by:
-
-```
-pip install deepslice
-```
-
 
 ##### I.A.2.a. Windows
 **NOTE** : if you rely on conda, the DeepSlice wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions](#enable-conda-command-outside-conda-prompt).
