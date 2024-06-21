@@ -9,7 +9,6 @@ import ij.io.FileSaver;
 import ij.measure.Calibration;
 import ij.plugin.Concatenator;
 import ij.plugin.Duplicator;
-import net.imagej.ImageJ;
 
 import org.scijava.ItemIO;
 import org.scijava.ItemVisibility;
@@ -207,9 +206,6 @@ public class Cellpose implements Command {
             cellpose_imp.setCalibration(cal);
             cellpose_imp.setTitle(imp.getShortTitle() + "-cellpose");
 
-            //add a LUT
-            IJ.run(cellpose_imp, "3-3-2 RGB", "");
-
             // Delete the created files and folder
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
                 t_imp_paths.get(t_idx - 1).delete();
@@ -224,14 +220,4 @@ public class Cellpose implements Command {
 
     }
 
-
-    public static void main(final String... args) {
-
-        // create the ImageJ application context with all available services
-        final ImageJ ij = new ImageJ();
-        ij.ui().showUI();
-        // will run on the current image
-        ij.command().run(Cellpose.class, true);
-
-    }
 }
