@@ -24,6 +24,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
+@SuppressWarnings({"CanBeFinal", "unused"})
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose> Cellpose ...")
 public class Cellpose implements Command {
     static {
@@ -121,7 +122,7 @@ public class Cellpose implements Command {
 
         Calibration cal = imp.getCalibration();
 
-        // We'll ave the current time-point of the imp in a temp folder
+        // We'll have the current time-point of the imp in a temp folder
         String tempDir = IJ.getDirectory("Temp");
         // create tempdir
         File cellposeTempDir = new File(tempDir, "cellposeTemp");
@@ -139,7 +140,7 @@ public class Cellpose implements Command {
         settings.setCondaEnvDir(conda_env_path.toString());
         settings.setDatasetDir(cellposeTempDir.toString());
 
-        if ( model==null || model.trim().equals("") ){
+        if ( model==null || model.trim().isEmpty()){
             System.out.println("Using custom model");
             model = model_path.toString();
         }
@@ -167,7 +168,7 @@ public class Cellpose implements Command {
                 File t_imp_path = new File(cellposeTempDir, imp.getShortTitle() + "-t" + t_idx + ".tif");
                 FileSaver fs = new FileSaver(t_imp);
                 fs.saveAsTiff(t_imp_path.toString());
-                if (verbose) System.out.println(t_imp_path.toString());
+                if (verbose) System.out.println(t_imp_path);
                 // add to list of paths to delete at the end of operations
                 t_imp_paths.add(t_imp_path);
 

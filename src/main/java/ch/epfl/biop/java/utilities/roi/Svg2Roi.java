@@ -111,8 +111,8 @@ public class Svg2Roi {
             roiManager = new RoiManager();
         }
 
-        for (int i = 0; i < rois.size(); i++) {
-            roiManager.addRoi(rois.get(i));
+        for (Roi points : rois) {
+            roiManager.addRoi(points);
         }
     }
 

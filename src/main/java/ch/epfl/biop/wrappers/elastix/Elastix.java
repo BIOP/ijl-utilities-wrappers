@@ -14,9 +14,9 @@ import ij.Prefs;
 
 public class Elastix {
 	
-	public static String keyPrefix = Elastix.class.getName()+".";
+	final public static String keyPrefix = Elastix.class.getName()+".";
 	
-	static String defaultExePath = "elastix";
+	final static String defaultExePath = "elastix";
 	public static String exePath = Prefs.get(keyPrefix+"exePath",defaultExePath);
     
     public static void setExePath(File f) {

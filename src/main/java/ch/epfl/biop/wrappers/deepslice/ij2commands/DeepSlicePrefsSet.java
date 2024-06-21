@@ -13,6 +13,7 @@ import java.io.File;
  * Checks whether the executable being wrapped are accessible
  */
 
+@SuppressWarnings("CanBeFinal")
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>DeepSlice>DeepSlice setup...",
 description = "Set the conda environment that contains a functional DeepSlice module")
 public class DeepSlicePrefsSet implements Command {

@@ -5,23 +5,22 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class ElastixTaskSettings {
-    public List<Supplier<String>> fixedImagePathSuppliers = new ArrayList<>();
-    public List<Supplier<String>> movingImagePathSuppliers = new ArrayList<>();
+    final public List<Supplier<String>> fixedImagePathSuppliers = new ArrayList<>();
+    final public List<Supplier<String>> movingImagePathSuppliers = new ArrayList<>();
+
     public Supplier<String> outputFolderSupplier;
 
     public  String initialTransformFilePath;
 
-    public int nThreads=1;
+    public int nThreads;
 
-    public ArrayList<Supplier<String>> transformationParameterPathSupplier;
+    final public ArrayList<Supplier<String>> transformationParameterPathSupplier = new ArrayList<>();
 
     public String taskInfo; // extra field for task specific info -> metadata for remote processing
 
     public boolean verbose = false;
 
     public ElastixTaskSettings() {
-        transformationParameterPathSupplier = new ArrayList<>();
-        nThreads=1;
     }
 
     public ElastixTaskSettings singleThread() {

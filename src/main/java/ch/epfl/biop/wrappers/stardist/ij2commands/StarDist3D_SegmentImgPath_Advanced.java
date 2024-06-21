@@ -1,6 +1,5 @@
 package ch.epfl.biop.wrappers.stardist.ij2commands;
 
-
 import ch.epfl.biop.wrappers.stardist.DefaultStardistTask;
 import ch.epfl.biop.wrappers.stardist.StardistTaskSettings;
 import org.scijava.command.Command;
@@ -9,6 +8,7 @@ import org.scijava.plugin.Plugin;
 
 import java.io.File;
 
+@SuppressWarnings("CanBeFinal")
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>StarDist> StarDist3D... (from file - Advanced)")
 public class StarDist3D_SegmentImgPath_Advanced implements Command {
 

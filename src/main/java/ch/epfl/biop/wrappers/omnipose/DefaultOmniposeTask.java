@@ -2,7 +2,6 @@ package ch.epfl.biop.wrappers.omnipose;
 
 import ch.epfl.biop.wrappers.ExecutePythonInConda;
 import java.util.ArrayList;
-import java.util.List;
 
 public class DefaultOmniposeTask extends OmniposeTask{
 
@@ -16,10 +15,10 @@ public class DefaultOmniposeTask extends OmniposeTask{
         arguments.add("omnipose");
 
         arguments.add("--dir");
-        arguments.add("" + settings.datasetDir);
+        arguments.add(settings.datasetDir);
 
         arguments.add("--pretrained_model");
-        arguments.add("" + settings.model);
+        arguments.add(settings.model);
 
         arguments.add("--chan");
         arguments.add("" + settings.ch1);
@@ -40,8 +39,8 @@ public class DefaultOmniposeTask extends OmniposeTask{
             String[] flagsList = settings.additional_flags.split(",");
 
             if (flagsList.length > 1) {
-                for (int i = 0; i < flagsList.length; i++) {
-                    arguments.add(flagsList[i].toString().trim());
+                for (String s : flagsList) {
+                    arguments.add(s.trim());
                 }
             } else {
                 if (settings.additional_flags.length() > 1) {
