@@ -1,11 +1,5 @@
 package ch.epfl.biop.java.utilities.roi;
 
-/**
- * This plugin implements the Edit/Selection/Create Selection command.
- * It is based on a proposal by Tom Larkworthy.
- * Written and public domained in June 2006 by Johannes E. Schindelin
- *
-*/
 import ij.IJ;
 import ij.ImagePlus;
 import ij.gui.Roi;
@@ -16,6 +10,12 @@ import java.awt.Polygon;
 import java.awt.geom.GeneralPath;
 import java.util.ArrayList;
 
+/**
+ * This plugin implements the Edit/Selection/Create Selection command.
+ * It is based on a proposal by Tom Larkworthy.
+ * Written and public domained in June 2006 by Johannes E. Schindelin
+ *
+ */
 public class SelectToROIKeepLines {
 	ImagePlus image;
 	ImageProcessor ip;
@@ -303,7 +303,7 @@ public class SelectToROIKeepLines {
 			}
 		}
 		
-		if (polygons.size()==0)
+		if (polygons.isEmpty())
 			return null;
 		if (showStatus) IJ.showStatus("Converting threshold to selection...");
 		GeneralPath path = new GeneralPath(GeneralPath.WIND_EVEN_ODD);

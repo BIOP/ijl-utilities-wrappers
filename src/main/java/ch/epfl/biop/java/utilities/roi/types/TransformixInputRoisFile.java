@@ -9,7 +9,7 @@ import java.io.File;
 
 public class TransformixInputRoisFile {
 	public IJShapeRoiArray shapeRoiList;
-	public File f;
+	final public File f;
 	public TransformixInputRoisFile(File f) {
 		this.f=f;
 	}

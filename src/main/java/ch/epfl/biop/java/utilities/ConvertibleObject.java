@@ -10,50 +10,51 @@ import java.util.Map;
  * Abstraction layer to handle objects which can be defined by non java compatible objects
  * For instance a set of ROI can be defined by a Roi ArrayList or RoiManager or a LabelImage
  * An Image can be a File or an ImagePlus
- *
+ * <p>
  * By Extending this class and providing converter method using the Converter annotation,
- * any 'ConvertibleObject' can be casted to different classes, provided a path of Converters
+ * any 'ConvertibleObject' can be cast to different classes, provided a path of Converters
  * can be found from an existing object class to the required class
- *
+ * <p>
  * This converter path search is done recursively  (recursivity limit = 3 by default)
+ * <p>
+ * Example use:
  *
- * Exemple use:
+ * <pre>
  * ConvertibleRois cr = new ConvertibleRois();
  * // Populate rois with a remote svg image
- * cr.set(new URL("https://upload.wikimedia.org/wikipedia/commons/f/f7/Bananas.svg"));
+ * {@code cr.set(new URL("https://upload.wikimedia.org/wikipedia/commons/f/f7/Bananas.svg"));}
  * cr.to(RoiManager.class); // converts to ROI Manager
  * import ch.epfl.biop.java.utilities.roi.ConvertibleRois;
  * import ij.plugin.frame.RoiManager;
  * import ij.ImagePlus;
  * ConvertibleRois cr = new ConvertibleRois();
  * // Populate rois with a remote svg image
- * cr.set(new URL("http://api.brain-map.org/api/v2/svg/100960033?groups=28"));
+ * {@code cr.set(new URL("https://api.brain-map.org/api/v2/svg/100960033?groups=28"));}
  * cr.to(RoiManager.class); // converts to ROI Manager
+ * </pre>
+ *
  */
+
 
 public class ConvertibleObject {
 
-	Map<Class, ArrayList<Method>> convertFwd;
-	Map<Class, ArrayList<Method>> convertBwd;
+	final Map<Class<?>, ArrayList<Method>> convertFwd = new HashMap<>();
+	final Map<Class<?>, ArrayList<Method>> convertBwd = new HashMap<>();;
 	
-	public Map<Class,Object> states;
+	public final Map<Class<?>,Object> states = new HashMap<>();
 	
 	public ConvertibleObject() {
-		convertBwd = new HashMap<>();
-		convertFwd = new HashMap<>();
-		states = new HashMap<>();
         for (Method m:this.getClass().getMethods()) {
             if (m.isAnnotationPresent(Converter.class)) {
                 registerConverter(m);
             }
         }
-        //System.out.println(this.getClass().getName());
         states.put(this.getClass(), this);
 	}
 	
 	private void registerConverter(Method m) {
-		Class c_in = m.getParameterTypes()[0].getComponentType();
-		Class c_out = m.getReturnType();
+		Class<?> c_in = m.getParameterTypes()[0].getComponentType();
+		Class<?> c_out = m.getReturnType();
 		if (convertFwd.containsKey(c_in)) {
 			convertFwd.get(c_in).add(m);
 		} else {
@@ -70,7 +71,7 @@ public class ConvertibleObject {
 		}
 	}
 
-	public Object to(Class c_out, int recursivityLevel) {
+	public Object to(Class<?> c_out, int recursivityLevel) {
 		if (recursivityLevel==0) {
 			return null;
 		}
@@ -82,7 +83,7 @@ public class ConvertibleObject {
 				// Try direct conversion
 				if (convertBwd.get(c_out)!=null) {
 					for (Method m: convertBwd.get(c_out)) {
-						Class c_in = m.getParameterTypes()[0];
+						Class<?> c_in = m.getParameterTypes()[0];
 						if (states.containsKey(c_in)) {
 							try {
 								//System.out.println("NR Converting:"+c_in.getName()+"->"+c_out.getName());
@@ -96,7 +97,7 @@ public class ConvertibleObject {
 					}
 					// If not : recursivity
 					for (Method m: convertBwd.get(c_out)) {
-						Class c_in = m.getParameterTypes()[0];
+						Class<?> c_in = m.getParameterTypes()[0];
 						Object obj_in = this.to(c_in, recursivityLevel-1);
 						if (obj_in!=null) {//states.containsKey(c_in)) {
 							try {
@@ -119,7 +120,7 @@ public class ConvertibleObject {
 	
 	public int MaxRecursivity = 3;
 	
-	public Object to(Class c_out) {
+	public Object to(Class<?> c_out) {
 		return to(c_out,MaxRecursivity);
 	}
 	
@@ -127,7 +128,7 @@ public class ConvertibleObject {
 		states.clear();
 	}
 	
-	public void clear(Class c) {
+	public void clear(Class<?> c) {
 		states.remove(c);
 	}
 	
@@ -135,7 +136,7 @@ public class ConvertibleObject {
 		states.put(o.getClass(), o);
 	}
 	
-	public void set(Object o, Class c) {
+	public void set(Object o, Class<?> c) {
 		states.put(c.getClass().cast(o),o);
 	}
 

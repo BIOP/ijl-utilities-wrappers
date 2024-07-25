@@ -15,6 +15,7 @@ import ch.epfl.biop.wrappers.transformix.Transformix;
  * Checks whether the executable being wrapped are accessible
  */
 
+@SuppressWarnings("CanBeFinal")
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Set and Check Wrappers")
 public class BiopWrappersSet implements Command {
 

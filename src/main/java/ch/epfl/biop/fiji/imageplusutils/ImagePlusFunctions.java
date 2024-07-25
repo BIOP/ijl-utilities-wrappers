@@ -1,6 +1,5 @@
 package ch.epfl.biop.fiji.imageplusutils;
 
-import ch.epfl.biop.wrappers.transformix.TransformHelper;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.plugin.ChannelSplitter;

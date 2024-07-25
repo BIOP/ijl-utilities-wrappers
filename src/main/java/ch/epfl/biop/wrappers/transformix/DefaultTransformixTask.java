@@ -7,10 +7,10 @@ public class DefaultTransformixTask implements TransformixTask {
     public void run(TransformixTaskSettings settings) throws Exception {
         ArrayList<String> options = new ArrayList<>();
         options.add("-threads");options.add(""+settings.nThreads);
-        if (!settings.imagePathSupplier.get().equals("")) {
+        if (!settings.imagePathSupplier.get().isEmpty()) {
             options.add("-in");options.add(settings.imagePathSupplier.get());
         }
-        if (!settings.inputPtsFileSupplier.get().equals("")) {
+        if (!settings.inputPtsFileSupplier.get().isEmpty()) {
             options.add("-def");options.add(settings.inputPtsFileSupplier.get());
         }
         options.add("-out");options.add(settings.outputFolderSupplier.get());

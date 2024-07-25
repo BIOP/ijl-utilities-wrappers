@@ -19,7 +19,6 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import ch.epfl.biop.java.utilities.roi.types.*;
-import ch.epfl.biop.java.utilities.roi.types.IJShapeRoiArray;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.plugin.filter.ThresholdToSelection;
@@ -35,9 +34,7 @@ import ij.gui.Roi;
 import ij.io.RoiDecoder;
 import ij.io.RoiEncoder;
 import ij.plugin.frame.RoiManager;
-import ij.process.FloatPolygon;
 import ij.process.FloatProcessor;
-import java.awt.Point;
 
 /**
  * Converters for various ROI classes definition
@@ -50,33 +47,34 @@ import java.awt.Point;
  * - TransformixOutputRoisFile
  * - RoiManager
  * - ImagePlus (label image)
- *
+ * <p>
  * Some format just contain a list of points :
  * - RealPointList
  * - TransformixInput
  * - TransformixOutput
- *
+ * <p>
  * While other contain a lot of information (how points are connected, multiple paths):
  * - SVGURL
  * - IJShapeRoiArray
  * - SVGRoisFormat
  * - ROIManager
  * - SVGURL
- *
+ * <p>
  * One is very specfic because it stores a mask image:
  * - ImageLabel
- *
+ * <p>
  * How to deal with connectivity loss during conversion ?
  * 	- Every class without connectivity info (RealPointList, TransformixInput, TransformixOutput) holds a reference to an IJShapeRoiArray, which has to be passed
  * 	for every converter
  * 		- This means that the number of points cannot be modified when ROI are under this type of class
- *
+ * <p>
  *
  * 	// Unsupported now :
  * 	- Shapes that are not only polygon in svg files are not well handled TODO SVG to ROI Proper CONVERSION
  *
  */
 
+@SuppressWarnings({"unused"})
 public class ConvertibleRois extends ConvertibleObject{
 
 	@Converter
@@ -90,7 +88,7 @@ public class ConvertibleRois extends ConvertibleObject{
 			ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(temp)));
 			out = new DataOutputStream(new BufferedOutputStream(zos));
 			RoiEncoder re = new RoiEncoder(out);
-			rois.rois.stream().map(compositeFloatPoly -> compositeFloatPoly.getRoi()).forEach(roi -> {
+			rois.rois.stream().map(CompositeFloatPoly::getRoi).forEach(roi -> {
 				if (roi!=null) {
 					String label = roi.getName();
 					if (avoidDuplicates.containsKey(label)) {
@@ -150,9 +148,9 @@ public class ConvertibleRois extends ConvertibleObject{
 			return null;
 		} finally {
 			if (in!=null)
-				try {in.close();} catch (IOException e) {}
+				try {in.close();} catch (IOException e) {e.printStackTrace();}
 			if (out!=null)
-				try {out.close();} catch (IOException e) {}
+				try {out.close();} catch (IOException e) {e.printStackTrace();}
 		}
 	}
 	
@@ -168,8 +166,7 @@ public class ConvertibleRois extends ConvertibleObject{
 			File temp = File.createTempFile("timg", ".svg");
 	        temp.deleteOnExit();
 	        FileUtils.copyURLToFile(svgurl.url, temp, 10000, 10000);
-	        SVGRoisFormat svgff = new SVGRoisFormat(temp);
-	        return svgff;
+            return new SVGRoisFormat(temp);
 		} catch (IOException e) {
             e.printStackTrace();
             return null;
@@ -207,6 +204,7 @@ public class ConvertibleRois extends ConvertibleObject{
                 // Close the writer regardless of what happens...
                 writer.close();
             } catch (Exception e) {
+				e.printStackTrace();
             }
         }
 	}
@@ -215,9 +213,7 @@ public class ConvertibleRois extends ConvertibleObject{
 	public static IJShapeRoiArray roiManagerToArray(RoiManager rm) {
 		ArrayList<Roi> rois = new ArrayList<>();
 		Roi[] roisArray = rm.getRoisAsArray();
-		for (int i=0;i<roisArray.length;i++) {
-			rois.add(roisArray[i]);
-		}
+        Collections.addAll(rois, roisArray);
         return new IJShapeRoiArray(rois);
 	}
 
@@ -226,7 +222,7 @@ public class ConvertibleRois extends ConvertibleObject{
 		List<RealPoint> out = new ArrayList<>();
 
 		for (Point2D pt:rois.getPoints()) {
-		    out.add(new RealPoint(new double[] {pt.getX(), pt.getY()}));
+		    out.add(new RealPoint(pt.getX(), pt.getY()));
         }
 
 		RealPointList rpl = new RealPointList(out);
@@ -266,13 +262,13 @@ public class ConvertibleRois extends ConvertibleObject{
 				reader = new BufferedReader(new FileReader(erf.f));
 				String line;
                 String[] parts;
-                String part[];
+                String[] part;
                 ArrayList<Point2D> ptList = new ArrayList<>();
 				while ((line  = reader.readLine())!=null) {
                     parts = line.split(";");//\\d\\s+");
                     part = parts[4].split("[\\s]");
-                    double x = Double.valueOf(part[4].trim());
-                    double y = Double.valueOf(part[5].trim());
+                    double x = Double.parseDouble(part[4].trim());
+                    double y = Double.parseDouble(part[5].trim());
                     ptList.add(new Point2D.Double(x,y));
 				}
 				out.setPoints(ptList);
@@ -286,6 +282,7 @@ public class ConvertibleRois extends ConvertibleObject{
 	                // Close the writer regardless of what happens...
 	                reader.close();
 	            } catch (Exception e) {
+					e.printStackTrace();
 	            }
 	        }
 	}
@@ -305,7 +302,7 @@ public class ConvertibleRois extends ConvertibleObject{
 			if (roi.getBounds().x+roi.getBounds().width>xmax) xmax=roi.getBounds().x+roi.getBounds().width;
 			if (roi.getBounds().y+roi.getBounds().height>ymax) ymax=roi.getBounds().y+roi.getBounds().height;
 		}
-		ImagePlus imp = IJ.createImage("Labels_"+this.toString(),"16-bit black", (int)xmax,(int)ymax,1);
+		ImagePlus imp = IJ.createImage("Labels_"+this,"16-bit black", (int)xmax,(int)ymax,1);
 		//ImagePlus imp = new ImagePlus("Labels_"+this.toString())
 		ImageProcessor ip = imp.getProcessor();
 		int roiIndex=0;
@@ -330,7 +327,7 @@ public class ConvertibleRois extends ConvertibleObject{
 		ImageProcessor ip = imp.getProcessor();
 		float[][] pixels = ip.getFloatArray();
 
-		// Converts data in case thats a RGB Image	
+		// Converts data in case that's a RGB Image
 		FloatProcessor fp = new FloatProcessor(ip.getWidth(), ip.getHeight());	
 		fp.setFloatArray(pixels);
 
@@ -379,94 +376,15 @@ public class ConvertibleRois extends ConvertibleObject{
 			}
 		}
 
-		//SelectToROIKeepLines.filterMergable=true;
 		existingPixelValues.forEach(v -> {
 			fp.setThreshold( v,v,ImageProcessor.NO_LUT_UPDATE);
 			Roi roi = SelectToROIKeepLines.run(imgFloatCopy,movablePx,true);//ThresholdToSelection.run(imgFloatCopy);
 			roi.setName(Integer.toString((int) (double) v));
 			roiArray.add(roi);
 		});
-		//return new IJShapeRoiArray(roiArray);
 
-		IJShapeRoiArray output = new IJShapeRoiArray(roiArray);//labelImageToRoiArray(imp);
-		// Let's try to define cross pixels which can be merged :
-
-		/*boolean[][] mergePx = new boolean[ip.getWidth()+1][ip.getHeight()+1];
-		for (int x=1;x<ip.getWidth();x++) {
-			for (int y=1;y<ip.getHeight();y++) {
-				if (movablePx[x][y]==false) {
-					// Let's check whether it is
-					// b a or a b in which case a can be merged and should be merged
-					// a c    c a
-
-					float p1p1 = pixels[x][y];
-					float p1m1 = pixels[x][y-1];
-					float m1p1 = pixels[x-1][y];
-					float m1m1 = pixels[x-1][y-1];
-
-					if ((p1p1==m1m1)&&(p1m1!=m1p1)) {
-						// Ahah!
-						// We know it's 3 colored; so it's the situation:
-						// b a
-						// a c
-						// where a = p1p1
-						mergePx[x][y]=true;
-					}
-					if ((p1m1==m1p1)&&(p1p1!=m1m1)) {
-						// Ahah!
-						// We know it's 3 colored; so it's the situation:
-						// a c
-						// b a
-						// where a = p1p1
-						mergePx[x][y]=true;
-					}
-
-				}
-			}
-		}
-		List<CompositeFloatPoly> cfps_to_fuse = output.rois
-				.parallelStream()
-				.filter( cfp -> cfp.getControlPoints().stream().anyMatch( pt -> mergePx[(int)pt.getX()][(int) pt.getY()]))
-				.collect(Collectors.toList());
-		output.rois.removeAll(cfps_to_fuse);*/
-
-
-		// Merge Rois based on mergePx
-		/*boolean allMerged = false;
-		ArrayList<CompositeFloatPoly> cfps = new ArrayList<>();
-		cfps.addAll(output.rois);
-		// repeat while allMerging has not been done
-		while (allMerged==false) {
-			allMerged=true;
-			boolean merge_perform=false;
-			int indexPoly = 0;
-			while (merge_perform==false) {
-				CompositeFloatPoly cfp = cfps.get(indexPoly);
-				int indexPts = 0;
-				boolean merged=false;
-				while((indexPts<cfp.getControlPoints().size())&&(merged==false)) {
-					Point2D pt = cfp.getControlPoints().get(indexPts);
-					int px = (int) pt.getX();
-					int py = (int) pt.getY();
-					if (mergePx[px][py]) {
-						// look for buddy
-						int indexPoly2 = indexPoly+1;
-						while()&&()merge_perform==false
-						CompositeFloatPoly cfp2 = cfps.get(indexPoly2);
-
-
-					}
-				}
-				if (merged==true) {
-					merge_perform=true;
-				}
-				//cfp.getControlPoints().stream().filter(pt -> mergePx[(int)pt.getX()][(int)pt.getY()]).findFirst();
-			}
-
-		}*/
-
+		IJShapeRoiArray output = new IJShapeRoiArray(roiArray);
 		output.smoothenWithConstrains(movablePx);
-		//output.smoothenWithConstrains(movablePx);
 		return output;
 	}
 
@@ -484,7 +402,7 @@ public class ConvertibleRois extends ConvertibleObject{
 			}
 		}
 		
-		// Converts data in case thats a RGB Image	
+		// Converts data in case that's a RGB Image
 		FloatProcessor fp = new FloatProcessor(ip.getWidth(), ip.getHeight());	
 		fp.setFloatArray(pixels);
 		ImagePlus imgFloatCopy = new ImagePlus("FloatLabel",fp);
@@ -512,7 +430,7 @@ public class ConvertibleRois extends ConvertibleObject{
 			}
 		}
 
-		// Converts data in case thats a RGB Image
+		// Converts data in case that's a RGB Image
 		FloatProcessor fp = new FloatProcessor(ip.getWidth(), ip.getHeight());
 		fp.setFloatArray(pixels);
 		ImagePlus imgFloatCopy = new ImagePlus("FloatLabel",fp);
@@ -560,6 +478,7 @@ public class ConvertibleRois extends ConvertibleObject{
 				// Close the writer regardless of what happens...
 				writer.close();
 			} catch (Exception e) {
+				e.printStackTrace();
 			}
 		}
 	}
@@ -574,7 +493,7 @@ public class ConvertibleRois extends ConvertibleObject{
 				reader = new BufferedReader(new FileReader(erf.f));
 				List<RealPoint> out = new ArrayList<>();String line;
 				String[] parts;
-				String part[];
+				String[] part;
 				while ((line = reader.readLine())!=null) {
 					parts = line.split(";");//\\d\\s+");
 					part = parts[4].split("[\\s]");
@@ -582,7 +501,7 @@ public class ConvertibleRois extends ConvertibleObject{
 					//RealPoint rp = new RealPoint();
 					double[] coords = new double [nDim];
 					for (int d=0;d<nDim;d++) {
-						coords[d]=Double.valueOf(part[4+d].trim());
+						coords[d]=Double.parseDouble(part[4+d].trim());
 					}
 					RealPoint rp = new RealPoint(coords);
 					//rp.setPosition(coords);
@@ -600,6 +519,7 @@ public class ConvertibleRois extends ConvertibleObject{
 					// Close the reader regardless of what happens...
 					reader.close();
 				} catch (Exception e) {
+					e.printStackTrace();
 				}
 			}
 		}

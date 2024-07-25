@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -19,10 +20,10 @@ import static java.io.File.separatorChar;
 
 public class Stardist {
 
-    public static String keyPrefix = Stardist.class.getName() + ".";
+    final public static String keyPrefix = Stardist.class.getName() + ".";
 
-    static String defaultStardistEnvDirPath = "C:/Users/username/.conda/envs/stardist"; //D:\conda_envs\stardistTF115
-    static String defaultStardistEnvType = "conda";
+    final static String defaultStardistEnvDirPath = "C:/Users/username/.conda/envs/stardist"; //D:\conda_envs\stardistTF115
+    final static String defaultStardistEnvType = "conda";
 
     public static String stardistEnvDirectory = Prefs.get(keyPrefix + "Stardist_envDirPath", defaultStardistEnvDirPath);
     public static String stardistEnvType = Prefs.get(keyPrefix + "Stardist_envType", defaultStardistEnvType);
@@ -39,7 +40,6 @@ public class Stardist {
     private static final File NULL_FILE = new File((System.getProperty("os.name").startsWith("Windows") ? "NUL" : "/dev/null"));
 
     static void execute(List<String> options, Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
-        List<String> cmd = new ArrayList<>();
         List<String> start_cmd = null;
 
         // Get the prefs about the env type
@@ -51,13 +51,16 @@ public class Stardist {
             start_cmd = Arrays.asList("cmd.exe", "/C");
         } else if (IJ.isMacOSX() || IJ.isLinux()) {
             start_cmd = Arrays.asList("bash", "-c");
-        } 
-        cmd.addAll(start_cmd);
+        } else {
+            throw new RuntimeException("Unknown Operating System");
+        }
+
+        List<String> cmd = new ArrayList<>(start_cmd);
 
 
         // Depending of the env type
         if (stardistEnvType.equals("conda")) {
-            List<String> conda_activate_cmd = null;
+            List<String> conda_activate_cmd;
 
             // Because of i) the way we call stardist on Mac AND ii) to be able to use 2d or 3D,
             // options , set from DefaultStarDistTask contains as first element if we use stardist-precdict3D or 2D.
@@ -71,7 +74,7 @@ public class Stardist {
                 cmd.addAll(conda_activate_cmd);
                 // After starting the env we can now use cellpose
                 cmd.add("&");// to have a second command
-                List<String> args_cmd = Arrays.asList(stardist_cmd);
+                List<String> args_cmd = Collections.singletonList(stardist_cmd);
 
                 cmd.addAll(args_cmd);
                 // input options
@@ -80,7 +83,7 @@ public class Stardist {
             } else if (IJ.isMacOSX() || IJ.isLinux()) {
                 // instead of conda activate (so much headache!!!) specify the python to use
                 String python_path = stardistEnvDirectory + separatorChar + "bin" + separatorChar + stardist_cmd;
-                List<String> cellpose_args_cmd = new ArrayList<>(Arrays.asList(python_path));
+                List<String> cellpose_args_cmd = new ArrayList<>(Collections.singletonList(python_path));
                 cellpose_args_cmd.addAll(options);
 
                 // convert to a string

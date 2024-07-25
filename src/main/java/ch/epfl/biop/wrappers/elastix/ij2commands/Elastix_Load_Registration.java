@@ -13,6 +13,7 @@ import org.scijava.plugin.Plugin;
  * Loads zip registration file for transformix
  */
 
+@SuppressWarnings({"CanBeFinal", "unused"})
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Elastix>Load Registration")
 public class Elastix_Load_Registration implements Command {
     

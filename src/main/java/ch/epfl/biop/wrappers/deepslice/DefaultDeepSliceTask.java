@@ -12,7 +12,7 @@ public class DefaultDeepSliceTask extends DeepSliceTask {
         options.add(settings.model);
         options.add(settings.input_folder);
 
-        if ((settings.output_folder!=null)&&(!settings.output_folder.trim().equals(""))) {
+        if ((settings.output_folder!=null)&&(!settings.output_folder.trim().isEmpty())) {
             options.add("--output_folder");
             options.add(settings.output_folder);
         }

@@ -9,6 +9,7 @@ import org.scijava.plugin.Plugin;
 
 import java.io.File;
 
+@SuppressWarnings({"CanBeFinal", "unused"})
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>DeepSlice>DeepSlice (folder)",
 description = "Runs DeepSlice locally on a folder of your choice.")
 public class DeepSliceFolderCommand implements Command {

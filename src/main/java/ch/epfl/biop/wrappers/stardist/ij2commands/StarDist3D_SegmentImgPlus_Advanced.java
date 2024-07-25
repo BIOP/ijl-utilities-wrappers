@@ -1,6 +1,5 @@
 package ch.epfl.biop.wrappers.stardist.ij2commands;
 
-
 import ch.epfl.biop.wrappers.stardist.DefaultStardistTask;
 import ch.epfl.biop.wrappers.stardist.StardistTaskSettings;
 import ij.IJ;
@@ -18,6 +17,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
+@SuppressWarnings("CanBeFinal")
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>StarDist>StarDist3D... (Advanced) ")
 public class StarDist3D_SegmentImgPlus_Advanced implements Command {
 
@@ -94,7 +94,7 @@ public class StarDist3D_SegmentImgPlus_Advanced implements Command {
             File t_imp_path = new File(stardistTempDir, imp.getShortTitle() + "-t" + t_idx + ".tif");
             FileSaver fs = new FileSaver(t_imp);
             fs.saveAsTiff(t_imp_path.toString());
-            if (verbose) System.out.println(t_imp_path.toString());
+            if (verbose) System.out.println(t_imp_path);
             // add to list of paths to delete at the end of operations
             t_imp_paths.add(t_imp_path);
 

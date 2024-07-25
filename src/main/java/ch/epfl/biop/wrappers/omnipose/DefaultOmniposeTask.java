@@ -1,9 +1,9 @@
-package ch.epfl.biop.wrappers.cellpose;
+package ch.epfl.biop.wrappers.omnipose;
 
 import ch.epfl.biop.wrappers.ExecutePythonInConda;
 import java.util.ArrayList;
 
-public class DefaultCellposeTask extends CellposeTask {
+public class DefaultOmniposeTask extends OmniposeTask{
 
     public void run() throws Exception {
 
@@ -12,7 +12,7 @@ public class DefaultCellposeTask extends CellposeTask {
         ArrayList<String> arguments = new ArrayList<>();
 
         arguments.add("-m");
-        arguments.add("cellpose");
+        arguments.add("omnipose");
 
         arguments.add("--dir");
         arguments.add(settings.datasetDir);
@@ -50,4 +50,5 @@ public class DefaultCellposeTask extends CellposeTask {
         }
         ExecutePythonInConda.execute(conda_env_path , arguments, null);
     }
+
 }

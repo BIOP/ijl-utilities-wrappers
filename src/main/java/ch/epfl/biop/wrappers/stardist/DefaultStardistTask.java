@@ -1,7 +1,7 @@
 package ch.epfl.biop.wrappers.stardist;
 
 import java.util.ArrayList;
-import ij.IJ;
+
 import static ch.epfl.biop.wrappers.stardist.StardistTaskSettings.MODE2D;
 import static ch.epfl.biop.wrappers.stardist.StardistTaskSettings.MODE3D;
 
@@ -16,13 +16,13 @@ public class DefaultStardistTask extends StardistTask {
             options.add("stardist-predict3d");
         }
         options.add("-i");
-        options.add("" + settings.image_path);
+        options.add(settings.image_path);
 
         options.add("-m");
-        options.add("" + settings.model_path);
+        options.add(settings.model_path);
 
         options.add("-o");
-        options.add("" + settings.output_path);
+        options.add(settings.output_path);
 
         if(settings.dimension.equals(MODE3D)){
             if ((settings.x_tiles > -1) && (settings.y_tiles > -1) && (settings.z_tiles > -1)) {

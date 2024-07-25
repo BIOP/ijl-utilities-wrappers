@@ -7,10 +7,6 @@ import ij.gui.ShapeRoi;
 import ij.process.FloatPolygon;
 
 import java.awt.*;
-import java.awt.geom.CubicCurve2D;
-import java.awt.geom.PathIterator;
-import java.awt.geom.Point2D;
-import java.awt.geom.QuadCurve2D;
 import java.util.*;
 
 import java.awt.geom.*;
@@ -24,9 +20,9 @@ import java.util.stream.Collectors;
  *  PointROI or Line ROI  (non area) are only supported if there are not part of a ShapeROI
  *  calibration unsupported
  *  curves unsupported
- *
+ * <p>
  *  the control points do not include any relative positioning  ? to check, maybe basex and base y are important
- *
+ * <p>
  * The list of floatpolygon is generated from the constructor, which depending on the ROI class:
  * - if it is something else than ShapeROI, then the ROI is stored as is
  * - if it is a ShapeROI, it is splitted into several float polygons
@@ -36,7 +32,7 @@ import java.util.stream.Collectors;
  * - removes integer coordinates conversion when getting rois path list
  * - being able to retrieve a list of control points
  * - being able to set new shapes based on a list of control points
- *
+ * <p>
  * TODO :
  * - check whether the polygon is repeating the end point
  * - check whether ROIs are representing areas
@@ -59,7 +55,7 @@ public class CompositeFloatPoly {
      * {@link ij.gui.Roi#POLYLINE} and {@link ij.gui.Roi#POLYGON} for open and closed shapes, respectively.
      * Conversion of shapes open and closed with more than MAXPOLY line segments will result,
      * respectively, in {@link ij.gui.Roi#FREELINE} and {@link ij.gui.Roi#FREEROI} (or
-     * {@link ij.gui.Roi#TRACED_ROI} if {@link #forceTrace} flag is <strong><code>true</code></strong>.
+     * {@link ij.gui.Roi#TRACED_ROI} if {@link #forceTrace} flag is <strong><code>true</code></strong>.)
      */
     private static final int MAXPOLY = 10; // I hate arbitrary values !!!!
 
@@ -91,11 +87,13 @@ public class CompositeFloatPoly {
     public String name;
 
     /**
-     * TODO Should be replaced by a clone() method
-     * @param cfp_in
+     * @param cfp_in the composite float polygon to duplicate
      */
     public CompositeFloatPoly(CompositeFloatPoly cfp_in) {
         if (cfp_in !=null) {
+            forceTrace = cfp_in.forceTrace;
+            maxerror = cfp_in.maxerror;
+            forceAngle = cfp_in.forceAngle;
             name = cfp_in.name;
             color = cfp_in.color;
             polys = new ArrayList<>();
@@ -207,7 +205,7 @@ public class CompositeFloatPoly {
         if (polys==null) {
             return null;
         }
-        if (polys.size()==0) {
+        if (polys.isEmpty()) {
             return null;
         }
         if (polys.size()==1) {
@@ -222,15 +220,15 @@ public class CompositeFloatPoly {
             // import java.awt.Polygon;
             Optional<ShapeRoi> positiveShape = partitionedPolygons.get(true)
                                                                  .stream()
-                                                                 .map(fp -> getShape(fp))//new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON)))
-                                                                 .map(pr -> new ShapeRoi(pr))
+                                                                 .map(this::getShape)//new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON)))
+                                                                 .map(ShapeRoi::new)
                                                                  .reduce(ShapeRoi::or);
 
             Optional<ShapeRoi> negativeShape = partitionedPolygons.get(false)
                     .stream()
                     //.map(fp -> (new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON)))
-                    .map(fp -> getShape(fp))
-                    .map(pr -> new ShapeRoi(pr))
+                    .map(this::getShape)
+                    .map(ShapeRoi::new)
                     .reduce(ShapeRoi::or);
             //FloatPolygon fp = this.polys.get(0);
             //return new ShapeRoi(new PolygonRoi(fp.xpoints, fp.ypoints, fp.npoints, Roi.POLYGON));
@@ -270,7 +268,7 @@ public class CompositeFloatPoly {
 
         for (int index = 1; index < fp.npoints; index++) {
             polygon.lineTo(fp.xpoints[index], fp.ypoints[index]);
-        };
+        }
 
         polygon.closePath();
 
@@ -381,7 +379,7 @@ public class CompositeFloatPoly {
             coords = new double[6];
             ucoords = new double[6];
             segType = pIter.currentSegment(coords);
-            segments.add(new Integer(segType));
+            segments.add(segType);
             count++;
             System.arraycopy(coords,0,ucoords,0,coords.length);
             switch(segType) {
@@ -389,8 +387,8 @@ public class CompositeFloatPoly {
                     if (subPaths>0) {
                         closed = ((int)ux0==(int)usX && (int)uy0==(int)usY);
                         if (closed && (int)ux0!=(int)usX && (int)uy0!=(int)usY) { // this may only happen after a SEG_CLOSE
-                            xCoords.add(new Double(((Double)xCoords.elementAt(0)).doubleValue()));
-                            yCoords.add(new Double(((Double)yCoords.elementAt(0)).doubleValue()));
+                            xCoords.add(((Double) xCoords.elementAt(0)).doubleValue());
+                            yCoords.add(((Double) yCoords.elementAt(0)).doubleValue());
                         }
                         if (rois!=null) {
                             roiType = guessType(count, linesOnly, curvesOnly, closed);
@@ -412,26 +410,24 @@ public class CompositeFloatPoly {
                     x0 = coords[0];
                     y0 = coords[1];
                     handles.add(new Point2D.Double(ucoords[0],ucoords[1]));
-                    xCoords.add(new Double(ucoords[0]));
-                    yCoords.add(new Double(ucoords[1]));
+                    xCoords.add(ucoords[0]);
+                    yCoords.add(ucoords[1]);
                     closed = false;
                     break;
                 case PathIterator.SEG_LINETO:
-                    linesOnly = linesOnly & true;
-                    curvesOnly = curvesOnly & false;
+                    curvesOnly = false;
                     pathLength += Math.sqrt(Math.pow((y0-coords[1]),2.0)+Math.pow((x0-coords[0]),2.0));
                     ux0 = ucoords[0];
                     uy0 = ucoords[1];
                     x0 = coords[0];
                     y0 = coords[1];
                     handles.add(new Point2D.Double(ucoords[0],ucoords[1]));
-                    xCoords.add(new Double(ucoords[0]));
-                    yCoords.add(new Double(ucoords[1]));
+                    xCoords.add(ucoords[0]);
+                    yCoords.add(ucoords[1]);
                     closed = ((int)ux0==(int)usX && (int)uy0==(int)usY);
                     break;
                 case PathIterator.SEG_QUADTO:
-                    linesOnly = linesOnly & false;
-                    curvesOnly = curvesOnly & true;
+                    linesOnly = false;
                     curve = new QuadCurve2D.Double(x0,y0,coords[0],coords[2],coords[2],coords[3]);
                     pathLength += qBezLength((QuadCurve2D.Double)curve);
                     ux0 = ucoords[2];
@@ -440,13 +436,12 @@ public class CompositeFloatPoly {
                     y0 = coords[3];
                     handles.add(new Point2D.Double(ucoords[0],ucoords[1]));
                     handles.add(new Point2D.Double(ucoords[2],ucoords[3]));
-                    xCoords.add(new Double((double)ucoords[2]));
-                    yCoords.add(new Double((double)ucoords[3]));
+                    xCoords.add(ucoords[2]);
+                    yCoords.add(ucoords[3]);
                     closed = ((int)ux0==(int)usX && (int)uy0==(int)usY);
                     break;
                 case PathIterator.SEG_CUBICTO:
-                    linesOnly = linesOnly & false;
-                    curvesOnly  = curvesOnly & true;
+                    linesOnly = false;
                     curve = new CubicCurve2D.Double(x0,y0,coords[0],coords[1],coords[2],coords[3],coords[4],coords[5]);
                     pathLength += cBezLength((CubicCurve2D.Double)curve);
                     ux0 = ucoords[4];
@@ -456,8 +451,8 @@ public class CompositeFloatPoly {
                     handles.add(new Point2D.Double(ucoords[0],ucoords[1]));
                     handles.add(new Point2D.Double(ucoords[2],ucoords[3]));
                     handles.add(new Point2D.Double(ucoords[4],ucoords[5]));
-                    xCoords.add(new Double((double)ucoords[4]));
-                    yCoords.add(new Double((double)ucoords[5]));
+                    xCoords.add(ucoords[4]);
+                    yCoords.add(ucoords[5]);
                     closed = ((int)ux0==(int)usX && (int)uy0==(int)usY);
                     break;
                 case PathIterator.SEG_CLOSE:
@@ -471,8 +466,8 @@ public class CompositeFloatPoly {
             done = pIter.isDone() || (shapeToRoi&&rois!=null&&rois.size()==1);
             if (done) {
                 if(closed && (int)x0!=(int)sX && (int)y0!=(int)sY) { // this may only happen after a SEG_CLOSE
-                    xCoords.add(new Double(((Double)xCoords.elementAt(0)).doubleValue()));
-                    yCoords.add(new Double(((Double)yCoords.elementAt(0)).doubleValue()));
+                    xCoords.add(((Double) xCoords.elementAt(0)).doubleValue());
+                    yCoords.add(((Double) yCoords.elementAt(0)).doubleValue());
                 }
                 if (rois!=null) {
                     roiType = shapeToRoi?Roi.TRACED_ROI:guessType(count+1, linesOnly, curvesOnly, closed);
@@ -551,14 +546,14 @@ public class CompositeFloatPoly {
     private Roi createRoi(Vector xCoords, Vector yCoords, int roiType) {
         if (roiType==NO_TYPE) return null;
         Roi roi = null;
-        if(xCoords.size() != yCoords.size() || xCoords.size()==0) { return null; }
+        if(xCoords.size() != yCoords.size() || xCoords.isEmpty()) { return null; }
 
         double[] xPoints = new double[xCoords.size()];
         double[] yPoints = new double[yCoords.size()];
 
         for (int i=0; i<xPoints.length; i++) {
-            xPoints[i] = ((Double)xCoords.elementAt(i)).doubleValue() + x;
-            yPoints[i] = ((Double)yCoords.elementAt(i)).doubleValue() + y;
+            xPoints[i] = (Double) xCoords.elementAt(i) + x;
+            yPoints[i] = (Double) yCoords.elementAt(i) + y;
         }
 
         double startX = 0;

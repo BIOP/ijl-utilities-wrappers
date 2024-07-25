@@ -113,7 +113,7 @@ public class ROIReShape {
 }
 
 class PathSampler {
-	float[] xpts,ypts;
+	final float[] xpts,ypts;
 	public PathSampler(float[] xpts, float[] ypts) {
 		this.xpts=xpts;
 		this.ypts=ypts;
@@ -169,7 +169,7 @@ class PathSampler {
 							-currentSegmentLength;
 					previousIndex=currentPtIndex;
 					currentPtIndex++;
-					if ((currentPtIndex==1)&&(loopDone==true)) {
+					if ((currentPtIndex==1)&&(loopDone)) {
 						done=true;
 						xc=xpts[0];
 						yc=ypts[0];

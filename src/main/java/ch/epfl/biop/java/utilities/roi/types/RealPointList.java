@@ -12,5 +12,5 @@ public class RealPointList {
         this.ptList = rpl;
     }
 
-    public List<RealPoint> ptList;
+    public final List<RealPoint> ptList;
 }

@@ -7,7 +7,7 @@ import java.io.File;
  */
 
 public class ImageJRoisFile {
-	public File f;
+	final public File f;
 	public ImageJRoisFile(File f) {
 		this.f=f;
 	}

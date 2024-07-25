@@ -9,6 +9,7 @@ import org.scijava.plugin.Plugin;
 
 import java.io.File;
 
+@SuppressWarnings("CanBeFinal")
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>StarDist> StarDist2D... (from file - Advanced)")
 public class StarDist2D_SegmentImgPath_Advanced implements Command {
 
