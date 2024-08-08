@@ -2,7 +2,8 @@ package ch.epfl.biop.wrappers.cellpose;
 
 public class CellposeTaskSettings {
 
-    String conda_env_path;
+    String envPath;
+    String envType = "conda";
     String datasetDir;
     String model;
     int ch1;
@@ -12,8 +13,13 @@ public class CellposeTaskSettings {
     int diameter = 30;
     String additional_flags = "";
 
-    public CellposeTaskSettings setCondaEnvDir(String conda_env_path) {
-        this.conda_env_path = conda_env_path;
+    public CellposeTaskSettings setEnvPath(String conda_env_path) {
+        this.envPath = conda_env_path;
+        return this;
+    }
+
+    public CellposeTaskSettings setEnvType(String envType) {
+        this.envType = envType;
         return this;
     }
 
