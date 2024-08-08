@@ -8,7 +8,8 @@ public class DefaultOmniposeTask extends OmniposeTask{
 
     public void run() throws Exception {
 
-        String conda_env_path = settings.conda_env_path;
+        String envPath = settings.envPath;
+        String envType = settings.envType;
 
         ArrayList<String> arguments = new ArrayList<>();
 
@@ -49,7 +50,7 @@ public class DefaultOmniposeTask extends OmniposeTask{
                 }
             }
         }
-        ExecutePythonInConda.execute(conda_env_path , arguments, null);
+        ExecutePythonInConda.execute(envPath , envType, arguments, null);
     }
 
 }

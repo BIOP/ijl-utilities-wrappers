@@ -43,7 +43,10 @@ public class Cellpose implements Command {
     ImagePlus imp;
 
     @Parameter(label = "conda environment path" ,style="directory")
-    File conda_env_path = new File(default_conda_env_path);
+    File envPath = new File(default_conda_env_path);
+
+    @Parameter(label= "virtual environment type", choices= {"conda", "venv"})
+    String envType = "conda";
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message = "You can use the pretrained model, specify the model name below";
@@ -72,9 +75,9 @@ public class Cellpose implements Command {
     int ch2 = -1;
 
     @Parameter (visibility=ItemVisibility.MESSAGE )
-    String message2 = "You can add more flags to the command line by adding them here. For example: --omni, --cluster";
+    String message2 = "You can add more flags to the command line by adding them here. For example: --use_gpu, --do_3D";
 
-    @Parameter(required = false, label = "To add more parameters (use comma separated list of flags)")
+    @Parameter(required = false, label = "To add more parameters (use comma separated list of flags")
     String additional_flags = "--use_gpu, --do_3D";
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
@@ -92,16 +95,6 @@ public class Cellpose implements Command {
 
     Boolean verbose = true;
 
-    private void openCliPage() {
-
-        try {
-            ps.open(new URL("https://cellpose.readthedocs.io/en/latest/cli.html"));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-    }
-
     private void openModelsPage() {
 
         try {
@@ -112,6 +105,15 @@ public class Cellpose implements Command {
 
     }
 
+    private void openCliPage() {
+
+        try {
+            ps.open(new URL("https://cellpose.readthedocs.io/en/latest/cli.html"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
 
     @Override
     public void run() {
@@ -137,7 +139,8 @@ public class Cellpose implements Command {
         }
 
         // Add it to the settings
-        settings.setCondaEnvDir(conda_env_path.toString());
+        settings.setEnvPath(envPath.toString());
+        settings.setEnvType(envType);
         settings.setDatasetDir(cellposeTempDir.toString());
 
         if ( model==null || model.trim().equals("") ){

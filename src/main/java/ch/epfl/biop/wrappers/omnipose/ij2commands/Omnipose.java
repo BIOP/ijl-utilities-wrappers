@@ -44,10 +44,14 @@ public class Omnipose implements Command {
     ImagePlus imp;
 
     @Parameter(label = "conda environment path" ,style="directory")
-    File conda_env_path = new File(default_conda_env_path);
+    File envPath = new File(default_conda_env_path);
+
+    @Parameter(label= "virtual environment type", choices= {"conda", "venv"})
+    String envType = "conda";
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message = "You can use the pretrained model, specify the model name below";
+
     @Parameter(label = "--pretrained_model" )
     String model = "cyto2_omni" ;
 
@@ -93,16 +97,6 @@ public class Omnipose implements Command {
 
     Boolean verbose = true;
 
-    private void openCliPage() {
-
-        try {
-            ps.open(new URL("https://omnipose.readthedocs.io/cli.html"));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-    }
-
     private void openModelsPage() {
 
         try {
@@ -113,6 +107,15 @@ public class Omnipose implements Command {
 
     }
 
+    private void openCliPage() {
+
+        try {
+            ps.open(new URL("https://omnipose.readthedocs.io/cli.html"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
 
     @Override
     public void run() {
@@ -138,7 +141,8 @@ public class Omnipose implements Command {
         }
 
         // Add it to the settings
-        settings.setCondaEnvDir(conda_env_path.toString());
+        settings.setEnvPath(envPath.toString());
+        settings.setEnvType(envType);
         settings.setDatasetDir(omniposeTempDir.toString());
 
         if ( model==null || model.trim().equals("") ){

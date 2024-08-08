@@ -2,7 +2,8 @@ package ch.epfl.biop.wrappers.omnipose;
 
 public class OmniposeTaskSettings {
 
-    String conda_env_path;
+    String envPath;
+    String envType = "conda";
     String datasetDir;
     String model;
     int ch1 = 0;
@@ -12,8 +13,13 @@ public class OmniposeTaskSettings {
     int diameter = 30;
     String additional_flags = "";
 
-    public OmniposeTaskSettings setCondaEnvDir(String conda_env_path) {
-        this.conda_env_path = conda_env_path;
+    public OmniposeTaskSettings setEnvPath(String envPath) {
+        this.envPath = envPath;
+        return this;
+    }
+
+    public OmniposeTaskSettings setEnvType(String envType) {
+        this.envType = envType;
         return this;
     }
 
