@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @SuppressWarnings({"CanBeFinal", "unused"})
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose> Cellpose ...")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose>Cellpose ...")
 public class Cellpose implements Command {
     static {
         if (IJ.isLinux()) {

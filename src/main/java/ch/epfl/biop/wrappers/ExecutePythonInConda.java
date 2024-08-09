@@ -4,6 +4,7 @@ import ch.epfl.biop.wrappers.Conda;
 import ij.IJ;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -50,11 +51,11 @@ public class ExecutePythonInConda {
                 cmd.addAll(arguments);
                 // input options
 
-        } else if ( IJ.isMacOSX() || IJ.isLinux()) {
-            // instead of conda activate (so much headache!!!) specify the python to use
-            String python_path = envDirPath+separatorChar+"bin"+separatorChar+"python";
-            List<String> module_args_cmd = new ArrayList<>(Collections.singletonList(python_path));
-            module_args_cmd.addAll(arguments);
+            } else if ( IJ.isMacOSX() || IJ.isLinux()) {
+                // instead of conda activate (so much headache!!!) specify the python to use
+                String python_path = envDirPath+separatorChar+"bin"+separatorChar+"python";
+                List<String> module_args_cmd = new ArrayList<>(Collections.singletonList(python_path));
+                module_args_cmd.addAll(arguments);
 
                 // convert to a string
                 module_args_cmd = module_args_cmd.stream().map(s -> {

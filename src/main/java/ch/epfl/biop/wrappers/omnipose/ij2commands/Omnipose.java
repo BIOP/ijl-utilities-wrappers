@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @SuppressWarnings("CanBeFinal")
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose> Omnipose ...")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose>Omnipose ...")
 public class Omnipose implements Command {
     static {
         if (IJ.isLinux()) {
