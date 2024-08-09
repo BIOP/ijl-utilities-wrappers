@@ -9,6 +9,7 @@ import org.scijava.plugin.Plugin;
 
 import java.io.File;
 
+@SuppressWarnings("CanBeFinal")
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>StarDist>StarDist3D setup...")
 public class StarDistPrefsSet implements Command {
     @Parameter

@@ -20,21 +20,16 @@ public class RegParamBSpline_Default extends RegistrationParameters {
 		MovingImagePyramid="MovingSmoothingImagePyramid"; // try smoothing
 		
 		Optimizer="AdaptiveStochasticGradientDescent";
-		Transform="BSplineTransform";//"RecursiveBSplineTransform";
-		//Metric="NormalizedMutualInformation";
+		Transform="BSplineTransform";
 		Metric="AdvancedMattesMutualInformation";
 
 		FinalGridSpacingInVoxels=20;
-		//AutomaticScalesEstimation=true;
-		//AutomaticTransformInitialization=true;
 		HowToCombineTransforms="Compose";
 		
 		NumberOfHistogramBins= new Integer[] {128};
 		ErodeMask=false;
 		NumberOfResolutions=6;
 		MaximumNumberOfIterations=1000;
-		
-		//MaximumStepLength=6.0f;
 		
 		NumberOfSpatialSamples=4096;
 		NewSamplesEveryIteration=true;
@@ -44,8 +39,6 @@ public class RegParamBSpline_Default extends RegistrationParameters {
 		FinalBSplineInterpolationOrder=3;
 		DefaultPixelValue=0f;
 		WriteResultImage=false;
-		//ResultImagePixelType="short";
-		//ResultImageFormat="tif";
 	}
 
 }

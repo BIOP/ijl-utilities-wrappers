@@ -9,15 +9,15 @@ import ch.epfl.biop.wrappers.cellpose.ij2commands.Cellpose;
 import java.util.concurrent.ExecutionException;
 
 public class DemoCellpose {
-    static ImageJ ij = new ImageJ();
 
     static {
         LegacyInjector.preinit();
     }
     // Cellpose environment directory should be setup for this demo to work
 
-    final public static void main(String... args) throws Exception {
+    public static void main(String... args) throws Exception {
 
+        ImageJ ij = new ImageJ();
         ij.ui().showUI();
 
         //ImagePlus imp = new ImagePlus("src/test/resources/20191004_R03-C05-F03-crop.tif");
@@ -26,14 +26,14 @@ public class DemoCellpose {
 
         // Test 3D Cyto, 2chs
         IJ.selectWindow( imp.getTitle() );
-        cyto3D_2ch();
+        cyto3D_2ch(ij);
 
     }
 
-    public static void cyto3D_2ch() throws ExecutionException, InterruptedException {
+    public static void cyto3D_2ch(ImageJ ij) throws ExecutionException, InterruptedException {
         ImagePlus imp = IJ.getImage();
         ImagePlus cytoLabel2chs_imp = (ImagePlus) ij.command().run(Cellpose.class, false,
-                "conda_env_path", "D:/conda/conda-envs/cellpose-307-gpu/",
+                "conda_env_path", "C:\\Users\\chiarutt\\.conda\\envs\\cellpose",//""D:/conda/conda-envs/cellpose-307-gpu/",
                 "imp", imp,
                 "diameter" , 45,
                 "model" , "cyto3",

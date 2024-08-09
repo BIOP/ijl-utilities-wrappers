@@ -25,7 +25,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
-
+@SuppressWarnings("CanBeFinal")
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose> Omnipose ...")
 public class Omnipose implements Command {
     static {
@@ -145,7 +145,7 @@ public class Omnipose implements Command {
         settings.setEnvType(envType);
         settings.setDatasetDir(omniposeTempDir.toString());
 
-        if ( model==null || model.trim().equals("") ){
+        if ( model==null || model.trim().isEmpty()){
             System.out.println("Using custom model");
             model = model_path.toString();
         }
@@ -173,7 +173,7 @@ public class Omnipose implements Command {
                 File t_imp_path = new File(omniposeTempDir, imp.getShortTitle() + "-t" + t_idx + ".tif");
                 FileSaver fs = new FileSaver(t_imp);
                 fs.saveAsTiff(t_imp_path.toString());
-                if (verbose) System.out.println(t_imp_path.toString());
+                if (verbose) System.out.println(t_imp_path);
                 // add to list of paths to delete at the end of operations
                 t_imp_paths.add(t_imp_path);
 

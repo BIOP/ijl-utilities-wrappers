@@ -8,7 +8,7 @@ public class DemoRegistration {
 
     // Elastix and Transformix executable should be setup for this demo to work
 
-    final public static void main(String... args) throws Exception {
+    public static void main(String... args) throws Exception {
         ImageJ ij = new ImageJ();
         ij.ui().showUI();
 

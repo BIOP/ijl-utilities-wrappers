@@ -1,7 +1,5 @@
 package ch.epfl.biop.java.utilities.roi;
 
-import java.util.ArrayList;
-
 import ch.epfl.biop.java.utilities.roi.types.IJShapeRoiArray;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
@@ -9,7 +7,6 @@ import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
 
 import ij.ImagePlus;
-import ij.gui.Roi;
 import ij.plugin.frame.RoiManager;
 
 /**

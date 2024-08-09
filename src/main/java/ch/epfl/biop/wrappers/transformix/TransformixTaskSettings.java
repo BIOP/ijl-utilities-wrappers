@@ -1,7 +1,5 @@
 package ch.epfl.biop.wrappers.transformix;
 
-import ch.epfl.biop.wrappers.elastix.ElastixTaskSettings;
-
 import java.util.function.Supplier;
 
 public class TransformixTaskSettings {
@@ -11,7 +9,7 @@ public class TransformixTaskSettings {
             transformFileSupplier,
             inputPtsFileSupplier;
 
-    int nThreads=1;
+    int nThreads;
 
     public String taskInfo; // extra field for task specific info -> metadata for remote processing
 

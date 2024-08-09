@@ -15,6 +15,7 @@ import org.scijava.plugin.Plugin;
  * Saves zip registration file from Elastix / Transformix
  */
 
+@SuppressWarnings({"CanBeFinal", "unused"})
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Elastix>Save Registration")
 public class Elastix_Save_Registration implements Command {
 

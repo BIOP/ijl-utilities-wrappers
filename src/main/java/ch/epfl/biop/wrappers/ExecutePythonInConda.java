@@ -2,13 +2,14 @@ package ch.epfl.biop.wrappers;
 import ch.epfl.biop.wrappers.Conda;
 
 import ij.IJ;
+
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -24,11 +25,14 @@ public class ExecutePythonInConda {
 
         // start terminal
         if (IJ.isWindows()) {
-            start_cmd=  Arrays.asList("cmd.exe", "/C");
+            start_cmd =  Arrays.asList("cmd.exe", "/C");
         } else if ( IJ.isMacOSX() || IJ.isLinux()) {
             start_cmd = Arrays.asList("bash", "-c");
+        } else {
+            throw new RuntimeException("Unknown Operating System");
         }
         cmd.addAll( start_cmd );
+
 
         List<String> conda_activate_cmd = null;
 
@@ -46,11 +50,11 @@ public class ExecutePythonInConda {
                 cmd.addAll(arguments);
                 // input options
 
-            } else if (IJ.isMacOSX() || IJ.isLinux()) {
-                // instead of conda activate (so much headache!!!) specify the python to use
-                String python_path = envDirPath+separatorChar+"bin"+separatorChar+"python";
-                List<String> module_args_cmd = new ArrayList<>(Arrays.asList( python_path ));
-                module_args_cmd.addAll(arguments);
+        } else if ( IJ.isMacOSX() || IJ.isLinux()) {
+            // instead of conda activate (so much headache!!!) specify the python to use
+            String python_path = envDirPath+separatorChar+"bin"+separatorChar+"python";
+            List<String> module_args_cmd = new ArrayList<>(Collections.singletonList(python_path));
+            module_args_cmd.addAll(arguments);
 
                 // convert to a string
                 module_args_cmd = module_args_cmd.stream().map(s -> {
