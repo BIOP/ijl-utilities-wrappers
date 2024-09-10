@@ -23,13 +23,13 @@ public class Elastix_Save_Registration implements Command {
     RegisterHelper rh;
 	
 	@Parameter(style="save")
-	File fileSave;
+	File file;
 
     @Override
     public void run() {
     	RHZipFile rzf = (RHZipFile) rh.to(RHZipFile.class);
         try {
-			FileUtils.copyFile(rzf.f, fileSave);
+			FileUtils.copyFile(rzf.f, file);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

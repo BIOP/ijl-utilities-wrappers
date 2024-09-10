@@ -16,16 +16,16 @@ public class StarDistPrefsSet implements Command {
     LogService ls;
 
     @Parameter(style = "directory", persist = false)
-    File stardistEnvDirectory = new File(Stardist.stardistEnvDirectory);
+    File stardist_env_dir = new File(Stardist.stardistEnvDirectory);
 
     @Parameter(choices = {"conda", "venv"}, persist = false)
-    String envType = Stardist.stardistEnvType;
+    String env_type = Stardist.stardistEnvType;
 
     @Override
     public void run() {
 
-        Stardist.setStardistEnvDirPath(stardistEnvDirectory);
-        Stardist.setStardistEnvType(envType);
+        Stardist.setStardistEnvDirPath(stardist_env_dir);
+        Stardist.setStardistEnvType(env_type);
 
     }
 }

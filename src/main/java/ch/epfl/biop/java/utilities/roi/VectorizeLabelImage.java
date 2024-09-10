@@ -17,20 +17,20 @@ import ij.plugin.frame.RoiManager;
 public class VectorizeLabelImage implements Command {
 
 	@Parameter(type = ItemIO.INPUT)
-	ImagePlus imgLabel;
+	ImagePlus img_label;
 	
 	@Parameter(type = ItemIO.OUTPUT)
 	ConvertibleRois cr;
 	
 	@Parameter
-	boolean putInRoiManager;
+	boolean put_in_roi_manager;
 	
 	@Override
 	public void run() {
-		IJShapeRoiArray out = ConvertibleRois.labelImageToRoiArrayVectorize(imgLabel);
+		IJShapeRoiArray out = ConvertibleRois.labelImageToRoiArrayVectorize(img_label);
 		cr = new ConvertibleRois();
 		cr.set(out);
-		if (putInRoiManager) cr.to(RoiManager.class);
+		if (put_in_roi_manager) cr.to(RoiManager.class);
 	}
 
 }

@@ -22,7 +22,7 @@ public class DeepSlicePrefsSet implements Command {
     LogService ls;
 
     @Parameter(style = "directory", persist = false)
-    File deepSliceEnvDirectory = new File(DeepSlice.envDirPath);
+    File deepslice_env_dir = new File(DeepSlice.envDirPath);
 
     @Parameter(choices = {"1.1.5.1"}, persist = false)
     String version = DeepSlice.version;
@@ -30,7 +30,7 @@ public class DeepSlicePrefsSet implements Command {
     @Override
     public void run() {
 
-        DeepSlice.setEnvDirPath(deepSliceEnvDirectory);
+        DeepSlice.setEnvDirPath(deepslice_env_dir);
         DeepSlice.setVersion(version);
 
         if (ls != null) {

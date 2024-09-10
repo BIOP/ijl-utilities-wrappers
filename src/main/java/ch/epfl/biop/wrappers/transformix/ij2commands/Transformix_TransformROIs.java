@@ -25,10 +25,10 @@ public class Transformix_TransformROIs implements Command {
 	public RegisterHelper rh;
 
 	@Parameter
-	public boolean roisFromRoiManager;
+	public boolean rois_from_roi_manager;
 	
 	@Parameter
-	public boolean outputToRoiManager;
+	public boolean output_to_roi_manager;
 	
 	@Parameter
 	public ObjectService os;
@@ -36,7 +36,7 @@ public class Transformix_TransformROIs implements Command {
 	@Override
 	public void run() {
 		
-		if (roisFromRoiManager) {
+		if (rois_from_roi_manager) {
 			//System.out.println("Fetching ROIs from Roi Manager");
 			cr_in = new ConvertibleRois();
 			cr_in.set(RoiManager.getRoiManager());
@@ -52,7 +52,7 @@ public class Transformix_TransformROIs implements Command {
 			os.addObject(cr_out);
 		}
 
-		if (outputToRoiManager) {
+		if (output_to_roi_manager) {
 			cr_out.to(RoiManager.class);
 		}
 

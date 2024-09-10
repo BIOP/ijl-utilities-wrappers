@@ -18,7 +18,7 @@ import org.scijava.plugin.Plugin;
 public class Elastix_Load_Registration implements Command {
     
 	@Parameter
-	File zipRegistrationFile;
+	File file;
 	
 	@Parameter(type = ItemIO.OUTPUT)
     RegisterHelper rh;
@@ -26,7 +26,7 @@ public class Elastix_Load_Registration implements Command {
 	@Override
     public void run() {
 		rh = new RegisterHelper();
-		rh.set(new RHZipFile(zipRegistrationFile));
+		rh.set(new RHZipFile(file));
 		rh.clear(RegisterHelper.class);
 		rh = (RegisterHelper) rh.to(RegisterHelper.class);
     }
