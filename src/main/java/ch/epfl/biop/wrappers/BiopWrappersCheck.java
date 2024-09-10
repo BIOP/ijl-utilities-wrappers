@@ -53,7 +53,7 @@ public class BiopWrappersCheck {
 		}
 	}
 
-	@WrapperCheck(title="DeepSlice")
+	//@WrapperCheck(title="DeepSlice")
 	public static boolean isDeepSliceSet() {
 		try {
 			DeepSlice.execute("--help");

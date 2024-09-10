@@ -43,10 +43,10 @@ public class Cellpose implements Command {
     ImagePlus imp;
 
     @Parameter(label = "conda environment path" ,style="directory")
-    File envPath = new File(default_conda_env_path);
+    File env_path = new File(default_conda_env_path);
 
     @Parameter(label= "virtual environment type", choices= {"conda", "venv"})
-    String envType = "conda";
+    String env_type = "conda";
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message = "You can use the pretrained model, specify the model name below";
@@ -57,7 +57,7 @@ public class Cellpose implements Command {
     String message0 ="You can access the list of models by clicking on the button below.";
 
     @Parameter( label="List of cellpose models", callback="openModelsPage")
-    private Button openModelsPage;
+    private Button open_models_page_button;
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message1 = "OR To use your own model, specify the path below AND leave --pretrained_model empty";
@@ -84,7 +84,7 @@ public class Cellpose implements Command {
     String message3 ="You can access the full list of parameters by clicking on the button below.";
 
     @Parameter( label="List of all parameters", callback="openCliPage")
-    private Button CliPageButton;
+    private Button cli_page_button;
 
     @Parameter(type = ItemIO.OUTPUT)
     ImagePlus cellpose_imp;
@@ -139,8 +139,8 @@ public class Cellpose implements Command {
         }
 
         // Add it to the settings
-        settings.setEnvPath(envPath.toString());
-        settings.setEnvType(envType);
+        settings.setEnvPath(env_path.toString());
+        settings.setEnvType(env_type);
         settings.setDatasetDir(cellposeTempDir.toString());
 
         if ( model==null || model.trim().isEmpty()){
