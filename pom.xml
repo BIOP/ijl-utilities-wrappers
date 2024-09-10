@@ -138,6 +138,7 @@
 		<!-- NB: Deploy releases to the SciJava Maven repository. -->
 		<releaseProfiles>sign,deploy-to-scijava</releaseProfiles>
 		<doclint>none</doclint>
+		<reflections.version>0.10.2</reflections.version>
 	</properties>
 
 	<dependencies>
@@ -202,6 +203,13 @@
 		<dependency>
 			<groupId>org.scijava</groupId>
 			<artifactId>scijava-ui-swing</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.reflections</groupId>
+			<artifactId>reflections</artifactId>
+			<version>${reflections.version}</version>
+			<scope>test</scope>
 		</dependency>
 
 	</dependencies>
