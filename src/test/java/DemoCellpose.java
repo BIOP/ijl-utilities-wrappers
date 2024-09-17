@@ -33,7 +33,7 @@ public class DemoCellpose {
     public static void cyto3D_2ch(ImageJ ij) throws ExecutionException, InterruptedException {
         ImagePlus imp = IJ.getImage();
         ImagePlus cytoLabel2chs_imp = (ImagePlus) ij.command().run(Cellpose.class, false,
-                "envPath", "D:/conda/conda-envs/cellpose-307-gpu/", //"C:\\Users\\chiarutt\\.conda\\envs\\cellpose",
+                "env_path", "C:\\Users\\chiarutt\\.conda\\envs\\cellpose", // "D:/conda/conda-envs/cellpose-307-gpu/", //
                 "imp", imp,
                 "diameter" , 45,
                 "model" , "cyto3",
