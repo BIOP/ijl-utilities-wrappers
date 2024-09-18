@@ -16,8 +16,8 @@ public class DemoRegistration {
         new ImagePlus("src/test/resources/blobs-rot15deg.tif").show();
 
         RegisterHelper rh = (RegisterHelper) ij.command().run(Elastix_Register.class, true,
-                "fixed_image", "blobs.tif",
-                       "moving_image", "blobs-rot15deg.tif",
+                "fixed_image", "blobs-rot15deg.tif",
+                       "moving_image", "blobs.tif",
                        "rigid", true,
                        "fast_affine", false,
                        "affine", true,
@@ -27,7 +27,7 @@ public class DemoRegistration {
 
         ij.command().run(Transformix_TransformImgPlus.class, true,
          "rh", rh,
-                 "img_in", "blobs-rot15deg.tif"
+                 "img_in", "blobs.tif"
                 );
 
     }
