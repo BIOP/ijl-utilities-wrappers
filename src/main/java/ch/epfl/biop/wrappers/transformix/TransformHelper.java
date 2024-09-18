@@ -20,7 +20,7 @@ public class TransformHelper {
 
     ConvertibleImage imageToTransform;
     ConvertibleImage imageTransformed;
-    
+
     ConvertibleRois roisToTransform;
     ConvertibleRois roisTransformed;
     
@@ -100,43 +100,12 @@ public class TransformHelper {
             return outputDir.get()+ File.separator+"result.mhd";
         } else
         if (transformType==ROIS_TRANSFORM) {
-            return null;//outputDir.get()+ File.separator+"result.mhd";
+            return null;
         }
         return null;
     }
 
-    
-    
-    /*public void setImagePlus(ImagePlus imp_in) {
-        //return null;
-    }
-
-    public void transformPts(String pathToPtsTxtFile) {
-        //return null;
-    }
-
-    public void transformRoi(Roi roi) {
-        //return null;
-    }
-
-    public ArrayList<Roi> transformRois(ArrayList<Roi> rois) {
-        //return null;
-    }*/
-
     public boolean checkParametersForTransformation() {
-        //TODO
-        /* if (fixedImage==null) {
-            System.err.println("Fixed image not set");
-            return false;
-        }
-        if (movingImage==null) {
-            System.err.println("Fixed image not set");
-            return false;
-        }
-        if (transformFilesSupplier.size()==0) {
-            System.err.println("No transformation specified");
-            return false;
-        }*/
 
         if (transformType==UNDEFINED) {
             System.err.println("Transformation input parameters not set (image or text points).");
@@ -194,9 +163,7 @@ public class TransformHelper {
                 if (transformType==ROIS_TRANSFORM) {
                     transformSettings.pts(this::roisToTransformPathSupplier);
                 }
-                
-                //transform = new TransformixTask(transformSettings);//transformBuilder.build();
-                //task.setSettings(transformSettings);
+
                 transformTaskSet = true;
             } else {
                 task = null;

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
-import ch.epfl.biop.wrappers.cellpose.Cellpose;
 import ch.epfl.biop.wrappers.deepslice.DeepSlice;
 import ch.epfl.biop.wrappers.elastix.Elastix;
 import ch.epfl.biop.wrappers.transformix.Transformix;
@@ -53,18 +52,8 @@ public class BiopWrappersCheck {
 			return false;
 		}
 	}
-	@WrapperCheck(title="Cellpose")
-	public static boolean isCellposeSet() {
-		try {
-			Cellpose.execute("--help");
-			return true;
-		} catch (IOException | InterruptedException e) {
-			e.printStackTrace();
-			return false;
-		}
-	}
 
-	@WrapperCheck(title="DeepSlice")
+	//@WrapperCheck(title="DeepSlice")
 	public static boolean isDeepSliceSet() {
 		try {
 			DeepSlice.execute("--help");

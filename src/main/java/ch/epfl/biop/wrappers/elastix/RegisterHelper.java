@@ -34,7 +34,7 @@ public class RegisterHelper extends ConvertibleObject {
 
     ConvertibleImage movingImage;
 
-    ArrayList<Supplier<String>> transformFilesSupplier;
+    final ArrayList<Supplier<String>> transformFilesSupplier = new ArrayList<>();
 
     public Supplier<String> outputDir;
 
@@ -45,7 +45,6 @@ public class RegisterHelper extends ConvertibleObject {
     boolean verbose = false;
 
     public RegisterHelper() {
-        transformFilesSupplier = new ArrayList<>();
         fixedImage = new ConvertibleImage();
         movingImage = new ConvertibleImage();
     }
@@ -109,16 +108,6 @@ public class RegisterHelper extends ConvertibleObject {
         alignTaskSet = false;
     }
 
-    public void setFixedImage(URL url) {
-        fixedImage.set(url);
-        alignTaskSet = false;
-    }
-
-    /*public void setFixedImage(URL url, String extension) {
-        fixedImage = new HDDBackedFile(url, extension);
-        alignTaskSet = false;
-    }*/
-
     public void setDefaultOutputDir() {
         TempDirectory tempDir = new TempDirectory("reg-out");
         tempDir.deleteOnExit();
@@ -138,7 +127,7 @@ public class RegisterHelper extends ConvertibleObject {
             System.out.println("null file ?"+(movingImage.to(ElastixMultiFile.class)==null));
             return false;
         } 
-        if (transformFilesSupplier.size()==0) {
+        if (transformFilesSupplier.isEmpty()) {
             System.err.println("No transformation specified");
             return false;
         }
@@ -165,11 +154,11 @@ public class RegisterHelper extends ConvertibleObject {
 
                 ElastixMultiFile emfMoving = ((ElastixMultiFile) movingImage.to(ElastixMultiFile.class));
                 for (File f : emfMoving.files) {
-                    settings.movingImage(() -> f.getAbsolutePath());
+                    settings.movingImage(f::getAbsolutePath);
                 }
                 ElastixMultiFile emfFixed = ((ElastixMultiFile) fixedImage.to(ElastixMultiFile.class));
                 for (File f : emfFixed.files) {
-                    settings.fixedImage(() -> f.getAbsolutePath());
+                    settings.fixedImage(f::getAbsolutePath);
                 }
                 settings.outFolder(outputDir);
 
@@ -264,9 +253,6 @@ public class RegisterHelper extends ConvertibleObject {
     }
 
     private static void zipFolderNR(File fileToZip, ZipOutputStream zipOut) throws IOException { // Non recursive
-        //if (fileToZip.isHidden()) {
-        //    return;
-        //}
         if (fileToZip.isDirectory()) {
             File[] children = fileToZip.listFiles();
             assert children != null;
@@ -300,29 +286,6 @@ public class RegisterHelper extends ConvertibleObject {
         fis.close();
     }
 
-    /*
-        public static void main(String[] args) throws IOException {
-        String fileZip = "compressed.zip";
-        byte[] buffer = new byte[1024];
-        ZipInputStream zis = new ZipInputStream(new FileInputStream(fileZip));
-        ZipEntry zipEntry = zis.getNextEntry();
-        while(zipEntry != null){
-            String fileName = zipEntry.getName();
-            File newFile = new File("unzipTest/" + fileName);
-            FileOutputStream fos = new FileOutputStream(newFile);
-            int len;
-            while ((len = zis.read(buffer)) > 0) {
-                fos.write(buffer, 0, len);
-            }
-            fos.close();
-            zipEntry = zis.getNextEntry();
-        }
-        zis.closeEntry();
-        zis.close();
-        }
-
-     */
-
     //-------------------------------- TODO!!!!!
 
     @Converter
@@ -332,9 +295,6 @@ public class RegisterHelper extends ConvertibleObject {
         rh.setDefaultOutputDir();
         String pathOutputDir = rh.outputDir.get();
 
-        //TempDirectory tempDir = new TempDirectory("reg-");
-        //tempDir.deleteOnExit();
-        //Path pathTransformations = pathOutputDir;//tempDir.getPath();
         Map<Integer, File> registerFiles = new HashMap<>();
         Map<Integer, File> transformFiles = new HashMap<>();
         
@@ -364,8 +324,6 @@ public class RegisterHelper extends ConvertibleObject {
                     newFile = File.createTempFile("rpa", ".txt");
                     newFile.deleteOnExit();
                 	registerFiles.put(Integer.valueOf(number), newFile);
-                    //System.out.println(newFile.getAbsolutePath());
-                    //newFile = new File("unzipTest/" + fileName);
                 }
                 FileOutputStream fos = new FileOutputStream(newFile);
                 int len;
@@ -378,8 +336,6 @@ public class RegisterHelper extends ConvertibleObject {
             zis.closeEntry();
             zis.close();
             fis.close();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
         }

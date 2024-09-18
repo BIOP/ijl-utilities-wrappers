@@ -1,6 +1,5 @@
 package ch.epfl.biop.wrappers.elastix.ij2commands;
 
-import ch.epfl.biop.wrappers.elastix.DefaultElastixTask;
 import ch.epfl.biop.wrappers.elastix.*;
 import ij.ImagePlus;
 import org.scijava.ItemIO;
@@ -38,20 +37,19 @@ public class Elastix_InverseTransform implements Command {
         rh.setMovingImage(image);
         rh.setFixedImage(image);
 
-        RegistrationParameters rp = null;
+        final RegistrationParameters rp;
         if (rigid) {
             rp = new RegParamRigid_Default();
-        }
-        if (fast_affine) {
+        } else if (fast_affine) {
             rp = new RegParamAffine_Fast();
-        }
-        if (affine) {
+        } else if (affine) {
             rp = new RegParamAffine_Default();
-        }
-        if (spline) {
+        } else if (spline) {
             rp = new RegParamBSpline_Default();
+        } else {
+            System.err.println("You need to select q transformation model.");
+            return;
         }
-
 
         rp.Metric = "DisplacementMagnitudePenalty";
 

@@ -13,14 +13,14 @@ On top of this, some converters that facilite the transmission of data to these 
 
 <!-- TOC -->
 * [Wrappers for Fiji](#wrappers-for-fiji)
-* [Cellpose](#cellpose)
+* [Cellpose](#cellpose-)
   * [I. Installation](#i-installation)
       * [I.A. Cellpose Virtual Environment](#ia-cellpose-virtual-environment)
       * [I.A.2. Conda installation](#ia2-conda-installation)
         * [I.A.2.a. Windows](#ia2a-windows)
           * [Enable conda command outside conda prompt](#enable-conda-command-outside-conda-prompt)
           * [Conda cellpose-GPU](#conda-cellpose-gpu)
-        * [I.A.2.b. Mac](#ia2b-mac)
+        * [I.A.2.b. Mac](#ia2b-mac-)
         * [I.A.2.c. Linux](#ia2c-linux)
     * [I.B. Fiji - Cellpose wrapper](#ib-fiji---cellpose-wrapper)
   * [II. Using Fiji - Cellpose wrapper](#ii-using-fiji---cellpose-wrapper)
@@ -40,17 +40,17 @@ On top of this, some converters that facilite the transmission of data to these 
       * [I.A. Conda installation](#ia-conda-installation)
         * [I.A.2.a. Windows](#ia2a-windows-2)
           * [Enable conda command outside conda prompt](#enable-conda-command-outside-conda-prompt-2)
-        * [I.A.2.b. Mac](#ia2b-mac-1)
+        * [I.A.2.b. Mac](#ia2b-mac)
         * [I.A.2.c. Linux](#ia2c-linux-1)
   * [II. Using Fiji - DeepSlice wrapper](#ii-using-fiji---deepslice-wrapper)
 * [Elastix and Transformix](#elastix-and-transformix)
   * [Commands](#commands)
-    * [Plugins>BIOP>Elastix>Register](#plugins--biop--elastix--register)
-    * [Plugins>BIOP>Elastix>Save Registration](#plugins--biop--elastix--save-registration)
-    * [Plugins>BIOP>Elastix>Load Registration](#plugins--biop--elastix--load-registration)
-    * [Plugins>BIOP>Elastix>Inverse registration](#plugins--biop--elastix--inverse-registration)
-    * [Plugins>BIOP>Transformix>Transform Image](#plugins--biop--transformix--transform-image)
-    * [Plugins>BIOP>Transformix>Transform Rois](#plugins--biop--transformix--transform-rois)
+    * [Plugins>BIOP>Elastix>Register](#pluginsbiopelastixregister)
+    * [Plugins>BIOP>Elastix>Save Registration](#pluginsbiopelastixsave-registration)
+    * [Plugins>BIOP>Elastix>Load Registration](#pluginsbiopelastixload-registration)
+    * [Plugins>BIOP>Elastix>Inverse registration](#pluginsbiopelastixinverse-registration)
+    * [Plugins>BIOP>Transformix>Transform Image](#pluginsbioptransformixtransform-image)
+    * [Plugins>BIOP>Transformix>Transform Rois](#pluginsbioptransformixtransform-rois)
 <!-- TOC -->
 
 
@@ -231,10 +231,10 @@ To check if it works, you can:
 
 ###### Conda StarDist-GPU
 
-| CUDA Toolkit | cuDNN | Tensorflow | stardist / branch | yml |
-| ------------- | ------------- | ------------- | ------------- | ------------- |
-| [CUDA Toolkit installer 10.0](https://developer.nvidia.com/cuda-10.0-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork) ($)| 7.6.5 ($) | 1.15 ($)| 0.7.3 / @Scripts| [stardist_scripts.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/stardist_scripts.yml) ($)| 
-| [CUDA Toolkit installer 10.0](https://developer.nvidia.com/cuda-10.0-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork) ($)| 7.6.5 ($) | 1.15 ($)| 0.8.3 | [stardist0.8_TF1.15.yml file](https://github.com/BIOP/ijl-utilities-wrappers/blob/master/resources/stardist0.8_TF1.15.yml) ($)| 
+| CUDA Toolkit                                                                                                                                                                  | cuDNN     | Tensorflow | stardist / branch | yml                                                                                                                            |
+|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|------------|-------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| [CUDA Toolkit installer 10.0](https://developer.nvidia.com/cuda-10.0-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork) ($) | 7.6.5 ($) | 1.15 ($)   | 0.7.3 / @Scripts  | [stardist_scripts.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/stardist_scripts.yml) ($)      | 
+| [CUDA Toolkit installer 10.0](https://developer.nvidia.com/cuda-10.0-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork) ($) | 7.6.5 ($) | 1.15 ($)   | 0.8.3             | [stardist0.8_TF1.15.yml file](https://github.com/BIOP/ijl-utilities-wrappers/blob/master/resources/stardist0.8_TF1.15.yml) ($) | 
 
 ($) This combination CUDA Toolkit and CuDNN are required to work with Tensorflow 1.15 (lastest available on Fiji) to train model for StarDist2D.
 Other combinations might work but were not tested (yet).

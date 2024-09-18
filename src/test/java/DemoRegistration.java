@@ -8,7 +8,7 @@ public class DemoRegistration {
 
     // Elastix and Transformix executable should be setup for this demo to work
 
-    final public static void main(String... args) throws Exception {
+    public static void main(String... args) throws Exception {
         ImageJ ij = new ImageJ();
         ij.ui().showUI();
 
@@ -16,18 +16,18 @@ public class DemoRegistration {
         new ImagePlus("src/test/resources/blobs-rot15deg.tif").show();
 
         RegisterHelper rh = (RegisterHelper) ij.command().run(Elastix_Register.class, true,
-                "fixedImage", "blobs.tif",
-                       "movingImage", "blobs-rot15deg.tif",
+                "fixed_image", "blobs-rot15deg.tif",
+                       "moving_image", "blobs.tif",
                        "rigid", true,
                        "fast_affine", false,
                        "affine", true,
                        "spline", false,
-                       "splineGridSpacing", 40
+                       "spline_grid_spacing", 40
                 ).get().getOutput("rh");
 
         ij.command().run(Transformix_TransformImgPlus.class, true,
          "rh", rh,
-                "img_in", "blobs-rot15deg.tif"
+                 "img_in", "blobs.tif"
                 );
 
     }

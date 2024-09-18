@@ -95,7 +95,7 @@ public class ConvertibleImage extends ConvertibleObject {
 
 	@Converter
 	public static ImagePlus downcastCompositeImageToImagePlus(CompositeImage ci) {
-		return (ImagePlus) ci;
+		return ci;
 	}
 	
 	

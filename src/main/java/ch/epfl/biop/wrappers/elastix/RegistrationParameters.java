@@ -274,29 +274,6 @@ public class RegistrationParameters extends ConvertibleObject {
 	@RegisterParam
 	public Integer[] GridSpacingSchedule;
 
-	/**
-	 *	This parameter facilitates the automatic estimation of an initial alignment for the aforementioned
-	 * 	transformations. Three methods to do so are supported: the default method which aligns the centres
-	 * 	of the fixed and moving image, a method that aligns the centres of gravity, and a method that simply
-	 * 	aligns the image origins. A method can be selected by adding one of the following lines to the parameter
-	 * 	file: "GeometricalCenter", "CenterOfGravity", "Origins"
-	 */
-	//@RegisterParam
-	//String AutomaticTransformInitializationMethod;
-
-	/*
-	// KNN specific
-		(Alpha 0.99)
-		(AvoidDivisionBy 0.0000000001)
-		(TreeType "KDTree")
-		(BucketSize 50)
-		(SplittingRule "ANN_KD_STD")
-		(ShrinkingRule "ANN_BD_SIMPLE")
-		(TreeSearchType "Standard")
-		(KNearestNeighbours 20)
-		(ErrorBound 10.0)
-	 */
-
 	@RegisterParam
 	public Float Alpha;
 
@@ -324,7 +301,7 @@ public class RegistrationParameters extends ConvertibleObject {
 	@RegisterParam
 	public Float ErrorBound;
 
-	static public boolean easyToWrite(Class c) {
+	static public boolean easyToWrite(Class<?> c) {
 		boolean easy=false;
 		easy |= c.equals(int.class);
 		easy |= c.equals(Integer.class);
@@ -348,29 +325,29 @@ public class RegistrationParameters extends ConvertibleObject {
 					if (easyToWrite(f.getType())) {
 						output += f.get(rp);
 					}
-					if (f.getType()==(new float[] {}).getClass()) {
+					if (f.getType()== float[].class) {
 						float[] arrayParam = (float[]) f.get(rp);
-						for (int i=0;i<arrayParam.length;i++) {
-							output+=arrayParam[i]+" ";
-						}
+                        for (float v : arrayParam) {
+                            output += v + " ";
+                        }
 					}
-					if (f.getType()==(new int[] {}).getClass()) {
+					if (f.getType()== int[].class) {
 						int[] arrayParam = (int[]) f.get(rp);
-						for (int i=0;i<arrayParam.length;i++) {
-							output+=arrayParam[i]+" ";
-						}
+                        for (int j : arrayParam) {
+                            output += j + " ";
+                        }
 					}
-					if (f.getType()==(new Float[] {}).getClass()) {
+					if (f.getType()== Float[].class) {
 						Float[] arrayParam = (Float[]) f.get(rp);
-						for (int i=0;i<arrayParam.length;i++) {
-							output+=arrayParam[i]+" ";
-						}
+                        for (Float aFloat : arrayParam) {
+                            output += aFloat + " ";
+                        }
 					}
-					if (f.getType()==(new Integer[] {}).getClass()) {
+					if (f.getType()== Integer[].class) {
 						Integer[] arrayParam = (Integer[]) f.get(rp);
-						for (int i=0;i<arrayParam.length;i++) {
-							output+=arrayParam[i]+" ";
-						}
+                        for (Integer integer : arrayParam) {
+                            output += integer + " ";
+                        }
 					}
 					output+=")\n";
 				}
@@ -399,6 +376,7 @@ public class RegistrationParameters extends ConvertibleObject {
                 // Close the writer regardless of what happens...
                 writer.close();
             } catch (Exception e) {
+				e.printStackTrace();
             }
         }
 	}

@@ -1,11 +1,7 @@
 package ch.epfl.biop.wrappers.transformix.ij2commands;
 
-import java.util.ArrayList;
-
-import ch.epfl.biop.java.utilities.roi.types.TransformixOutputRoisFile;
 import ch.epfl.biop.wrappers.elastix.RegisterHelper;
 import ch.epfl.biop.wrappers.transformix.DefaultTransformixTask;
-import ij.gui.Roi;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
 import org.scijava.object.ObjectService;
@@ -29,10 +25,10 @@ public class Transformix_TransformROIs implements Command {
 	public RegisterHelper rh;
 
 	@Parameter
-	public boolean roisFromRoiManager;
+	public boolean rois_from_roi_manager;
 	
 	@Parameter
-	public boolean outputToRoiManager;
+	public boolean output_to_roi_manager;
 	
 	@Parameter
 	public ObjectService os;
@@ -40,7 +36,7 @@ public class Transformix_TransformROIs implements Command {
 	@Override
 	public void run() {
 		
-		if (roisFromRoiManager) {
+		if (rois_from_roi_manager) {
 			//System.out.println("Fetching ROIs from Roi Manager");
 			cr_in = new ConvertibleRois();
 			cr_in.set(RoiManager.getRoiManager());
@@ -49,28 +45,17 @@ public class Transformix_TransformROIs implements Command {
 		TransformHelper th = new TransformHelper();
 		th.setTransformFile(rh);
 		th.setRois(cr_in);
-		//ArrayList<Roi> ar = ;
-		//if (ar==null) {
-		//	System.out.println("ar est null!");
-		//}
 		th.transform(new DefaultTransformixTask());
 		cr_out = th.getTransformedRois();
-		//cr_out.setInitialArrayList((ArrayList<Roi>) cr_in.to(ArrayList.class));
+
 		if (os!=null) {
 			os.addObject(cr_out);
-		} else {
-
 		}
-		//
-		if (outputToRoiManager) {
-			//ConvertibleRois.elastixFileFormatToArray((TransformixOutputRoisFile)cr_out.to(TransformixOutputRoisFile.class));
+
+		if (output_to_roi_manager) {
 			cr_out.to(RoiManager.class);
-
-		//	System.out.println("Writing ROIs to Roi Manager");
-		//String st = cr_out.get(ConvertibleRois.);
 		}
-		
-		
+
 	}
 	
 	

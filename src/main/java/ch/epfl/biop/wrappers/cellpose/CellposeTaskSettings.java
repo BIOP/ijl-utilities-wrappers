@@ -1,10 +1,9 @@
 package ch.epfl.biop.wrappers.cellpose;
 
-
-import ij.Prefs;
-
 public class CellposeTaskSettings {
 
+    String envPath;
+    String envType = "conda";
     String datasetDir;
     String model;
     int ch1;
@@ -12,22 +11,17 @@ public class CellposeTaskSettings {
 
     // value defined from https://cellpose.readthedocs.io/en/latest/api.html
     int diameter = 30;
-    double flow_threshold = 0.4;
-    double cellprob_threshold = 0.0;
-    double anisotropy = 1;
-    double stitch_threshold = 0;
-
-    boolean use3D = false;
-
-    boolean useGpu;
-    boolean useFastMode;
-    boolean useResample;
-    boolean useMxnet;
-    String version;
-    boolean omni = false;
-    boolean cluster = false;
     String additional_flags = "";
-    double diam_threshold;
+
+    public CellposeTaskSettings setEnvPath(String conda_env_path) {
+        this.envPath = conda_env_path;
+        return this;
+    }
+
+    public CellposeTaskSettings setEnvType(String envType) {
+        this.envType = envType;
+        return this;
+    }
 
     public CellposeTaskSettings setDatasetDir(String datasetDir) {
         this.datasetDir = datasetDir;
@@ -51,61 +45,6 @@ public class CellposeTaskSettings {
 
     public CellposeTaskSettings setDiameter(int diameter) {
         this.diameter = diameter;
-        return this;
-    }
-
-    public CellposeTaskSettings setFlowTh(double flow_threshold) {
-        this.flow_threshold = flow_threshold;
-        return this;
-    }
-
-    public CellposeTaskSettings setCellProbTh(double cellprob_threshold) {
-        this.cellprob_threshold = cellprob_threshold;
-        return this;
-    }
-
-    public CellposeTaskSettings setAnisotropy(double anisotropy) {
-        this.anisotropy = anisotropy;
-        return this;
-    }
-
-    public CellposeTaskSettings setDiamThreshold(double diam_threshold) {
-        this.diam_threshold = diam_threshold;
-        return this;
-    }
-
-    public CellposeTaskSettings setStitchThreshold(double stitch_threshold) {
-        this.stitch_threshold = stitch_threshold;
-        return this;
-    }
-
-    public CellposeTaskSettings setDo3D() {
-        this.use3D = true;
-        return this;
-    }
-
-    public CellposeTaskSettings do3D(boolean do3D) {
-        this.use3D = do3D;
-        return this;
-    }
-
-    public CellposeTaskSettings setOmni(boolean omni) {
-        this.omni = omni;
-        return this;
-    }
-
-    public CellposeTaskSettings setCluster(boolean cluster) {
-        this.cluster = cluster;
-        return this;
-    }
-
-    public CellposeTaskSettings setFromPrefs() {
-        String keyPrefix = Cellpose.class.getName() + ".";
-        this.useGpu = Prefs.get(keyPrefix + "useGpu", Cellpose.useGpu);
-        this.useMxnet = Prefs.get(keyPrefix + "useMxnet", Cellpose.useMxnet);
-        this.useFastMode = Prefs.get(keyPrefix + "useFastMode", Cellpose.useFastMode);
-        this.useResample = Prefs.get(keyPrefix + "useResample", Cellpose.useResample);
-        this.version = Prefs.get(keyPrefix + "version", Cellpose.version);
         return this;
     }
 

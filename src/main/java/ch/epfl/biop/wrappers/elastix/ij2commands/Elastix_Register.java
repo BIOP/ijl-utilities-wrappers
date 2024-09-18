@@ -1,6 +1,5 @@
 package ch.epfl.biop.wrappers.elastix.ij2commands;
 
-import ch.epfl.biop.wrappers.elastix.DefaultElastixTask;
 import ch.epfl.biop.wrappers.elastix.*;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
@@ -16,14 +15,15 @@ import ij.ImagePlus;
  *
  */
 
+@SuppressWarnings({"CanBeFinal", "unused"})
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Elastix>Register")
 public class Elastix_Register implements Command {
 
 	@Parameter
-	public ImagePlus movingImage;
+	public ImagePlus moving_image;
 	
 	@Parameter
-	public ImagePlus fixedImage;
+	public ImagePlus fixed_image;
 	
 	@Parameter
 	public boolean rigid;
@@ -38,20 +38,18 @@ public class Elastix_Register implements Command {
 	public boolean spline;
 
 	@Parameter
-	public int splineGridSpacing;
+	public int spline_grid_spacing;
 
 	@Parameter(type = ItemIO.OUTPUT)
 	public RegisterHelper rh;
 
 	@Override
 	public void run() {
-		boolean multiChannelRegistration = false;
 		int nChannels = 1;
 
-		if ((movingImage.getNChannels()>1)||(fixedImage.getNChannels()>1)) {
-			if (fixedImage.getNChannels()==movingImage.getNChannels()) {
-				multiChannelRegistration = true;
-				nChannels = fixedImage.getNChannels();
+		if ((moving_image.getNChannels()>1)||(fixed_image.getNChannels()>1)) {
+			if (fixed_image.getNChannels()== moving_image.getNChannels()) {
+				nChannels = fixed_image.getNChannels();
 			} else {
 				System.out.println("Can't perform multichannel registration because the number of channel is not identical between moving and fixed image");
 			}
@@ -59,8 +57,8 @@ public class Elastix_Register implements Command {
 
 
 		rh = new RegisterHelper();
-		rh.setMovingImage(movingImage);
-		rh.setFixedImage(fixedImage);
+		rh.setMovingImage(moving_image);
+		rh.setFixedImage(fixed_image);
 		if (rigid) {
 			RegistrationParameters[] rps = new RegistrationParameters[nChannels];
 			for (int iCh = 0;iCh<nChannels;iCh++) {
@@ -92,7 +90,7 @@ public class Elastix_Register implements Command {
 			}
 			RegistrationParameters rp = RegistrationParameters.combineRegistrationParameters(rps);
 			//if (multiChannelRegistration) rp = RegistrationParameters.useAlphaMutualInformation(rp,nChannels);
-			rp.FinalGridSpacingInVoxels = splineGridSpacing;
+			rp.FinalGridSpacingInVoxels = spline_grid_spacing;
 			rh.addTransform(rp);
 		}
 		try {

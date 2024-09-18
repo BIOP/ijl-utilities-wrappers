@@ -15,6 +15,7 @@ import ch.epfl.biop.wrappers.transformix.Transformix;
  * Checks whether the executable being wrapped are accessible
  */
 
+@SuppressWarnings("CanBeFinal")
 @Plugin(type = Command.class, menuPath = "Plugins>BIOP>Set and Check Wrappers")
 public class BiopWrappersSet implements Command {
 
@@ -22,16 +23,16 @@ public class BiopWrappersSet implements Command {
 	LogService ls;
 	
 	@Parameter(required=false, persist = false)
-	File elastixExecutable = new File(Elastix.exePath);
+	File elastix_executable = new File(Elastix.exePath);
 	
 	@Parameter(required=false, persist = false)
-	File transformixExecutable = new File(Transformix.exePath);
+	File transformix_executable = new File(Transformix.exePath);
 	
 	@Override
 	public void run() {
-		Transformix.setExePath(transformixExecutable);
+		Transformix.setExePath(transformix_executable);
 
-		Elastix.setExePath(elastixExecutable);
+		Elastix.setExePath(elastix_executable);
 
 		if (ls!=null) {
 			ls.info(BiopWrappersCheck.reportAllWrappers());

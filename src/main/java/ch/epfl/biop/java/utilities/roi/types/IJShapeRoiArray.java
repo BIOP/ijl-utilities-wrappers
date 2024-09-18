@@ -9,17 +9,14 @@ import java.util.List;
 import java.util.function.UnaryOperator;
 
 public class IJShapeRoiArray {
-    public List<CompositeFloatPoly> rois;
+
+    final public List<CompositeFloatPoly> rois = new ArrayList<>();
 
     public IJShapeRoiArray(List<Roi> rois_in) {
-        rois = new ArrayList<>();
-        rois_in.forEach(roi -> {
-            rois.add(new CompositeFloatPoly(roi));
-        });
+        rois_in.forEach(roi -> rois.add(new CompositeFloatPoly(roi)));
     }
 
     public IJShapeRoiArray(IJShapeRoiArray input) {
-        rois = new ArrayList<>();
         for (CompositeFloatPoly cfp: input.rois) {
             rois.add(new CompositeFloatPoly(cfp));
         }
@@ -34,12 +31,10 @@ public class IJShapeRoiArray {
     public void setPoints(List<Point2D> controlPoints) {
         // Split list between different ROIs
         int index = 0;
-        for (int i = 0; i< rois.size(); i++) {
-            CompositeFloatPoly cfp = rois.get(i);
+        for (CompositeFloatPoly cfp : rois) {
             int nPts = cfp.getNumberOfCtrlPts();
-            //System.out.println("["+index+";"+(index+nPts)+"]");
-            cfp.setControlPoints(controlPoints.subList(index,index+nPts));
-            index+=nPts;
+            cfp.setControlPoints(controlPoints.subList(index, index + nPts));
+            index += nPts;
         }
     }
 

@@ -24,10 +24,10 @@ import static java.io.File.separatorChar;
 
 public class DeepSlice {
 
-    public static String keyPrefix = DeepSlice.class.getName() + ".";
+    final public static String keyPrefix = DeepSlice.class.getName() + ".";
 
-    static String defaultEnvDirPath = "C:/Users/username/.conda/envs/deepslice";//"E:/conda-envs/CellPoseGPU3";
-    static String defaultVersion = "1.1.5.1";
+    final static String defaultEnvDirPath = "C:/Users/username/.conda/envs/deepslice";
+    final static String defaultVersion = "1.1.5.1";
 
     public static String envDirPath = Prefs.get(keyPrefix + "envDirPath", defaultEnvDirPath);
 
@@ -93,7 +93,6 @@ public class DeepSlice {
             return;
         }
 
-        List<String> cmd = new ArrayList<>();
         List<String> start_cmd;
 
         // start terminal
@@ -105,7 +104,8 @@ public class DeepSlice {
             IJ.error("OS unrecognized!!");
             start_cmd = Collections.singletonList("");
         }
-        cmd.addAll( start_cmd );
+
+        List<String> cmd = new ArrayList<>(start_cmd);
 
         List<String> conda_activate_cmd;
 

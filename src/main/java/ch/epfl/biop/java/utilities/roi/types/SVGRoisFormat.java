@@ -19,8 +19,7 @@ public class SVGRoisFormat {
 	}
 	
 	public SVGRoisFormat(String path) {
-		File f = new File(path);
-		this.f=f;
+        this.f = new File(path);
 	}
 	
 	public SVGRoisFormat(URL url, float  sL, float dF) {
