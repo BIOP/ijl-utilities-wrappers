@@ -19,6 +19,7 @@ public class DemoCellpose {
 
         ImageJ ij = new ImageJ();
         ij.ui().showUI();
+        IJ.run("Record...");
 
         //ImagePlus imp = new ImagePlus("src/test/resources/20191004_R03-C05-F03-crop.tif");
         ImagePlus imp = IJ.openImage("src/test/resources/20191004_R03-C05-F03-crop.tif");

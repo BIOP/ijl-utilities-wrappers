@@ -9,6 +9,7 @@ import ij.io.FileSaver;
 import ij.measure.Calibration;
 import ij.plugin.Concatenator;
 import ij.plugin.Duplicator;
+import ij.plugin.frame.Recorder;
 import net.imagej.ImageJ;
 
 import org.scijava.ItemIO;
@@ -21,6 +22,7 @@ import org.scijava.widget.Button;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -168,7 +170,10 @@ public class Omnipose implements Command {
 
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
                 // duplicate all channels and all z-slices for a defined time-point
+                boolean tmpRecord = Recorder.record;
+                Recorder.record = false;
                 ImagePlus t_imp = new Duplicator().run(imp, 1, imp.getNChannels(), 1, imp.getNSlices(), t_idx, t_idx);
+                Recorder.record = tmpRecord;
                 // and save the current t_imp into the omniposeTempDir
                 File t_imp_path = new File(omniposeTempDir, imp.getShortTitle() + "-t" + t_idx + ".tif");
                 FileSaver fs = new FileSaver(t_imp);
@@ -208,12 +213,14 @@ public class Omnipose implements Command {
             // Convert the ArrayList to an imp
             // https://stackoverflow.com/questions/9572795/convert-list-to-array-in-java
             ImagePlus[] impsArray = imps.toArray(new ImagePlus[0]);
+            boolean tmpScriptMode = Recorder.scriptMode();
+            Field scriptModeField = Recorder.class.getDeclaredField("scriptMode");
+            scriptModeField.setAccessible(true);
+            scriptModeField.set(null, false);
             omnipose_imp = Concatenator.run(impsArray);
+            scriptModeField.set(null, tmpScriptMode);
             omnipose_imp.setCalibration(cal);
             omnipose_imp.setTitle(imp.getShortTitle() + "-omnipose");
-
-            //add a LUT
-            IJ.run(omnipose_imp, "3-3-2 RGB", "");
 
             // Delete the created files and folder
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {

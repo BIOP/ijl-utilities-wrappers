@@ -36,19 +36,15 @@ public class DefaultCellposeTask extends CellposeTask {
         arguments.add("--save_tif");
         arguments.add("--no_npy");
 
-        if (settings.additional_flags != "") {
+        if (!settings.additional_flags.trim().isEmpty()) {
             String[] flagsList = settings.additional_flags.split(",");
-
-            if (flagsList.length > 1) {
-                for (String s : flagsList) {
+            for (String s : flagsList) {
+                if (!s.trim().isEmpty()) {
                     arguments.add(s.trim());
-                }
-            } else {
-                if (settings.additional_flags.length() > 1) {
-                    arguments.add(settings.additional_flags.trim());
                 }
             }
         }
-        ExecutePythonInConda.execute( envPath, envType , arguments, null);
+
+        ExecutePythonInConda.execute(envPath, envType , arguments, null);
     }
 }

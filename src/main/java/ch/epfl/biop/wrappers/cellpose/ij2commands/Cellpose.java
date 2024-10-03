@@ -10,6 +10,7 @@ import ij.measure.Calibration;
 import ij.plugin.Concatenator;
 import ij.plugin.Duplicator;
 
+import ij.plugin.frame.Recorder;
 import org.scijava.ItemIO;
 import org.scijava.ItemVisibility;
 import org.scijava.command.Command;
@@ -20,6 +21,7 @@ import org.scijava.widget.Button;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,6 +52,7 @@ public class Cellpose implements Command {
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message = "You can use the pretrained model, specify the model name below";
+
     @Parameter(label = "--pretrained_model" )
     String model = "cyto2" ;
 
@@ -61,6 +64,7 @@ public class Cellpose implements Command {
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message1 = "OR To use your own model, specify the path below AND leave --pretrained_model empty";
+
     @Parameter(required = false, label = "model_path")
     File model_path = new File("path/to/own_cellpose_model");
 
@@ -166,7 +170,10 @@ public class Cellpose implements Command {
 
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
                 // duplicate all channels and all z-slices for a defined time-point
+                boolean tmpRecord = Recorder.record;
+                Recorder.record = false;
                 ImagePlus t_imp = new Duplicator().run(imp, 1, imp.getNChannels(), 1, imp.getNSlices(), t_idx, t_idx);
+                Recorder.record = tmpRecord;
                 // and save the current t_imp into the cellposeTempDir
                 File t_imp_path = new File(cellposeTempDir, imp.getShortTitle() + "-t" + t_idx + ".tif");
                 FileSaver fs = new FileSaver(t_imp);
@@ -206,7 +213,12 @@ public class Cellpose implements Command {
             // Convert the ArrayList to an imp
             // https://stackoverflow.com/questions/9572795/convert-list-to-array-in-java
             ImagePlus[] impsArray = imps.toArray(new ImagePlus[0]);
+            boolean tmpScriptMode = Recorder.scriptMode();
+            Field scriptModeField = Recorder.class.getDeclaredField("scriptMode");
+            scriptModeField.setAccessible(true);
+            scriptModeField.set(null, false);
             cellpose_imp = Concatenator.run(impsArray);
+            scriptModeField.set(null, tmpScriptMode);
             cellpose_imp.setCalibration(cal);
             cellpose_imp.setTitle(imp.getShortTitle() + "-cellpose");
 
