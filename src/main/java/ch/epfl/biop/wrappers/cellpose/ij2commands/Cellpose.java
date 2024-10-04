@@ -14,6 +14,7 @@ import ij.plugin.frame.Recorder;
 import org.scijava.ItemIO;
 import org.scijava.ItemVisibility;
 import org.scijava.command.Command;
+import org.scijava.log.LogService;
 import org.scijava.platform.PlatformService;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
@@ -42,6 +43,9 @@ public class Cellpose implements Command {
     static String default_conda_env_path;
 
     @Parameter
+    LogService ls;
+
+    @Parameter
     ImagePlus imp;
 
     @Parameter(label = "conda environment path" ,style="directory")
@@ -54,7 +58,7 @@ public class Cellpose implements Command {
     String message = "You can use the pretrained model, specify the model name below";
 
     @Parameter(label = "--pretrained_model" )
-    String model = "cyto2" ;
+    String model = "cyto3" ;
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message0 ="You can access the list of models by clicking on the button below.";
@@ -79,7 +83,7 @@ public class Cellpose implements Command {
     int ch2 = -1;
 
     @Parameter(visibility=ItemVisibility.MESSAGE)
-    String message2 = "You can add more flags to the command line by adding them here. For example: --use_gpu, --do_3D";
+    String message2 = "Add more parameters here. For flags: --use_gpu, --do_3D, or for parameters with values: --cellprob_threshold, -6";
 
     @Parameter(required = false, label = "To add more parameters (use comma separated list of flags")
     String additional_flags = "--use_gpu, --do_3D";
@@ -119,6 +123,12 @@ public class Cellpose implements Command {
 
     @Override
     public void run() {
+
+        if ((env_path == null) || (!env_path.exists())) {
+            ls.error("Error: the cellpose environment path does not exist: "+env_path);
+            return;
+        }
+
         // Prepare cellPose settings
         CellposeTaskSettings settings = new CellposeTaskSettings();
         // and a cellpose task

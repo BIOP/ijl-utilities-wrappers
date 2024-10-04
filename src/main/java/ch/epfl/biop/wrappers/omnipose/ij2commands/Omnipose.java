@@ -15,6 +15,7 @@ import net.imagej.ImageJ;
 import org.scijava.ItemIO;
 import org.scijava.ItemVisibility;
 import org.scijava.command.Command;
+import org.scijava.log.LogService;
 import org.scijava.platform.PlatformService;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
@@ -41,6 +42,9 @@ public class Omnipose implements Command {
     }
 
     static String default_conda_env_path;
+
+    @Parameter
+    LogService ls;
 
     @Parameter
     ImagePlus imp;
@@ -121,6 +125,12 @@ public class Omnipose implements Command {
 
     @Override
     public void run() {
+
+        if ((env_path == null) || (!env_path.exists())) {
+            ls.error("Error: the omnipose environment path does not exist: "+env_path);
+            return;
+        }
+
         // Prepare omnipose settings
         OmniposeTaskSettings settings = new OmniposeTaskSettings();
         // and a omnipose task
