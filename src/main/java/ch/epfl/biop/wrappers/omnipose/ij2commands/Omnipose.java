@@ -222,6 +222,12 @@ public class Omnipose implements Command {
             omnipose_imp.setCalibration(cal);
             omnipose_imp.setTitle(imp.getShortTitle() + "-omnipose");
 
+            //add a LUT
+            boolean tmpRecord = Recorder.record;
+            Recorder.record = false;
+            IJ.run(omnipose_imp, "3-3-2 RGB", "");
+            Recorder.record = tmpRecord;
+
             // Delete the created files and folder
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
                 t_imp_paths.get(t_idx - 1).delete();

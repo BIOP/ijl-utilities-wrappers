@@ -59,7 +59,7 @@ public class Cellpose implements Command {
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message0 ="You can access the list of models by clicking on the button below.";
 
-    @Parameter( label="List of cellpose models", callback="openModelsPage")
+    @Parameter(label="List of cellpose models", callback="openModelsPage")
     private Button open_models_page_button;
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
@@ -78,7 +78,7 @@ public class Cellpose implements Command {
     @Parameter(label = "--chan2")
     int ch2 = -1;
 
-    @Parameter (visibility=ItemVisibility.MESSAGE )
+    @Parameter(visibility=ItemVisibility.MESSAGE)
     String message2 = "You can add more flags to the command line by adding them here. For example: --use_gpu, --do_3D";
 
     @Parameter(required = false, label = "To add more parameters (use comma separated list of flags")
@@ -110,13 +110,11 @@ public class Cellpose implements Command {
     }
 
     private void openCliPage() {
-
         try {
             ps.open(new URL("https://cellpose.readthedocs.io/en/latest/cli.html"));
         } catch (IOException e) {
             e.printStackTrace();
         }
-
     }
 
     @Override
@@ -221,6 +219,12 @@ public class Cellpose implements Command {
             scriptModeField.set(null, tmpScriptMode);
             cellpose_imp.setCalibration(cal);
             cellpose_imp.setTitle(imp.getShortTitle() + "-cellpose");
+
+            //add a LUT
+            boolean tmpRecord = Recorder.record;
+            Recorder.record = false;
+            IJ.run(cellpose_imp, "3-3-2 RGB", "");
+            Recorder.record = tmpRecord;
 
             // Delete the created files and folder
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
