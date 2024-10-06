@@ -57,7 +57,7 @@ public class Cellpose implements Command {
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message = "You can use the pretrained model, specify the model name below";
 
-    @Parameter(label = "--pretrained_model" )
+    @Parameter(required = false, label = "--pretrained_model" )
     String model = "cyto3" ;
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
