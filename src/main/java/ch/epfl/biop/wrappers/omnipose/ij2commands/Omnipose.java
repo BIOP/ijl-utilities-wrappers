@@ -157,11 +157,12 @@ public class Omnipose implements Command {
         settings.setEnvType(env_type);
         settings.setDatasetDir(omniposeTempDir.toString());
 
-        if ( model==null || model.trim().isEmpty()){
-            System.out.println("Using custom model");
-            model = model_path.toString();
+        String model_used = model;
+        if (model==null || model.trim().isEmpty()){
+            ls.info("Using omnipose custom model: "+model_path);
+            model_used = model_path.toString();
         }
-        settings.setModel(model);
+        settings.setModel(model_used);
         settings.setDiameter(diameter);
         settings.setChannel1(ch1);
         if (ch2 > -1 ) settings.setChannel2(ch2);
