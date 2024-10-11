@@ -33,7 +33,7 @@ import java.util.List;
 public class Omnipose implements Command {
     static {
         if (IJ.isLinux()) {
-            default_conda_env_path = "/home/biop/conda/envs/omnipose"; // to ease setting on biop-desktop    }
+            default_conda_env_path = "/opt/conda/envs/omnipose"; // to ease setting on biop-desktop    }
         } else if (IJ.isWindows()) {
             default_conda_env_path = "C:/Users/username/.conda/envs/omnipose";
         } else if (IJ.isMacOSX()) {
