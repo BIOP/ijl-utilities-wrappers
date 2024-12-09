@@ -11,7 +11,7 @@ IJ.runMacro("close('\\\\Others');")
 
 // cellpose parameters
 def cp = new Cellpose();
-cp.conda_env_path = conda_env_path
+cp.env_path = conda_env_path
 // Or comment the line avove and set the path manually
 // to locate your conda env from a terminal type "conda env list", it will return the path you can paste below
 //cp.conda_env_path = new File ( "D:/conda/conda_envs/cellpose/" ) ;
@@ -20,7 +20,8 @@ cp.diameter = 50;
 cp.model = "cyto3";
 cp.ch1 = 1 ;
 cp.ch2 = 2 ;
-cp.additional_flags= "--use_gpu, --do_3D, --anisotropy, 4 , --restore_type , denoise_cyto3";
+//cp.additional_flags= "--use_gpu, --do_3D, --anisotropy, 4 , --restore_type , denoise_cyto3";
+cp.additional_flags= "--use_gpu,  --restore_type , denoise_cyto3";
 // cellpose run
 cp.run();
 // get the output labels image
