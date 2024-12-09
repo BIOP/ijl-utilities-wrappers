@@ -130,7 +130,7 @@ Installation following Mac instructions worked for a couple of testers (no suppo
 
 To test if you have a working Cellpose environment:
 1. Start a terminal
-2 . Activate your environment
+2. Activate your environment
 3. Type `python -m cellpose --help`
 
 *You should not get an error ;)*
