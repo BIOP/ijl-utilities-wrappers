@@ -154,6 +154,8 @@ For example, from a 4 channels image (with nuclei, membrane , proteinX, ... stai
 
 For more info about parameters please refer to [cellpose.readthedocs.io](https://cellpose.readthedocs.io/en/latest/settings.html#)
 
+Please find an example of [ImageJ macro](resources/scripts/cellpose_macro.ijm) and [Groovy script](resources/scripts/cellpose_script.groovy) 
+
 # StarDist
 
 The **StarDist3D** wrapper is an ImageJ2 command that enables using a working StarDist virtual environment (either conda, or venv) from Fiji.
