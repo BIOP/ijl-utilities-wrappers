@@ -56,7 +56,7 @@ On top of this, some converters that facilite the transmission of data to these 
 
 # Cellpose 
 
-**NOTE** : up to cellpose 2.0
+**NOTE** : up to cellpose 3.0
 
 The **Cellpose** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environment (either conda, or venv) from Fiji.
 
@@ -99,34 +99,12 @@ To check if it works, you can:
 
 ###### Conda cellpose-GPU
 
-A successful GPU installation was possible with Win10 & NVIDIA GeForce RTX 2080 Ti, following [the detailed installation procedure described for venv](https://c4science.ch/w/bioimaging_and_optics_platform_biop/computers-servers/software/gpu-deep-learning/virtualenv/) following installation of drivers, VisualStudio, CUDA Toolkit, CuDDN before using Anaconda and the yml file below:
-| CUDA Toolkit | cuDNN | pytorch | cellpose | yml |
-| ------------- | ------------- | ------------- | ------------- |------------- |
-| [CUDA Toolkit installer 10.1](https://developer.nvidia.com/cuda-10.1-download-archive-base?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exenetwork) (§)| 7.6.0 | x | 0.6| [cellpose_biop_gpu.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/cellpose_biop_gpu.yml) (§§)| 
-| [CUDA Toolkit installer 11.3](https://developer.nvidia.com/cuda-11-3-1-download-archive) | [8.2.1](https://developer.nvidia.com/rdp/cudnn-archive) | x | 0.6 | [cellpose06_biop_gpu_113-821.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/cellpose06_biop_gpu_113-821.yml) |
-| [CUDA Toolkit installer 11.3](https://developer.nvidia.com/cuda-11-3-1-download-archive) | [8.2.1](https://developer.nvidia.com/rdp/cudnn-archive) | x | 0.7| [cellpose07_biop_gpu_113-821.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/cellpose07_biop_gpu_113-821.yml) |
-| [CUDA Toolkit installer 11.3](https://developer.nvidia.com/cuda-11-3-1-download-archive) | [8.2.1](https://developer.nvidia.com/rdp/cudnn-archive) | 1.12.0|2.2.1| [cellpose221_biop_gpu_ctk113-cdn821-pyt112.yml file](https://github.com/BIOP/ijl-utilities-wrappers/raw/master/resources/cellpose221_biop_gpu_ctk113-cdn821-pyt112.yml.yml) |
+##### I.A.2.a. Win
 
-**NOTE** if you experience "tensors error" 
-Current fix (from [cellpose issue](https://github.com/MouseLand/cellpose/issues/378#issuecomment-976767543)) is : 
-- locate `dynamics.py`
-- in `line 104` replace :  
-  - `meds = torch.from_numpy(centers.astype(int)).to(device)` 
-  - by
-  - `meds = torch.from_numpy(centers.astype(int)).to(torch.long).to(device)`
+You can find [instructions to install Cellpose environment on our wiki](https://wiki-biop.epfl.ch/en/ipa/mamba)
 
-**(§)**: nvcc is required for the installation procedure and "the cudatoolkit packages available via Conda do not include [it]" ( [more about this issue here](https://horovod.readthedocs.io/en/stable/conda_include.html)). 
-To check nvcc status, you can (in a command prompt) type  ``nvcc- V``, you should get something close to :
+Please find below some  information, provided "as is" without any warranties of successful installation, nor further support.
 
-`` nvcc: NVIDIA (R) Cuda compiler driver`` 
-
-`` Copyright (c) 2005-2019 NVIDIA Corporation`` 
-
-`` Built on Sun_Jul_28_19:12:52_Pacific_Daylight_Time_2019`` 
-
-`` Cuda compilation tools, release 10.1, V10.1.243`` 
-
-**(§§)** : a yml file subtlety I learnt on this journey, you can enforce a certain channel_name::package_name
 
 ##### I.A.2.b. Mac 
 
@@ -149,41 +127,34 @@ Installation following Mac instructions worked for a couple of testers (no suppo
 ### I.B. Fiji - Cellpose wrapper
 
 **NOTE** The Fiji - Cellpose wrapper is useless without a working Cellpose environment, please see installation above. 
+
 To test if you have a working Cellpose environment:
-1 - Activate your environment
-2 - Type `python -m cellpose --help`
-You should not get an error.
+1. Start a terminal
+2. Activate your environment
+3. Type `python -m cellpose --help`
 
+*You should not get an error ;)*
+
+From **Fiji** : 
 - Please activate our update site **_( PTBIOP | https://biop.epfl.ch/Fiji-Update/ )_** , [find more details here](https://wiki-biop.epfl.ch/en/ipa/fiji/update-site).
-- Restart Fiji
-- Execute ``Plugins>BIOP>Cellpose>Cellpose setup...`` 
-  - Select the path to your working Cellpose virtual environment 
-  - Select EnvType : ``conda`` or ``venv``
-  - Select version : ``0.6`` , ``0.7`` , ``1.0`` or ``2.0``.
-
-**NOTE** : on MacOSX, for a default anaconda install and a default cellpose install path should be something like: ``/opt/anaconda3/envs/cellpose`` .
-  
-<img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeSetup.png" title="CellposeSetup" width="50%" align="center">
-
-Congratulations you can now use Cellpose on your first image from Fiji! :)
+- Restart Fiji 
 
 ## II. Using Fiji - Cellpose wrapper
 
-The more "flexible" command is `Cellpose Advanced (own model)` which offers many parameters. 
+In the Fiji menu `Plugins > BIOP > Cellpose/Omnipose` one will find :
+- `Cellpose ...`
+- `Omnipose ... `
 
-<img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/cellpose07/resources/cellposeAdvParam.png" title="CellposeCommandAdvanced" width="50%" align="center">
+When selected both command will start a similar (yet different) GUI as pictured below : 
 
-BUT in case you need more parameters, this command also comes with a string field for additional parameters following pattern : `--channel_axis,CHANNEL_AXIS,--dir_above`
-
-For convenience 3 more commands exist:
-- `Segment Nuclei`, no parameter, ideal to test on blobs
-- `Segment Nuclei Advanced`, some parameter available
-- `Cellpose Advanced` (same parameters as command `Cellpose Advanced (own model)` without possibility to select your own model)
+![cellpose_command_GUI](resources/cellpose_command_GUI.png)
 
 **NOTE** We recommend users to prepare in Fiji the minimal image to be processed by cellpose before using the plugin.
 For example, from a 4 channels image (with nuclei, membrane , proteinX, ... stainings) extract the membrane and nuclei channel, make a composite image and run cellpose command on it.
 
 For more info about parameters please refer to [cellpose.readthedocs.io](https://cellpose.readthedocs.io/en/latest/settings.html#)
+
+Please find an example of [ImageJ macro](resources/scripts/cellpose_macro.ijm) and [Groovy script](resources/scripts/cellpose_script.groovy) 
 
 # StarDist
 
