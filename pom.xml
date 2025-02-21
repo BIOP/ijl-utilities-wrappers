@@ -23,7 +23,7 @@
 	</organization>
 	<licenses>
 		<license>
-			<name>Simplified BSD License</name>
+			<name>MIT License</name>
 			<distribution>repo</distribution>
 		</license>
 	</licenses>
