@@ -107,14 +107,18 @@ public class DeepSlice {
 
         List<String> cmd = new ArrayList<>(start_cmd);
 
-        List<String> conda_activate_cmd;
-
         if (IJ.isWindows()) {
-            // Activate the conda env
-            conda_activate_cmd = Arrays.asList("CALL", Conda.getWindowsCondaCommand(), "activate", envDirPath);
+            // Deactivate the current conda environment
+            List<String> conda_deactivate_cmd = Arrays.asList("CALL", Conda.getWindowsCondaCommand(), "deactivate");
+            cmd.addAll(conda_deactivate_cmd);
+            cmd.add("&"); // to separate commands
+
+            // Activate the new conda environment
+            List<String> conda_activate_cmd = Arrays.asList("CALL", Conda.getWindowsCondaCommand(), "activate", envDirPath);
             cmd.addAll(conda_activate_cmd);
+            cmd.add("&"); // to separate commands
+
             // After starting the env we can now use deepslice
-            cmd.add("&");// to have a second command
             List<String> cellpose_args_cmd = Arrays.asList("python", "-Xutf8", getDeepSliceCLIScriptPath());
             cmd.addAll(cellpose_args_cmd);
             // input options
