@@ -73,8 +73,8 @@ public class Cellpose implements Command {
     File model_path = new File("path/to/own_cellpose_model");
 
     // value defined from https://omnipose.readthedocs.io/en/latest/api.html
-    @Parameter(label = "--diameter")
-    int diameter = 30;
+    @Parameter(label = "--diameter", style="format:#.##")
+    float diameter = 30;
 
     @Parameter(label = "--chan")
     int ch1 = 0;

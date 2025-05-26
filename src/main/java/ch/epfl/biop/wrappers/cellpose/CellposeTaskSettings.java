@@ -10,7 +10,7 @@ public class CellposeTaskSettings {
     int ch2 = -1;
 
     // value defined from https://cellpose.readthedocs.io/en/latest/api.html
-    int diameter = 30;
+    float diameter = 30;
     String additional_flags = "";
 
     public CellposeTaskSettings setEnvPath(String conda_env_path) {
@@ -43,7 +43,7 @@ public class CellposeTaskSettings {
         return this;
     }
 
-    public CellposeTaskSettings setDiameter(int diameter) {
+    public CellposeTaskSettings setDiameter(float diameter) {
         this.diameter = diameter;
         return this;
     }
