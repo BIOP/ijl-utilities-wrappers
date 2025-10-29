@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.List;
 
 @SuppressWarnings({"CanBeFinal", "unused"})
@@ -139,7 +140,8 @@ public class Cellpose implements Command {
         // We'll have the current time-point of the imp in a temp folder
         String tempDir = IJ.getDirectory("Temp");
         // create tempdir
-        File cellposeTempDir = new File(tempDir, "cellposeTemp");
+        int cellposeTempDirRandomNum = ThreadLocalRandom.current().nextInt(1, 10000);
+        File cellposeTempDir = new File(tempDir, "cellposeTemp_" + cellposeTempDirRandomNum);
         cellposeTempDir.mkdir();
 
         // when plugin crashes, image file can pile up in the folder, so we make sure to clear everything
