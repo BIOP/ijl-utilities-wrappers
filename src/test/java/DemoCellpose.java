@@ -54,7 +54,7 @@ public class DemoCellpose {
         ImagePlus cytoLabel2chs_imp = (ImagePlus) ij.command().run(Cellpose.class, false,
                 "env_path", "C:\\Users\\chiarutt\\AppData\\Local\\miniforge3\\envs\\cellpose-406", // "C:\\ProgramData\\miniforge3\\envs\\cellpose4",//"C:\\Users\\chiarutt\\.conda\\envs\\cellpose4", // "D:/conda/conda-envs/cellpose-307-gpu/", //
                 "imp",              imp,
-                "diameter",         45.5,
+                "diameter",         30,
                 "model",            "cpsam",
                 "model_path",       "",
                 "additional_flags", "--use_gpu").get()

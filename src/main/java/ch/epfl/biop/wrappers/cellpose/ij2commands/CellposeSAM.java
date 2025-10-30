@@ -28,6 +28,11 @@ public class CellposeSAM extends CellposeAbstractCommand implements Command {
     }
 
     @Override
+    String getDefaultModelName() {
+        return "cpsam";
+    }
+
+    @Override
     void setSettings(CellposeTaskSettings settings) {
         settings.setChannel1(-1);
         settings.setChannel2(-1);

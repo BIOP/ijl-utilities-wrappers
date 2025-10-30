@@ -52,8 +52,8 @@ abstract public class CellposeAbstractCommand implements Command {
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message = "You can use the pretrained model, specify the model name below";
 
-    @Parameter(required = false, label = "--pretrained_model" )
-    String model = "" ;
+    @Parameter(required = false, label = "--pretrained_model")
+    String model = getDefaultModelName();
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message0 ="You can access the list of models by clicking on the button below.";
@@ -234,4 +234,7 @@ abstract public class CellposeAbstractCommand implements Command {
     abstract void openModelsPage();
 
     abstract void openCliPage();
+
+    abstract String getDefaultModelName();
+
 }
