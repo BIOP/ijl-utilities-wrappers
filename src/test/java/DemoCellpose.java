@@ -34,14 +34,14 @@ public class DemoCellpose {
     public static void cyto3D_2ch(ImageJ ij) throws ExecutionException, InterruptedException {
         ImagePlus imp = IJ.getImage();
         ImagePlus cytoLabel2chs_imp = (ImagePlus) ij.command().run(Cellpose.class, false,
-                "env_path", "C:\\ProgramData\\miniforge3\\envs\\cellpose4",//"C:\\Users\\chiarutt\\.conda\\envs\\cellpose4", // "D:/conda/conda-envs/cellpose-307-gpu/", //
+                "env_path", "C:\\Users\\chiarutt\\AppData\\Local\\miniforge3\\envs\\cellpose-3111", // "C:\\ProgramData\\miniforge3\\envs\\cellpose4",//"C:\\Users\\chiarutt\\.conda\\envs\\cellpose4", // "D:/conda/conda-envs/cellpose-307-gpu/", //
                 "imp", imp,
                 "diameter" , 45.5,
                 "model" , "cyto3",
                 "model_path","", // empty
                 "ch1",2,
                 "ch2",1,
-                "additional_flags", "--use_gpu, --do_3D").get().getOutput("cellpose_imp");
+                "additional_flags", "--use_gpu").get().getOutput("cellpose_imp"); //"--do_3D"
 
         cytoLabel2chs_imp.show();
 
