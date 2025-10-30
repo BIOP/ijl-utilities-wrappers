@@ -21,8 +21,10 @@ public class DefaultCellposeTask extends CellposeTask {
         arguments.add("--pretrained_model");
         arguments.add(settings.model);
 
-        arguments.add("--chan");
-        arguments.add("" + settings.ch1);
+        if (settings.ch1 != -1) {
+            arguments.add("--chan");
+            arguments.add("" + settings.ch1);
+        }
 
         if (settings.ch2 != -1) {
             arguments.add("--chan2");
