@@ -13,7 +13,7 @@ import java.net.URL;
 public class Cellpose extends CellposeAbstractCommand implements Command {
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
-    String message4 ="Specify channels to be used for the prediction (1-based indices).";
+    String message4 ="Specify channels to be used for the prediction";
 
     @Parameter(label = "--chan")
     int ch1 = 0;
