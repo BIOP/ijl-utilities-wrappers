@@ -46,8 +46,8 @@ public class ExecutePythonInConda {
                 cmd.addAll(conda_activate_cmd);
                 // After starting the env we can now use the module
                 cmd.add("&");// to have a second command
-                List<String> module_args_cmd = Arrays.asList("python", "-Xutf8");
-                cmd.addAll(module_args_cmd);
+                //List<String> module_args_cmd = Arrays.asList("python", "-Xutf8");
+                //cmd.addAll(module_args_cmd);
                 cmd.addAll(arguments);
                 // input options
 
@@ -76,8 +76,8 @@ public class ExecutePythonInConda {
                 List<String> venv_activate_cmd = Arrays.asList(new File(envDirPath, "Scripts/activate").toString());
                 cmd.addAll(venv_activate_cmd);
                 cmd.add("&");// to have a second command
-                List<String> module_args_cmd = Arrays.asList("python", "-Xutf8");
-                cmd.addAll(module_args_cmd);
+                //List<String> module_args_cmd = Arrays.asList("python", "-Xutf8");
+                //cmd.addAll(module_args_cmd);
                 cmd.addAll(arguments);
             } else if (IJ.isMacOSX() || IJ.isLinux()) {
                 throw new UnsupportedOperationException("Mac/Unix not supported yet with virtual environment. Please try conda instead.");
