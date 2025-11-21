@@ -12,6 +12,8 @@ public class DefaultOmniposeTask extends OmniposeTask{
 
         ArrayList<String> arguments = new ArrayList<>();
 
+        arguments.add("python");
+        arguments.add("-Xutf8");
         arguments.add("-m");
         arguments.add("omnipose");
 
