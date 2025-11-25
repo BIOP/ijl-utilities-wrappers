@@ -51,10 +51,10 @@ public class Spotiflow implements  Command {
     String env_type = "conda";
 
     @Parameter (visibility=ItemVisibility.MESSAGE )
-    String message2 = "You can add more flags to the command line by adding them here. For example: --omni, --cluster";
+    String message2 = "You can add more flags to the command line by adding them here. For example to process 3D stack: -pm, smfish_3d";
 
     @Parameter(required = false, label = "To add more parameters (use comma separated list of flags)")
-    String additional_flags = "";
+    String additional_flags = "-pm, smfish_3d";
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message3 ="You can access the full list of parameters by clicking on the button below.";
