@@ -1,5 +1,6 @@
 package ch.epfl.biop.wrappers.spotiflow.ij2commands;
 
+import ch.epfl.biop.java.utilities.TempDirectory;
 import ch.epfl.biop.wrappers.spotiflow.DefaultSpotiflowTask;
 import ch.epfl.biop.wrappers.spotiflow.SpotiflowPointsLoader;
 import ch.epfl.biop.wrappers.spotiflow.SpotiflowTaskSettings;
@@ -95,7 +96,7 @@ public class Spotiflow implements  Command {
         // We'll have the current time-point of the imp in a temp folder
         String tempDir = IJ.getDirectory("Temp");
         // create tempdir
-        File spotiflowTempDir = new File(tempDir, "spotiflowTemp");
+        File spotiflowTempDir = getTempDir();
         spotiflowTempDir.mkdir();
 
         // when plugin crashes, image file can pile up in the folder, so we make sure to clear everything
@@ -149,8 +150,32 @@ public class Spotiflow implements  Command {
             SpotiflowPointsLoader spl = new SpotiflowPointsLoader(imp);
             spl.loadPointsFromFiles(spotiflow_output_csv_path_list);
 
+            // Delete the created files and folder
+            for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
+                t_imp_paths.get(t_idx - 1).delete();
+                spotiflow_output_csv_path_list.get(t_idx - 1).delete();
+            }
+            spotiflowTempDir.delete();
+
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    File getTempDir() {
+        // We'll have the current time-point of the imp in a temp folder
+        // create tempdir
+        File spotiflowTemppDir = new TempDirectory("spotiflowTemp").getPath().toFile();
+        System.out.println(spotiflowTemppDir);
+        spotiflowTemppDir.mkdir();
+
+        // when plugin crashes, image file can pile up in the folder, so we make sure to clear everything
+        File[] contents = spotiflowTemppDir.listFiles();
+        if (contents != null) {
+            for (File f : contents) {
+                f.delete();
+            }
+        }
+        return spotiflowTemppDir;
     }
 }
