@@ -31,7 +31,6 @@ public class SpotiflowPointsLoader {
             roiManager = new RoiManager();
         }
 
-
         for (File file : spotiflow_output_list_path) {
             if (!file.exists() || !file.canRead()) {
                 IJ.log("Cannot read file: " + file.getPath());
@@ -39,16 +38,14 @@ public class SpotiflowPointsLoader {
             }
 
             try {
-                List<Point2D> points = readPointsFromCSV(file);
+                List<Point3D> points = readPointsFromCSV(file);
                 if (!points.isEmpty()) {
                     int timeFrame = extractTimeFrame(file.getName());
 
                     // Set the image to the correct frame before adding ROIs
                     targetImage.setT(timeFrame);
 
-
                     createIndividualPointRois(targetImage, points, file, timeFrame, roiManager);
-
 
                     IJ.log("Loaded " + points.size() + " points from " + file.getName());
                 } else {
@@ -63,19 +60,27 @@ public class SpotiflowPointsLoader {
     }
 
 
-    private void createIndividualPointRois(ImagePlus imp, List<Point2D> points, File file, int timeFrame, RoiManager roiManager) {
-        String baseName = file.getName().replaceFirst("[.][^.]+$", ""); // Remove extension
+    private void createIndividualPointRois(ImagePlus imp, List<Point3D> points, File file, int timeFrame, RoiManager roiManager) {
+        int totalDigits = String.valueOf(points.size()).length();
 
         for (int i = 0; i < points.size(); i++) {
-            Point2D point = points.get(i);
+            Point3D point = points.get(i);
             double xCoord =  point.x;
             double yCoord =  point.y;
+            double zCoord =  point.z;
+            double intensity = point.intensity;
+            double probability = point.probability;
 
-            imp.setT(timeFrame);
+
+            imp.setPosition( 1, (int) (zCoord+1), timeFrame);
 
             PointRoi pointRoi = new PointRoi();
             pointRoi.addPoint(imp, xCoord, yCoord);
-            String roiName = baseName + "_point_" + (i + 1);
+            pointRoi.setPosition(1, (int) (zCoord + 1), timeFrame);
+
+            String formattedIndex = String.format("%0" + totalDigits + "d", i + 1);
+
+            String roiName = "Point_" + formattedIndex  +"_int:" + String.format("%.2f", intensity) + "_prob:" + String.format("%.2f", probability);
             pointRoi.setName(roiName);
 
             roiManager.addRoi(pointRoi);
@@ -94,8 +99,8 @@ public class SpotiflowPointsLoader {
         return 0;
     }
 
-    private List<Point2D> readPointsFromCSV(File file) throws IOException {
-        List<Point2D> points = new ArrayList<>();
+    private List<Point3D> readPointsFromCSV(File file) throws IOException {
+        List<Point3D> points = new ArrayList<>();
 
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
@@ -106,14 +111,13 @@ public class SpotiflowPointsLoader {
 
                 // Skip empty lines and potential header
                 if (line.isEmpty()) continue;
-                if (isFirstLine && (line.startsWith("y:") || line.startsWith("#") || line.toLowerCase().contains("coordinate"))) {
+                if (isFirstLine ) {
                     isFirstLine = false;
                     continue;
                 }
-                isFirstLine = false;
 
                 try {
-                    Point2D point = parseCSV(line);
+                    Point3D point = parseCSV(line);
                     if (point != null) {
                         points.add(point);
                     }
@@ -126,18 +130,25 @@ public class SpotiflowPointsLoader {
         return points;
     }
 
-
-    private Point2D parseCSV(String line) {
+    private Point3D parseCSV(String line) {
         String[] parts = line.split(",");
-        if (parts.length >= 2) {
+        if (parts.length == 5) {
+            double z = Double.parseDouble(parts[0].trim());
+            double y = Double.parseDouble(parts[1].trim());
+            double x = Double.parseDouble(parts[2].trim());
+            double intensity =  Double.parseDouble(parts[3].trim()) ;
+            double probability = Double.parseDouble(parts[4].trim()) ;
+            return new Point3D(x, y, z, intensity, probability);
+        } else if (parts.length == 4) { // 2D
             double y = Double.parseDouble(parts[0].trim());
             double x = Double.parseDouble(parts[1].trim());
-            double intensity = parts.length > 2 ? Double.parseDouble(parts[2].trim()) : 0;
-            double probability = parts.length > 3 ? Double.parseDouble(parts[3].trim()) : 0;
-            return new Point2D(x, y, intensity, probability);
+            double intensity = Double.parseDouble(parts[2].trim()) ;
+            double probability = Double.parseDouble(parts[3].trim()) ;
+            return new Point3D(x, y, 0, intensity, probability);
         }
         return null;
     }
+
 
     // Setters for configuration
 
@@ -146,12 +157,13 @@ public class SpotiflowPointsLoader {
     }
 
     // Helper class to store point data
-    private static class Point2D {
-        double x, y, intensity, probability;
+    private static class Point3D {
+        double x, y, z, intensity, probability;
 
-        public Point2D(double x, double y, double intensity, double probability) {
+        public Point3D(double x, double y, double z , double intensity, double probability) {
             this.x = x;
             this.y = y;
+            this.z = z;
             this.intensity = intensity;
             this.probability = probability;
         }
