@@ -12,10 +12,6 @@ public class SpotiflowPointsLoader {
 
     private ImagePlus targetImage = null;
 
-    public SpotiflowPointsLoader() {
-        this( null);
-    }
-
     public SpotiflowPointsLoader( ImagePlus imp) {
         this.targetImage = imp;
     }
