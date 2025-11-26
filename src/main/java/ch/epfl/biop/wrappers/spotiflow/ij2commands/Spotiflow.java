@@ -165,17 +165,17 @@ public class Spotiflow implements  Command {
     File getTempDir() {
         // We'll have the current time-point of the imp in a temp folder
         // create tempdir
-        File spotiflowTemppDir = new TempDirectory("spotiflowTemp").getPath().toFile();
-        System.out.println(spotiflowTemppDir);
-        spotiflowTemppDir.mkdir();
+        File spotiflowTempDir = new TempDirectory("spotiflowTemp").getPath().toFile();
+        System.out.println(spotiflowTempDir);
+        spotiflowTempDir.mkdir();
 
         // when plugin crashes, image file can pile up in the folder, so we make sure to clear everything
-        File[] contents = spotiflowTemppDir.listFiles();
+        File[] contents = spotiflowTempDir.listFiles();
         if (contents != null) {
             for (File f : contents) {
                 f.delete();
             }
         }
-        return spotiflowTemppDir;
+        return spotiflowTempDir;
     }
 }
