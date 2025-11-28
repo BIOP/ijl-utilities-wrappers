@@ -189,9 +189,17 @@ You should not get an error and see available parameters
 
 ## II. Using Fiji - StarDist3D wrapper
 
-The more "flexible" command is `StarDist3D...` which offers many parameters.
+## II. Using Fiji - Cellpose wrapper
 
-![stardist3d_command_GUI](resources/stardist3d_command_GUI.png)
+In the Fiji menu `Plugins > BIOP > Cellpose/Omnipose` one will find :
+- `StarDist2D...`
+- `StarDist2D Adv. ...`
+- `StarDist3D...`
+- `StarDist3D Adv. ...`
+
+For example the command `StarDist3D Adv. ...` offers many parameters.
+
+![stardist_command_GUI](resources/stardist_command_GUI.png)
 
 </details>
 
@@ -215,6 +223,11 @@ NOTE : does not support multi-channels images for now.
 You can have a look to the [Spotiflow installation](https://github.com/weigertlab/spotiflow)
 
 ![spotiflow_command_GUI](resources/spotiflow_command_GUI.png)
+
+## II. Using Fiji - Spotiflow wrapper
+
+In the Fiji menu `Plugins > BIOP > Spotiflow` one will find :
+- `Spotiflow ...` 
 
 </details>
 
