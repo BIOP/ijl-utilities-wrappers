@@ -4,7 +4,7 @@
 
 This repository helps to set various tools external to the Java world:
 - Deep learning tools via conda environments:
-  - cellpose, stardist(3D), deepslice
+  - cellpose, stardist(3D), spotiflow, deepslice
 - Direct executable programs:
   - elastix, transformix
 
@@ -14,35 +14,9 @@ On top of this, some converters that facilite the transmission of data to these 
 <!-- TOC -->
 * [Wrappers for Fiji](#wrappers-for-fiji)
 * [Cellpose](#cellpose-)
-  * [I. Installation](#i-installation)
-      * [I.A. Cellpose Virtual Environment](#ia-cellpose-virtual-environment)
-      * [I.A.2. Conda installation](#ia2-conda-installation)
-        * [I.A.2.a. Windows](#ia2a-windows)
-          * [Enable conda command outside conda prompt](#enable-conda-command-outside-conda-prompt)
-          * [Conda cellpose-GPU](#conda-cellpose-gpu)
-        * [I.A.2.b. Mac](#ia2b-mac-)
-        * [I.A.2.c. Linux](#ia2c-linux)
-    * [I.B. Fiji - Cellpose wrapper](#ib-fiji---cellpose-wrapper)
-  * [II. Using Fiji - Cellpose wrapper](#ii-using-fiji---cellpose-wrapper)
 * [StarDist](#stardist)
-  * [I. Installation](#i-installation-1)
-    * [I.A. StarDist Virtual Environment](#ia-stardist-virtual-environment)
-      * [I.A.1. More on venv installation](#ia1-more-on-venv-installation)
-      * [I.A.2. More on conda installation](#ia2-more-on-conda-installation)
-        * [I.A.2.a. Windows](#ia2a-windows-1)
-          * [Enable conda command outside conda prompt](#enable-conda-command-outside-conda-prompt-1)
-          * [Conda StarDist-GPU](#conda-stardist-gpu)
-        * [I.A.2.b. MAC OSX](#ia2b-mac-osx)
-    * [I.B. Fiji - StarDist3D wrapper](#ib-fiji---stardist3d-wrapper)
-  * [II. Using Fiji - StarDist3D wrapper](#ii-using-fiji---stardist3d-wrapper)
+* [Spotiflow](#spotiflow)
 * [DeepSlice](#deepslice)
-  * [I. Installation](#i-installation-2)
-      * [I.A. Conda installation](#ia-conda-installation)
-        * [I.A.2.a. Windows](#ia2a-windows-2)
-          * [Enable conda command outside conda prompt](#enable-conda-command-outside-conda-prompt-2)
-        * [I.A.2.b. Mac](#ia2b-mac)
-        * [I.A.2.c. Linux](#ia2c-linux-1)
-  * [II. Using Fiji - DeepSlice wrapper](#ii-using-fiji---deepslice-wrapper)
 * [Elastix and Transformix](#elastix-and-transformix)
   * [Commands](#commands)
     * [Plugins>BIOP>Elastix>Register](#pluginsbiopelastixregister)
@@ -54,36 +28,12 @@ On top of this, some converters that facilite the transmission of data to these 
 <!-- TOC -->
 
 
-# Cellpose 
+# Windows installation notes
 
-**NOTE** : up to cellpose 3.0
-
-The **Cellpose** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environment (either conda, or venv) from Fiji.
-
-Briefly, **Cellpose** wrapper sequentially:
-- saves the current Fiji image in a temporary folder
-- starts the cellpose-env and runs Cellpose with defined parameters
-- opens the created label image in Fiji
-- cleans the temporary folder
-
-## I. Installation
-You'll find here some instructions to install the **_Cellpose_** wrapper and some guidance to set up a Cellpose virtual environment.
-
-**NOTE** : if you rely on conda, the Cellpose wrapper requires to enable the conda command outside of conda prompt 
+**NOTE** : if you rely on conda, the wrappers require to enable the conda command outside of conda prompt
 [cf installation instructions below](#enable-conda-command-outside-conda-prompt).
 
-#### I.A. Cellpose Virtual Environment
-
-You can find [instructions to install Cellpose environment on Cellpose repo](https://github.com/MouseLand/cellpose)
-
-Please find below some  information, provided "as is" without any warranties of successful installation, nor further support.
-
-#### I.A.2. Conda installation
-
-##### I.A.2.a. Windows
-**NOTE** : if you rely on conda, the Cellpose wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions below : ](#enable-conda-command-outside-conda-prompt).
-
-###### Enable conda command outside conda prompt
+## Enable conda command outside conda prompt
 You need to follow this two steps procedure to enable Windows to use conda from cmd.exe.
 
 - 1-Into the environment variable , edit PATH , add path to your ``..\Anaconda3\condabin ``default would be ``C:\ProgramData\Anaconda3\condabin``
@@ -97,14 +47,38 @@ To check if it works, you can:
 - 2.Type ``conda env list``
   You should get the list of your conda envs.
 
+# Cellpose
+
+The **Cellpose** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environment (either conda, or venv) from Fiji.
+
+Briefly, **Cellpose** wrapper sequentially:
+- saves the current Fiji image in a temporary folder
+- starts the cellpose-env and runs Cellpose with defined parameters
+- opens the created label image in Fiji
+- cleans the temporary folder
+- 
+<details>
+<summary>📄 click here to display more information </h4></summary>
+
+## I. Installation
+You'll find here some instructions to install the **_Cellpose_** wrapper and some guidance to set up a Cellpose virtual environment.
+
+#### I.A. Cellpose Virtual Environment
+
+You can find [instructions to install Cellpose environment on Cellpose repo](https://github.com/MouseLand/cellpose)
+
+Please find below some  information, provided "as is" without any warranties of successful installation, nor further support.
+
+#### I.A.2. Conda installation
+
+##### I.A.2.a. Windows
+**NOTE** : if you rely on conda, the Cellpose wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions](#enable-conda-command-outside-conda-prompt).
+
 ###### Conda cellpose-GPU
 
 ##### I.A.2.a. Win
 
 You can find [instructions to install Cellpose environment on our wiki](https://wiki-biop.epfl.ch/en/ipa/mamba)
-
-Please find below some  information, provided "as is" without any warranties of successful installation, nor further support.
-
 
 ##### I.A.2.b. Mac 
 
@@ -118,7 +92,6 @@ Briefly , using the lines below:
 >pip install cellpose
 
 would do the job to have a working cellpose env (in CPU mode)!
-
 
 ##### I.A.2.c. Linux
 
@@ -142,10 +115,11 @@ From **Fiji** :
 ## II. Using Fiji - Cellpose wrapper
 
 In the Fiji menu `Plugins > BIOP > Cellpose/Omnipose` one will find :
-- `Cellpose ...`
+- `Cellpose ...` , to use with cellpose<=3.1.1.1
+- `Cellpose SAM ...`, to use with cellpose>=4.0.0
 - `Omnipose ... `
 
-When selected both command will start a similar (yet different) GUI as pictured below : 
+When selected commands will start a similar (yet sligthly different) GUI as pictured below : 
 
 ![cellpose_command_GUI](resources/cellpose_command_GUI.png)
 
@@ -154,7 +128,8 @@ For example, from a 4 channels image (with nuclei, membrane , proteinX, ... stai
 
 For more info about parameters please refer to [cellpose.readthedocs.io](https://cellpose.readthedocs.io/en/latest/settings.html#)
 
-Please find an example of [ImageJ macro](resources/scripts/cellpose_macro.ijm) and [Groovy script](resources/scripts/cellpose_script.groovy) 
+Please find an example of [ImageJ macro](resources/script-templates/BIOP_wrappers/cellpose_macro.ijm) and [Groovy script](resources/script-templates/BIOP_wrappers/cellpose_script.groovy) 
+</details>
 
 # StarDist
 
@@ -168,6 +143,9 @@ Briefly, **StarDist3D** wrapper sequentially:
 
 **BIOP StarDist3D model**(s) (and training dataset) can be found on the [zenodo repository](https://zenodo.org/record/6645978#.ZB1L8nbMIQ8)
 
+<details>
+<summary>📄 click here to display more information </h4></summary>
+
 ## I. Installation
 
 You can have a look to the [StarDist installation](https://github.com/stardist/stardist#installation), but for now it works from a branch of the project (@Scripts).
@@ -175,32 +153,7 @@ Recommended way is to use yml file you can find below (or in `/resources`).
 
 ### I.A. StarDist Virtual Environment
 
-Please find below some information, provided "as is" without any warranties of successful installation, nor further support.
-
-#### I.A.1. More on venv installation
-
-Please [find here a very detailed installation procedure with venv](https://wiki-biop.epfl.ch/en/ipa/deep-learning/python-venvs).
-
-#### I.A.2. More on conda installation
-
-##### I.A.2.a. Windows
-**NOTE** : if you rely on conda, the StarDist3d wrapper requires to enable the conda command outside of conda prompt, [_cf_ installation instructions below : ](https://github.com/BIOP/ijl-utilities-wrappers/tree/master#-enable-conda-command-outside-conda-prompt-).
-
-###### Enable conda command outside conda prompt
-You need to follow this two steps procedure to enable Windows to use conda from cmd.exe.
-
-- 1-Into the environment variable , edit PATH , add path to your ``..\Anaconda3\condabin ``default would be ``C:\ProgramData\Anaconda3\condabin``
-- 2-Open a new PowerShell (and/or PowerShell (x86) ), run the following command once to initialize conda:
-  `` conda init``
-
-From now on you don't need to run a conda prompt you can simply activate a conda env from `` cmd.exe`` .
-
-To check if it works, you can:
-- 1.Press windows key, type ``cmd.exe`` (to get a command promt)
-- 2.Type ``conda env list``
-  You should get the list of your conda envs.
-
-###### Conda StarDist-GPU
+##### I.A.1. Win - Conda StarDist-GPU
 
 | CUDA Toolkit                                                                                                                                                                  | cuDNN     | Tensorflow | stardist / branch | yml                                                                                                                            |
 |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|------------|-------------------|--------------------------------------------------------------------------------------------------------------------------------|
@@ -210,28 +163,18 @@ To check if it works, you can:
 ($) This combination CUDA Toolkit and CuDNN are required to work with Tensorflow 1.15 (lastest available on Fiji) to train model for StarDist2D.
 Other combinations might work but were not tested (yet).
 
-##### I.A.2.b. MAC OSX
+#### I.A.2. MAC OSX - Conda StarDist-CPU
 
 The following procedure was validated on a Mac mini, M1 Chip 8-core CPU + 8-core GPU, 256GB SSD, 8GB Ram for **CPU** **ONLY** install.
 
 First create a conda env in python 3.7 (otherwise I got issue with tensorflow)
->conda create -n stardist_py37 python=3.7
-
-Then activate the conda env
->conda activate stardist_py37
-
-Install tensorflow
->conda install tensorflow
-
-Install Stardist:
->pip install stardist==0.8.3
-
-Finally,  I ran into an issue (OMP: Error #15: Initializing libomp.dylib, but found libomp.dylib already initialized)
-and I was lucky enough to found a fix using : 
-> conda install nomkl
-
-With all that I got a running conda env capable to run stardist-predict2D or -predict3D, in CPU.
-
+```
+conda create -n stardist_py37 python=3.7
+conda activate stardist_py37
+conda install tensorflow
+pip install stardist==0.8.3
+conda install nomkl
+```
 
 ### I.B. Fiji - StarDist3D wrapper
 
@@ -243,18 +186,50 @@ You should not get an error and see available parameters
 
 - Please use our update site **_(PTBIOP | https://biop.epfl.ch/Fiji-Update/)_** , [find more details here](https://c4science.ch/w/bioimaging_and_optics_platform_biop/image-processing/imagej_tools/update-site/).
 - Restart Fiji
-- ``Plugins>BIOP>StarDist> StarDist setup...``
-  - Select the path to your working StarDist virtual environment
-  - Select EnvType : ``conda`` or ``venv``
-
-NOTE : on MacOS, for a default anaconda install and a default StarDist install, the path should be something like: ``/opt/anaconda3/envs/stardist_py37`` (following the example above).
-
 
 ## II. Using Fiji - StarDist3D wrapper
 
-The more "flexible" command is `StarDist3D... Advanced (own model)` which offers many parameters.
+## II. Using Fiji - Cellpose wrapper
 
-<img src="https://github.com/BIOP/ijl-utilities-wrappers/blob/master/resources/stardist3D_advanced.png" title="StarDist3DAdvanced" width="50%" align="center">
+In the Fiji menu `Plugins > BIOP > Cellpose/Omnipose` one will find :
+- `StarDist2D...`
+- `StarDist2D Adv. ...`
+- `StarDist3D...`
+- `StarDist3D Adv. ...`
+
+For example the command `StarDist3D Adv. ...` offers many parameters.
+
+![stardist_command_GUI](resources/stardist_command_GUI.png)
+
+</details>
+
+# Spotiflow
+
+The **Spotiflow** wrapper is an ImageJ2 command that enables using a working Spotiflow virtual environment (either conda, or venv) from Fiji.
+
+Briefly, **Spotiflow** wrapper sequentially:
+- saves the current Fiji image in a temporary folder
+- starts the spotiflow-env and runs spotiflow with defined parameters
+- populates the RoiManager with detected spots as points (2D, 3D , + time )
+- cleans the temporary folder
+
+NOTE : does not support multi-channels images for now.
+
+<details>
+<summary>📄 click here to display more information </h4></summary>
+
+## I. Installation
+
+You can have a look to the [Spotiflow installation](https://github.com/weigertlab/spotiflow)
+
+![spotiflow_command_GUI](resources/spotiflow_command_GUI.png)
+
+## II. Using Fiji - Spotiflow wrapper
+
+In the Fiji menu `Plugins > BIOP > Spotiflow` one will find :
+- `Spotiflow ...` 
+
+</details>
 
 # DeepSlice
 
@@ -264,6 +239,9 @@ You'll find here some instructions to install the **_DeepSlice_** wrapper and so
 
 **NOTE** : the DeepSlice wrapper requires to enable the conda command outside of conda prompt
 [cf instructions](#enable-conda-command-outside-conda-prompt).
+
+<details>
+<summary>📄 click here to display more information </h4></summary>
 
 ## I. Installation
 
@@ -313,6 +291,8 @@ This wrapper essentially enables to run DeepSlice locally from within [ABBA](htt
 
 You can set up the location of the environment with the command `Plugins>BIOP>DeepSlice>DeepSlice setup...`
 
+</details>
+
 # Elastix and Transformix
 
 Note : this bridge only supports 2D registrations. For 3D registrations using elastix in Fiji, please look at https://github.com/embl-cba/elastixWrapper.
@@ -320,6 +300,9 @@ Note : this bridge only supports 2D registrations. For 3D registrations using el
 [Elastix](https://github.com/SuperElastix/elastix) is a standalone program that performs image registration. It takes two images, a fixed and a moving one and outputs a transformation file.
 
 The transformation file can then be used by Transformix to actually transform the moving image into the coordinates of the fixed image.
+
+<details>
+<summary>📄 click here to display more information </h4></summary>
 
 To use the wrapper, first install the [binaries of elastix](https://github.com/SuperElastix/elastix/releases/tag/5.0.1) (transformix is included) for your OS. Then, in Fiji, you can start the `Set and Check Wrappers` command:
 
@@ -359,4 +342,4 @@ You can use this image and a transformation model to actually transform an image
 
 You can transform ROI located in the ROI Manager according to a deformation field with this plugin.
 
-
+</details>

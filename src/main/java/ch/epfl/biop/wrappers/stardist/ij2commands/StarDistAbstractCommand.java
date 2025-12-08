@@ -1,5 +1,6 @@
 package ch.epfl.biop.wrappers.stardist.ij2commands;
 
+import ch.epfl.biop.java.utilities.TempDirectory;
 import ch.epfl.biop.wrappers.stardist.DefaultStardistTask;
 import ch.epfl.biop.wrappers.stardist.StardistTaskSettings;
 import ij.IJ;
@@ -9,44 +10,42 @@ import ij.measure.Calibration;
 import ij.plugin.Concatenator;
 import ij.plugin.Duplicator;
 import org.scijava.ItemIO;
-import org.scijava.command.Command;
+import org.scijava.log.LogService;
 import org.scijava.plugin.Parameter;
-import org.scijava.plugin.Plugin;
+import org.scijava.command.Command;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-@SuppressWarnings("CanBeFinal")
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>StarDist>StarDist3D... (Advanced) ")
-public class StarDist3D_SegmentImgPlus_Advanced implements Command {
+abstract public class StarDistAbstractCommand implements Command {
+
+    static {
+        if (IJ.isLinux()) {
+            default_conda_env_path = "/opt/conda/envs/stardist"; // to ease setting on biop-desktop    }
+        } else if (IJ.isWindows()) {
+            default_conda_env_path = "D:/conda/conda-envs/stardist";//"C:/Users/username/.conda/envs/spotiflow";
+        } else if (IJ.isMacOSX()) {
+            default_conda_env_path = "/Users/username/.conda/envs/stardist";
+        }
+    }
+
+    static String default_conda_env_path;
+
+    @Parameter
+    LogService ls;
 
     @Parameter
     ImagePlus imp;
 
+    @Parameter(label = "conda environment path" ,style="directory")
+    File env_path = new File(default_conda_env_path);
+
+    @Parameter(label= "virtual environment type", choices= {"conda", "venv"})
+    String env_type = "conda";
+
     @Parameter(style = "directory")
     File model_path;
-
-    @Parameter
-    int x_tiles=-1;
-
-    @Parameter
-    int y_tiles=-1;
-
-    @Parameter
-    int z_tiles=-1;
-
-    @Parameter(style = "format:#.00")
-    float min_norm= (float) 3.0;
-
-    @Parameter(style = "format:#.00")
-    float max_norm = (float) 99.8;
-
-    @Parameter(style = "format:#.00")
-    float prob_thresh = -1 ;
-
-    @Parameter(style = "format:#.00")
-    float nms_thresh = -1;
 
     @Parameter(type = ItemIO.OUTPUT)
     ImagePlus stardist_imp;
@@ -55,29 +54,28 @@ public class StarDist3D_SegmentImgPlus_Advanced implements Command {
 
     @Override
     public void run() {
+        if ((env_path == null) || (!env_path.exists())) {
+            ls.error("Error: the cellpose environment path does not exist: " + env_path);
+            return;
+        }
+
         Calibration cal = imp.getCalibration();
 
         // Prepare StarDist settings
         StardistTaskSettings settings = new StardistTaskSettings();
+        // to handle Advanced
+        setSettings(settings);
         // and a StarDist task
         DefaultStardistTask stardistTask = new DefaultStardistTask();
-
-       // We'll ave the current time-point of the imp in a temp folder
-        String tempDir = IJ.getDirectory("Temp");
         // create tempdir
-        File stardistTempDir = new File(tempDir, "StarDistTemp");
+        File stardistTempDir = getTempDir();
         stardistTempDir.mkdir();
 
         // System.out.println( model_path.toString() );
+        settings.setEnvPath(env_path.toString());
+        settings.setEnvType(env_type);
         settings.setModelPath( model_path.toString() );
         settings.setOutputPath( stardistTempDir.toString() );
-        if (x_tiles > -1) settings.setXTiles(x_tiles);
-        if (y_tiles > -1) settings.setYTiles(y_tiles);
-        if (z_tiles > -1) settings.setZTiles(z_tiles);
-        settings.setPmin (min_norm);
-        settings.setPmax(max_norm);
-        if (prob_thresh >-1) settings.setProbThresh(prob_thresh);
-        if (nms_thresh >-1) settings.setNmsThresh(nms_thresh);
 
         // can't process time-lapse directly so, we'll save one time-point after another
         int impFrames = imp.getNFrames();
@@ -123,13 +121,34 @@ public class StarDist3D_SegmentImgPlus_Advanced implements Command {
         ImagePlus[] impsArray = imps.toArray(new ImagePlus[0]);
         stardist_imp = Concatenator.run(impsArray);
         stardist_imp.setCalibration(cal);
-        stardist_imp.setTitle(imp.getShortTitle() + "-stardist3D");
+        stardist_imp.setTitle(imp.getShortTitle() + "-stardist");
 
         // Delete the created files and folder
         for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
             t_imp_paths.get(t_idx - 1).delete();
             stardist_masks_paths.get(t_idx - 1).delete();
         }
-       stardistTempDir.delete();
+        stardistTempDir.delete();
+
     }
+
+
+    File getTempDir() {
+        // We'll have the current time-point of the imp in a temp folder
+        // create tempdir
+        File spotiflowTempDir = new TempDirectory("StarDistTemp").getPath().toFile();
+        System.out.println(spotiflowTempDir);
+        spotiflowTempDir.mkdir();
+
+        // when plugin crashes, image file can pile up in the folder, so we make sure to clear everything
+        File[] contents = spotiflowTempDir.listFiles();
+        if (contents != null) {
+            for (File f : contents) {
+                f.delete();
+            }
+        }
+        return spotiflowTempDir;
+    }
+
+    abstract void setSettings(StardistTaskSettings settings);
 }

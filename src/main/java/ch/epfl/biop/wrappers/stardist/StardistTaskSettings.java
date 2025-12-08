@@ -1,9 +1,13 @@
 package ch.epfl.biop.wrappers.stardist;
 
+import ch.epfl.biop.wrappers.spotiflow.SpotiflowTaskSettings;
+
 public class StardistTaskSettings {
     final public static String MODE2D = "2D";
     final public static String MODE3D = "3D";
 
+    String envPath;
+    String envType = "conda";
     String dimension = MODE3D;
     String image_path;
     String model_path;
@@ -16,6 +20,15 @@ public class StardistTaskSettings {
     float prob_thresh = -1;
     float nms_thresh = -1;
 
+    public StardistTaskSettings setEnvPath(String envPath) {
+        this.envPath = envPath;
+        return this;
+    }
+
+    public StardistTaskSettings setEnvType(String envType) {
+        this.envType = envType;
+        return this;
+    }
     public StardistTaskSettings setMode2D(){
         this.dimension = MODE2D;
         return this;

@@ -1,4 +1,5 @@
 #@ImagePlus imp
+#@File(style="directory" , label="Select conda environment") conda_env_path
 #@File(style="directory") path_to_model
 #@CommandService command
 #@Output labels
@@ -11,15 +12,15 @@ IJ.runMacro("close('\\\\Others');")
 
 // stardist 
 // 3D
-def stardist = new StarDist3D_SegmentImgPlus_Advanced();
-// or 2D 
-//def stardist = new StarDist2D_SegmentImgPlus_Advanced();
+def stardist = new StarDist3D_Advanced();
+
 
 stardist.imp = imp;
+stardist.env_path = conda_env_path
 stardist.model_path = path_to_model
-//stardist.x_tiles = -1
-//stardist.y_tiles = -1
-//stardist.z_tiles = -1
+stardist.x_tiles = 2
+stardist.y_tiles = 2
+stardist.z_tiles = 4
 //stardist.min_norm = 3.0
 //stardist.max_norm = 99.8
 //stardist.prob_thresh = -1
@@ -34,6 +35,6 @@ nuclei_imp.show()
 
 return
 
-import ch.epfl.biop.wrappers.stardist.ij2commands.StarDist3D_SegmentImgPlus_Advanced
-import ch.epfl.biop.wrappers.stardist.ij2commands.StarDist2D_SegmentImgPlus_Advanced
+import ch.epfl.biop.wrappers.stardist.ij2commands.StarDist3D_Advanced
+
 import ij.IJ;
