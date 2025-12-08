@@ -5,6 +5,7 @@ import java.util.ArrayList;
 
 public class DefaultSpotiflowTask extends SpotiflowTask {
 
+    @Override
     public void run() throws Exception {
 
         String envPath = settings.envPath;
