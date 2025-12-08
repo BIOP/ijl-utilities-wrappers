@@ -158,6 +158,7 @@ public class Spotiflow implements  Command {
             spotiflowTempDir.delete();
 
         } catch (Exception e) {
+            ls.error("Failed to process Spotiflow detection", e);
             e.printStackTrace();
         }
     }
