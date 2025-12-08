@@ -30,7 +30,6 @@ public class Spotiflow implements  Command {
     static {
         if (IJ.isLinux()) {
             default_conda_env_path = "/opt/conda/envs/spotiflow"; // to ease setting on biop-desktop
-        }
         } else if (IJ.isWindows()) {
             default_conda_env_path = "D:/conda/conda-envs/spotiflow";//"C:/Users/username/.conda/envs/spotiflow";
         } else if (IJ.isMacOSX()) {
