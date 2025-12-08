@@ -130,7 +130,7 @@ public class Spotiflow implements  Command {
                 Recorder.record = false;
                 ImagePlus t_imp = new Duplicator().run(imp, 1, imp.getNChannels(), 1, imp.getNSlices(), t_idx, t_idx);
                 Recorder.record = tmpRecord;
-                // and save the current t_imp into the omniposeTempDir
+                // and save the current t_imp into the spotiflowTempDir
                 File t_imp_path = new File(spotiflowTempDir, imp.getShortTitle() + "-t" + t_idx + ".tif");
                 FileSaver fs = new FileSaver(t_imp);
                 fs.saveAsTiff(t_imp_path.toString());
