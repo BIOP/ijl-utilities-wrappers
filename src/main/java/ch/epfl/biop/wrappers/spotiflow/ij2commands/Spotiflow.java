@@ -25,7 +25,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Spotiflow>Spotiflow ...")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Spotiflow>Spotiflow...")
 public class Spotiflow implements  Command {
     static {
         if (IJ.isLinux()) {
