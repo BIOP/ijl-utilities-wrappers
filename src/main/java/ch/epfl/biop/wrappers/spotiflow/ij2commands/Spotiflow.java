@@ -119,7 +119,6 @@ public class Spotiflow implements  Command {
         try{
             // can't process time-lapse directly so, we'll save one time-point after another
             int impFrames = imp.getNFrames();
-            boolean isTimeLapse = impFrames > 1;
 
             // we'll use list to store paths of saved input, output masks and outlines
             List<File> t_imp_paths = new ArrayList<>();
