@@ -1,7 +1,6 @@
 package ch.epfl.biop.wrappers.spotiflow;
 
 import ch.epfl.biop.wrappers.omnipose.OmniposeTaskSettings;
-import ch.epfl.biop.wrappers.spotiflow.ij2commands.Spotiflow;
 
 public class SpotiflowTaskSettings {
 
