@@ -1,6 +1,7 @@
-[![](https://github.com/BIOP/ijl-utilities-wrappers/actions/workflows/build-main.yml/badge.svg)](https://github.com/BIOP/ijl-utilities-wrappers/actions/workflows/build-main.yml)
-
 # Wrappers for Fiji
+
+[![](https://github.com/BIOP/ijl-utilities-wrappers/actions/workflows/build-main.yml/badge.svg)](https://github.com/BIOP/ijl-utilities-wrappers/actions/workflows/build-main.yml)
+[![Maven Scijava Version](https://img.shields.io/github/v/tag/BIOP/ijl-utilities-wrappers?label=Version-[Maven%20Scijava])](https://maven.scijava.org/#browse/browse:releases:ch%2Fepfl%2Fbiop%2Fijl-utilities-wrappers)
 
 This repository helps to set various tools external to the Java world:
 - Deep learning tools via conda environments:
