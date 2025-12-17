@@ -62,6 +62,6 @@ public class DefaultStardistTask extends StardistTask {
             arguments.add("" + settings.nms_thresh);
         }
 
-        ExecutePythonInConda.execute(envPath, envType , arguments, null);
+        ExecutePythonInConda.execute(envPath, envType , false, arguments, null);
     }
 }

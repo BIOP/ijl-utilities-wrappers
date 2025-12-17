@@ -12,8 +12,8 @@ public class DefaultOmniposeTask extends OmniposeTask{
 
         ArrayList<String> arguments = new ArrayList<>();
 
-        arguments.add("python");
-        arguments.add("-Xutf8");
+        //arguments.add("python");
+        //arguments.add("-Xutf8");
         arguments.add("-m");
         arguments.add("omnipose");
 
@@ -51,7 +51,7 @@ public class DefaultOmniposeTask extends OmniposeTask{
                 }
             }
         }
-        ExecutePythonInConda.execute(envPath , envType, arguments, null);
+        ExecutePythonInConda.execute(envPath , envType, true, arguments, null);
     }
 
 }

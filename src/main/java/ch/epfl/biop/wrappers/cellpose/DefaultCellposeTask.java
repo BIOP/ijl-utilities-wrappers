@@ -12,8 +12,8 @@ public class DefaultCellposeTask extends CellposeTask {
 
         ArrayList<String> arguments = new ArrayList<>();
 
-        arguments.add("python");
-        arguments.add("-Xutf8");
+        //arguments.add("python");
+        //arguments.add("-Xutf8");
         arguments.add("-m");
         arguments.add("cellpose");
 
@@ -49,6 +49,6 @@ public class DefaultCellposeTask extends CellposeTask {
             }
         }
 
-        ExecutePythonInConda.execute(envPath, envType , arguments, null);
+        ExecutePythonInConda.execute(envPath, envType , true, arguments, null);
     }
 }

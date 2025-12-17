@@ -30,6 +30,6 @@ public class DefaultSpotiflowTask extends SpotiflowTask {
             }
         }
 
-        ExecutePythonInConda.execute(envPath, envType , arguments, null);
+        ExecutePythonInConda.execute(envPath, envType , false ,arguments, null);
     }
 }
