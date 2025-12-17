@@ -20,6 +20,10 @@ import static java.io.File.separatorChar;
 public class ExecutePythonInConda {
 
     public static void execute(String envDirPath, String envType, List<String> arguments , Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
+        execute ( envDirPath,  envType, false , arguments ,  outputHandler);
+    }
+
+    public static void execute(String envDirPath, String envType, Boolean add_python , List<String> arguments , Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
 
         List<String> cmd = new ArrayList<>();
         List<String> start_cmd = null ;
@@ -34,7 +38,6 @@ public class ExecutePythonInConda {
         }
         cmd.addAll( start_cmd );
 
-
         List<String> conda_activate_cmd = null;
 
         // Depending of the env type
@@ -46,16 +49,34 @@ public class ExecutePythonInConda {
                 cmd.addAll(conda_activate_cmd);
                 // After starting the env we can now use the module
                 cmd.add("&");// to have a second command
-                //List<String> module_args_cmd = Arrays.asList("python", "-Xutf8");
-                //cmd.addAll(module_args_cmd);
+                // because :
+                //  - cellpose cli starts with python -Xutf8 -m cellpose ... , while spotiflow and startidst don't!
+                //  - and MacOS/Linux and Windows have different ways to call the python module !
+                if (add_python){
+                    List<String> module_args_cmd = Arrays.asList("python", "-Xutf8");
+                    cmd.addAll(module_args_cmd);
+                }
+
                 cmd.addAll(arguments);
                 // input options
 
             } else if ( IJ.isMacOSX() || IJ.isLinux()) {
                 // instead of conda activate (so much headache!!!) specify the python to use
-                String python_path = envDirPath+separatorChar+"bin"+separatorChar+"python";
-                List<String> module_args_cmd = new ArrayList<>(Collections.singletonList(python_path));
-                module_args_cmd.addAll(arguments);
+                // because cellpose and stardist/spotiflow don't work the same way
+                String python_path = null;
+                List<String> module_args_cmd = new ArrayList<>();
+                if (add_python){ // cellpose case we start python can then add -m cellpose ..
+                    python_path = envDirPath+separatorChar+"bin"+separatorChar+"python";
+                    module_args_cmd = new ArrayList<>(Collections.singletonList(python_path));
+                    module_args_cmd.addAll(arguments);
+                } else { // for stardist/spotiflow we need to merge the conda path with th first argument to start the module
+                    python_path = envDirPath+separatorChar+"bin"+separatorChar;
+                    module_args_cmd = new ArrayList<>(Collections.singletonList(python_path));
+                    module_args_cmd.addAll(arguments);
+                    // merge first 2 arguments ! :face_palm_emoji:
+                    module_args_cmd.set(1, module_args_cmd.get(0)+module_args_cmd.get(1));
+                    module_args_cmd.remove(0);
+                }
 
                 // convert to a string
                 module_args_cmd = module_args_cmd.stream().map(s -> {
@@ -68,6 +89,7 @@ public class ExecutePythonInConda {
 
                 // finally add to cmd
                 cmd.add(cmdString.substring(1, cmdString.length()-1));
+
             }
 
         } else if (envType.equals("venv")) { // venv
@@ -76,8 +98,10 @@ public class ExecutePythonInConda {
                 List<String> venv_activate_cmd = Arrays.asList(new File(envDirPath, "Scripts/activate").toString());
                 cmd.addAll(venv_activate_cmd);
                 cmd.add("&");// to have a second command
-                //List<String> module_args_cmd = Arrays.asList("python", "-Xutf8");
-                //cmd.addAll(module_args_cmd);
+                if (add_python){
+                    List<String> module_args_cmd = Arrays.asList("python", "-Xutf8");
+                    cmd.addAll(module_args_cmd);
+                }
                 cmd.addAll(arguments);
             } else if (IJ.isMacOSX() || IJ.isLinux()) {
                 throw new UnsupportedOperationException("Mac/Unix not supported yet with virtual environment. Please try conda instead.");
