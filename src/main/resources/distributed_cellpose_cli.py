@@ -1773,7 +1773,8 @@ def main():
                         return sel
 
                     def _getitem_main(self, selection):
-                        new_sel = _coerce(selection, mode="nearest")
+                        # Use floor for Zarr getitem as well to stay consistent with block boundaries
+                        new_sel = _coerce(selection, mode="expand")
                         return _orig_get_main(self, new_sel)
 
                     def _setitem_main(self, selection, value):
@@ -1793,7 +1794,8 @@ def main():
                                                 start = 0
                                             else:
                                                 try:
-                                                    start = int(round(float(s.start)))
+                                                    # Use math.floor for start to match grid alignment
+                                                    start = int(math.floor(float(s.start)))
                                                 except:
                                                     start = 0
 
@@ -2017,5 +2019,11 @@ def main():
 
 
 if __name__ == "__main__":
+    # Ensure multiprocessing method is compatible with Dask/distributed
+    if sys.platform != "win32":
+        try:
+            multiprocessing.set_start_method("spawn", force=True)
+        except RuntimeError:
+            pass
     multiprocessing.freeze_support()
     main()
