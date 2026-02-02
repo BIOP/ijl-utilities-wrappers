@@ -422,22 +422,119 @@ def _patch_worker_all():
     """
     try:
         if worker_patches is not None:
-            worker_patches.apply_zarr_patches()
+            return worker_patches.apply_zarr_patches()
         else:
-            # best-effort fallback: attempt inline minimal patch
+            # Inline fallback: monkeypatch zarr.open and Array.__getitem__/__setitem__
+            # This is critical for Zarr 3.x compatibility when worker_patches.py is missing.
+            applied = False
             try:
-                import zarr as _zw
+                import zarr
+                import math
+                import numbers
+                import numpy as np
 
-                _o = _zw.open
+                # 1. Patch zarr.open
+                _orig_open = zarr.open
 
                 def _o_compat(*a, **kw):
                     if len(a) >= 2 and isinstance(a[1], str):
-                        return _o(store=a[0], mode=a[1], *a[2:], **kw)
-                    return _o(*a, **kw)
+                        return _orig_open(store=a[0], mode=a[1], *a[2:], **kw)
+                    return _orig_open(*a, **kw)
 
-                _zw.open = _o_compat
+                zarr.open = _o_compat
+                applied = True
+
+                # 2. Patch Array __getitem__ and __setitem__
+                # Handle both zarr.Array (v3 shorthand) and zarr.core.array.Array
+                import zarr.core.array as _zca
+
+                def _coerce(sel, mode="expand"):
+                    if isinstance(sel, slice):
+                        if sel.start is None:
+                            start = 0
+                        else:
+                            val = float(sel.start)
+                            start = (
+                                int(round(val))
+                                if mode == "nearest"
+                                else int(math.floor(val))
+                            )
+                        if sel.stop is None:
+                            stop = None
+                        else:
+                            val = float(sel.stop)
+                            if mode == "nearest" and sel.start is not None:
+                                try:
+                                    length = val - float(sel.start)
+                                    stop = start + int(round(length))
+                                except:
+                                    stop = int(round(val))
+                            else:
+                                stop = (
+                                    int(round(val))
+                                    if mode == "nearest"
+                                    else int(math.ceil(val))
+                                )
+                        step = sel.step
+                        if step is not None:
+                            try:
+                                step = int(float(step))
+                            except:
+                                pass
+                        return slice(start, stop, step)
+                    elif isinstance(sel, (tuple, list)):
+                        return tuple(_coerce(s, mode) for s in sel)
+                    elif hasattr(sel, "astype"):
+                        return sel.astype(int)
+                    elif isinstance(
+                        sel, (numbers.Number, np.generic)
+                    ) and not isinstance(sel, int):
+                        return int(float(sel))
+                    return sel
+
+                _orig_get = _zca.Array.__getitem__
+                _orig_set = _zca.Array.__setitem__
+
+                def _getitem_w(self, selection):
+                    return _orig_get(self, _coerce(selection, mode="expand"))
+
+                def _setitem_w(self, selection, value):
+                    # Force slice length matching to prevent Zarr 3.x errors
+                    try:
+                        if isinstance(selection, tuple) and hasattr(value, "shape"):
+                            slices_count = sum(
+                                1 for s in selection if isinstance(s, slice)
+                            )
+                            if slices_count == len(value.shape):
+                                new_sel_list = []
+                                v_idx = 0
+                                for s in selection:
+                                    if isinstance(s, slice):
+                                        length = value.shape[v_idx]
+                                        start = (
+                                            int(math.floor(float(s.start)))
+                                            if s.start is not None
+                                            else 0
+                                        )
+                                        new_sel_list.append(
+                                            slice(start, start + length, s.step)
+                                        )
+                                        v_idx += 1
+                                    else:
+                                        new_sel_list.append(_coerce(s, mode="nearest"))
+                                return _orig_set(self, tuple(new_sel_list), value)
+                    except:
+                        pass
+                    return _orig_set(self, _coerce(selection, mode="nearest"), value)
+
+                _zca.Array.__getitem__ = _getitem_w
+                _zca.Array.__setitem__ = _setitem_w
+                applied = True
             except Exception:
                 pass
+            return applied
+    except Exception:
+        return False
         return True
     except Exception:
         return False
@@ -1435,18 +1532,18 @@ def main():
     # cellpose 3.x uses 'channels' instead of 'chan'/'chan2'
     # channels expects a list: [cytoplasm_channel, nucleus_channel]
     # When using preprocessing_steps, channels refer to axis indices after stacking
-    # For multi-channel with preprocessing_steps: channels are stacked on axis 1,
-    # so we use [1, 2] for two channels, [2, 1] if reversed, or [1, 0] for single channel
+    # Our stack_channels function stacks channels in order [ch0, ch1, ch2, ...]
+    # So we map original indices directly.
     if len(channel_zarrs) > 1:
-        # Multi-channel: after stacking on axis 1, channels are at indices 1, 2, ...
-        # Map original chan/chan2 to post-stack indices
+        # Multi-channel: after stacking, channels match their original indices
         if args.chan2 >= 0:
-            # Both channels: map to [1, 2] or [2, 1] based on which is cytoplasm
-            channels = [args.chan + 1, args.chan2 + 1]
+            channels = [args.chan, args.chan2]
         else:
-            channels = [args.chan + 1, 0]
+            # For Cellpose, [chan, 0] means slice 'chan' for cyto and no nucleus
+            # If chan is 0, [0, 0] is correct.
+            channels = [args.chan, 0]
         print(
-            f"Multi-channel mode: channels mapped to {channels} (post-stacking indices)"
+            f"Multi-channel mode: channels mapped to {channels} (stack axis indices)"
         )
     else:
         # Single channel or 3D input: standard channel indexing
