@@ -1533,15 +1533,13 @@ def main():
     # channels expects a list: [cytoplasm_channel, nucleus_channel]
     # When using preprocessing_steps, channels refer to axis indices after stacking
     # Our stack_channels function stacks channels in order [ch0, ch1, ch2, ...]
-    # So we map original indices directly.
     if len(channel_zarrs) > 1:
-        # Multi-channel: after stacking, channels match their original indices
-        if args.chan2 >= 0:
-            channels = [args.chan, args.chan2]
-        else:
-            # For Cellpose, [chan, 0] means slice 'chan' for cyto and no nucleus
-            # If chan is 0, [0, 0] is correct.
-            channels = [args.chan, 0]
+        # Multi-channel: after stacking, channels match their original indices in the stack
+        # If chan=0 and chan2=-1, we use [0, 0]
+        # If chan=0 and chan2=1, we use [0, 1]
+        c1 = args.chan if args.chan >= 0 else 0
+        c2 = args.chan2 if args.chan2 >= 0 else 0
+        channels = [c1, c2]
         print(
             f"Multi-channel mode: channels mapped to {channels} (stack axis indices)"
         )
