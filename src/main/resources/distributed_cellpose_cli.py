@@ -335,6 +335,10 @@ def parse_blocksize(s):
     if "," in s:
         # Normal comma-separated format
         parts = [int(x) for x in s.split(",") if x.strip()]
+    elif s.isdigit() and len(s) == 1:
+        # Single digit: repeat it to match typical spatial rank (heuristic)
+        val = int(s)
+        parts = [val, val, val]
     elif s.isdigit() and len(s) >= 6:
         # Concatenated format: split into equal thirds
         length = len(s)
@@ -1501,7 +1505,7 @@ def main():
     # Parse custom parameters from remaining unknown arguments
     # Can be boolean flags: ['--do_3D', '--verbose']
     # Or key-value pairs: ['--flow3D_smooth', '3', '--anisotropy', '2.0']
-    
+
     # We force do_3D=False for 2D images to avoid logic errors in Cellpose
     if input_zarr.ndim == 2:
         eval_kwargs["do_3D"] = False
@@ -1795,7 +1799,9 @@ def main():
                                             else:
                                                 try:
                                                     # Use math.floor for start to match grid alignment
-                                                    start = int(math.floor(float(s.start)))
+                                                    start = int(
+                                                        math.floor(float(s.start))
+                                                    )
                                                 except:
                                                     start = 0
 
