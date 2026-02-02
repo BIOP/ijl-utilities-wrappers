@@ -679,8 +679,12 @@ def dask_setup(worker):
                 # If image is 3D (Z, Y, X), we want (Z, C, Y, X) -> axis 1
                 # If image is 2D (Y, X), we want (C, Y, X) -> axis 0
                 if image.ndim == 3:
+                    # In cellpose.contrib.distributed_segmentation, the image passed
+                    # to preprocessing_steps matches the input_zarr's rank.
+                    # Celpose's model.eval(do_3D=True) expects (Z, C, Y, X)
                     return np.stack(channels_to_stack, axis=1)
                 else:
+                    # For 2D model, cellpose expects (C, Y, X)
                     return np.stack(channels_to_stack, axis=0)
 
             preprocessing_steps = [(stack_channels, {})]
@@ -818,6 +822,7 @@ def dask_setup(worker):
                 # Register a simple worker plugin that applies zarr/mkldnn
                 # patches on worker startup.
                 try:
+
                     class _ZarrPatchPlugin:
                         def setup(self, worker):
                             _patch_worker_all()
@@ -1320,12 +1325,11 @@ def main():
             # Match blocksize rank to spatial_shape rank for Zarr chunks
             zarr_chunks = blocksize
             if len(zarr_chunks) > len(spatial_shape):
-                zarr_chunks = zarr_chunks[-len(spatial_shape):]
+                zarr_chunks = zarr_chunks[-len(spatial_shape) :]
             elif len(zarr_chunks) < len(spatial_shape):
-                zarr_chunks = (
-                    (max(spatial_shape),) * (len(spatial_shape) - len(zarr_chunks))
-                    + zarr_chunks
-                )
+                zarr_chunks = (max(spatial_shape),) * (
+                    len(spatial_shape) - len(zarr_chunks)
+                ) + zarr_chunks
 
             # Create zarr for each channel
             if args.input_zarr:
@@ -1497,6 +1501,12 @@ def main():
     # Parse custom parameters from remaining unknown arguments
     # Can be boolean flags: ['--do_3D', '--verbose']
     # Or key-value pairs: ['--flow3D_smooth', '3', '--anisotropy', '2.0']
+    
+    # We force do_3D=False for 2D images to avoid logic errors in Cellpose
+    if input_zarr.ndim == 2:
+        eval_kwargs["do_3D"] = False
+        print("2D input detected: setting eval_kwargs['do_3D'] = False")
+
     i = 0
     while i < len(unknown_args):
         arg = unknown_args[i]
@@ -1601,19 +1611,32 @@ def main():
             root, ext2 = os.path.splitext(root)
             ext = ext2 + ext
 
-        if not root.endswith("_labels"):
+        if not root.endswith("_labels") and not root.endswith(".ome_labels"):
             print(f"Enforcing '_labels' suffix on output filename: {output_tif}")
-            output_tif = f"{root}_labels{ext}"
+            # If it's an OME-TIFF, we insert .ome_labels
+            if ext.lower().endswith(".ome.tif"):
+                # strip .ome.tif and append .ome_labels.ome.tif
+                root_no_ome = output_tif[: -len(".ome.tif")]
+                output_tif = root_no_ome + ".ome_labels.ome.tif"
+            else:
+                output_tif = f"{root}_labels{ext}"
             print(f"  -> {output_tif}")
     else:
         # derive basename from input and append a suffix to indicate labels
         if args.input_file:
-            base = os.path.splitext(os.path.basename(args.input_file))[0]
+            input_base = os.path.basename(args.input_file)
+            if input_base.lower().endswith(".ome.tif"):
+                base = input_base[: -len(".ome.tif")]
+                suffix = ".ome_labels.ome.tif"
+            else:
+                base = os.path.splitext(input_base)[0]
+                suffix = "_labels.tif"
         else:
             base = os.path.basename(os.path.normpath(args.input_dir))
+            suffix = "_labels.tif"
         output_dir = args.output_dir
         os.makedirs(output_dir, exist_ok=True)
-        output_tif = os.path.join(output_dir, base + "_labels.tif")
+        output_tif = os.path.join(output_dir, base + suffix)
 
     # Derive stitched Zarr path from output TIFF base if not explicitly provided
     if args.write_zarr:
@@ -1699,81 +1722,105 @@ def main():
                     _orig_get_main = _zarr_array.Array.__getitem__
                     _orig_set_main = _zarr_array.Array.__setitem__
 
-                    def _coerce(sel, mode='expand'):
+                    def _coerce(sel, mode="expand"):
                         # Minimal recursive coercion with mode support
                         if isinstance(sel, slice):
                             if sel.start is None:
                                 start = 0
                             else:
                                 val = float(sel.start)
-                                start = int(round(val)) if mode == 'nearest' else int(math.floor(val))
+                                start = (
+                                    int(round(val))
+                                    if mode == "nearest"
+                                    else int(math.floor(val))
+                                )
 
                             if sel.stop is None:
-                                stop = None # zarr handles None, or we can't easily know dim_len here without 'self'
+                                stop = None  # zarr handles None, or we can't easily know dim_len here without 'self'
                             else:
                                 val = float(sel.stop)
-                                if mode == 'nearest' and sel.start is not None:
-                                     # Shape preserving
-                                     try:
-                                         length = val - float(sel.start)
-                                         stop = start + int(round(length))
-                                     except:
-                                         stop = int(round(val))
+                                if mode == "nearest" and sel.start is not None:
+                                    # Shape preserving
+                                    try:
+                                        length = val - float(sel.start)
+                                        stop = start + int(round(length))
+                                    except:
+                                        stop = int(round(val))
                                 else:
-                                    stop = int(round(val)) if mode == 'nearest' else int(math.ceil(val))
+                                    stop = (
+                                        int(round(val))
+                                        if mode == "nearest"
+                                        else int(math.ceil(val))
+                                    )
 
                             # Handle step
                             step = sel.step
                             if step is not None:
                                 try:
                                     step = int(float(step))
-                                except: pass
+                                except:
+                                    pass
 
                             return slice(start, stop, step)
                         elif isinstance(sel, (tuple, list)):
                             return tuple(_coerce(s, mode) for s in sel)
-                        elif hasattr(sel, 'astype'):
+                        elif hasattr(sel, "astype"):
                             return sel.astype(int)
-                        elif isinstance(sel, (numbers.Number, np.generic)) and not isinstance(sel, int):
+                        elif isinstance(
+                            sel, (numbers.Number, np.generic)
+                        ) and not isinstance(sel, int):
                             return int(float(sel))
                         return sel
 
                     def _getitem_main(self, selection):
-                        new_sel = _coerce(selection, mode='nearest')
+                        new_sel = _coerce(selection, mode="nearest")
                         return _orig_get_main(self, new_sel)
 
                     def _setitem_main(self, selection, value):
                         # Force slice length to match data length to prevent Zarr crash on mismatch
                         try:
-                            if isinstance(selection, tuple) and hasattr(value, 'shape'):
-                                slices_count = sum(1 for s in selection if isinstance(s, slice))
+                            if isinstance(selection, tuple) and hasattr(value, "shape"):
+                                slices_count = sum(
+                                    1 for s in selection if isinstance(s, slice)
+                                )
                                 if slices_count == len(value.shape):
                                     new_sel_list = []
                                     v_idx = 0
                                     for s in selection:
                                         if isinstance(s, slice):
                                             length = value.shape[v_idx]
-                                            if s.start is None: start = 0
+                                            if s.start is None:
+                                                start = 0
                                             else:
-                                                try: start = int(round(float(s.start)))
-                                                except: start = 0
+                                                try:
+                                                    start = int(round(float(s.start)))
+                                                except:
+                                                    start = 0
 
                                             stop = start + length
 
                                             step = s.step
                                             if step is not None:
-                                                try: step = int(float(step))
-                                                except: pass
+                                                try:
+                                                    step = int(float(step))
+                                                except:
+                                                    pass
 
-                                            new_sel_list.append(slice(start, stop, step))
+                                            new_sel_list.append(
+                                                slice(start, stop, step)
+                                            )
                                             v_idx += 1
                                         else:
-                                            new_sel_list.append(_coerce(s, mode="nearest"))
-                                    return _orig_set_main(self, tuple(new_sel_list), value)
+                                            new_sel_list.append(
+                                                _coerce(s, mode="nearest")
+                                            )
+                                    return _orig_set_main(
+                                        self, tuple(new_sel_list), value
+                                    )
                         except Exception:
                             pass
 
-                        new_sel = _coerce(selection, mode='nearest')
+                        new_sel = _coerce(selection, mode="nearest")
                         return _orig_set_main(self, new_sel, value)
 
                     _zarr_array.Array.__getitem__ = _getitem_main
@@ -1790,29 +1837,41 @@ def main():
                             if isinstance(sel, slice):
                                 # Coerce to integer bounds and clamp to dimension length
                                 # Using mode='nearest' logic: round floats to integers
-                                if sel.start is None: start = 0
-                                else: start = int(round(float(sel.start)))
+                                if sel.start is None:
+                                    start = 0
+                                else:
+                                    start = int(round(float(sel.start)))
 
-                                if sel.stop is None: stop = dim_len
-                                else: stop = int(round(float(sel.stop)))
+                                if sel.stop is None:
+                                    stop = dim_len
+                                else:
+                                    stop = int(round(float(sel.stop)))
 
                                 # Clamp
-                                if start < 0: start = max(0, dim_len + start)
-                                if stop < 0: stop = max(0, dim_len + stop)
+                                if start < 0:
+                                    start = max(0, dim_len + start)
+                                if stop < 0:
+                                    stop = max(0, dim_len + stop)
                                 stop = min(stop, dim_len)
                                 # Fix potential empty slice if bounds crossed due to rounding
-                                if stop < start: stop = start
+                                if stop < start:
+                                    stop = start
 
                                 step = sel.step
                                 if step is not None:
-                                    try: step = int(float(step))
-                                    except: step = 1
-                                else: step = 1
+                                    try:
+                                        step = int(float(step))
+                                    except:
+                                        step = 1
+                                else:
+                                    step = 1
                                 return slice(start, stop, step)
-                            return sel # Assume other types handled or passed through
+                            return sel  # Assume other types handled or passed through
 
                         coerced = _coerce_dim(dim_sel)
-                        return _orig_slice_init_main(self, coerced, dim_len, dim_chunk_len)
+                        return _orig_slice_init_main(
+                            self, coerced, dim_len, dim_chunk_len
+                        )
 
                     _z_idx_main.SliceDimIndexer.__init__ = _slice_init_compat_main
             except Exception:
