@@ -2123,10 +2123,8 @@ def main():
 
 if __name__ == "__main__":
     # Ensure multiprocessing method is compatible with Dask/distributed
-    if sys.platform != "win32":
-        try:
-            multiprocessing.set_start_method("spawn", force=True)
-        except RuntimeError:
-            pass
+    # We do NOT force spawn here because it might be causing initialization
+    # failures or stale object references in certain environments. 
+    # Let Dask/System decide the safest method.
     multiprocessing.freeze_support()
     main()
