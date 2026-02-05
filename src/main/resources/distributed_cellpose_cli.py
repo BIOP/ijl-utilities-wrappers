@@ -1585,19 +1585,29 @@ def main():
                 c_axis_pos = candidates[0]
 
         if c_axis_pos is not None and im.shape[c_axis_pos] > 1:
-            # Multi-channel data: split into separate per-channel 3D/4D arrays
-            num_channels = im.shape[c_axis_pos]
+            # Multi-channel data: extract ONLY the channels required by the user.
+            num_channels_total = im.shape[c_axis_pos]
+
+            # Determine which 0-based indices are needed.
+            # args.chan and args.chan2 are 1-based (0 = grayscale or None).
+            needed_indices = []
+            c1_idx = (args.chan - 1) if args.chan > 0 else 0
+            needed_indices.append(c1_idx)
+
+            if args.chan2 > 0:
+                c2_idx = args.chan2 - 1
+                if c2_idx != c1_idx:
+                    needed_indices.append(c2_idx)
+
             print(
-                f"Detected {num_channels} channels at axis {c_axis_pos} (shape {im.shape})"
+                f"Detected {num_channels_total} channels total at axis {c_axis_pos} (shape {im.shape})"
             )
             print(
-                "Will use preprocessing_steps to stack channels (cellpose best practice)"
+                f"Extracting only required channels: {[idx + 1 for idx in needed_indices]}"
             )
             sys.stdout.flush()
 
             # Extract spatial dimensions (remove channel axis)
-            # We also flatten any time dimension for the zarr storage if it's 5D
-            # but for now let's assume one timepoint or handle it as a large Z
             spatial_shape = tuple(s for i, s in enumerate(im.shape) if i != c_axis_pos)
 
             # Match blocksize rank to spatial_shape rank for Zarr chunks
@@ -1605,7 +1615,6 @@ def main():
             if len(zarr_chunks) > len(spatial_shape):
                 zarr_chunks = zarr_chunks[-len(spatial_shape) :]
             elif len(zarr_chunks) < len(spatial_shape):
-                # Padding with large chunks for higher dimensions (e.g. time)
                 zarr_chunks = (max(spatial_shape),) * (
                     len(spatial_shape) - len(zarr_chunks)
                 ) + zarr_chunks
@@ -1620,8 +1629,14 @@ def main():
                 )
                 parent = tmpdir.name
 
-            for ch_idx in range(num_channels):
-                # Robustly extract channel data regardless of which axis is the channel
+            for i, ch_idx in enumerate(needed_indices):
+                if ch_idx >= num_channels_total:
+                    print(
+                        f"Warning: requested channel {ch_idx + 1} exceeds image depth {num_channels_total}. Falling back to channel 1."
+                    )
+                    ch_idx = 0
+
+                # Robustly extract channel data
                 ch_data = np.take(im, ch_idx, axis=c_axis_pos)
 
                 # Create zarr for this channel
@@ -1635,16 +1650,14 @@ def main():
                 )
                 z_ch[...] = ch_data
                 channel_zarrs.append(z_ch)
-                print(
-                    f"  Channel {ch_idx}: created zarr at {ch_path}, shape {spatial_shape}"
-                )
+                print(f"  Channel {ch_idx + 1}: extracted and stored at {ch_path}")
 
-            # Use first channel as input_zarr
+            # Use first requested channel as input_zarr
             input_zarr = channel_zarrs[0]
             # Ensure blocksize matches the rank of the spatial zarr
             blocksize = zarr_chunks
             print(
-                f"Using channel {args.chan if args.chan < num_channels else 0} as base input, shape: {input_zarr.shape}, blocksize: {blocksize}"
+                f"Using input channel {needed_indices[0] + 1} as base, shape: {input_zarr.shape}, blocksize: {blocksize}"
             )
             sys.stdout.flush()
         else:
@@ -1702,6 +1715,7 @@ def main():
 
     # Worker patching handles float slice coercion, no proxy needed
 
+    # Determine model_kwargs
     model_kwargs = (
         {"model_type": args.model, "gpu": args.use_gpu}
         if isinstance(args.model, str)
@@ -1709,11 +1723,20 @@ def main():
     )
 
     # GUI and CLI now use 1-based indexing consistently (1=First, 2=Second, 0=None).
-    # [1, 0] means Channel 1 for cytoplasm, None for nuclei.
-    # [2, 1] means Channel 2 for cytoplasm, Channel 1 for nuclei.
-    c1 = args.chan if args.chan > 0 else 1
-    c2 = args.chan2 if args.chan2 > 0 else 0
-    channels = [c1, c2]
+    # However, if we subsetted the channels during extraction (len(channel_zarrs) > 0),
+    # the 'channels' indices must refer to the indices in the stack we created.
+    if len(channel_zarrs) >= 1:
+        # If we have only 1 channel in our list, it's [1, 0]
+        # If we have 2, it's [1, 2] (following the order in needed_indices)
+        c1 = 1
+        c2 = 2 if len(channel_zarrs) > 1 else 0
+        channels = [c1, c2]
+        print(f"Subsetting/Stacking mode: mapping channels to stack indices {channels}")
+    else:
+        # Single channel or folder of TIFFs: use user-provided indices
+        c1 = args.chan if args.chan > 0 else 1
+        c2 = args.chan2 if args.chan2 > 0 else 0
+        channels = [c1, c2]
 
     # Ensure diameter is an integer to avoid float-based slice indices
     try:
