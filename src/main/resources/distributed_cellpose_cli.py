@@ -90,7 +90,9 @@ if sys.platform == "win32":
         pass
 
 
-def get_optimal_n_workers(use_gpu, requested_n_workers, blocksize, model_type="cyto3"):
+def get_optimal_n_workers(
+    use_gpu, requested_n_workers, blocksize, model_type="cyto3", diameter=30.0
+):
     """Calculate optimal number of workers based on GPU memory availability.
 
     When GPU is enabled, this function queries available GPU memory and
@@ -107,27 +109,67 @@ def get_optimal_n_workers(use_gpu, requested_n_workers, blocksize, model_type="c
         Block size used for processing (Z, Y, X) - this determines memory per worker.
     model_type : str, optional
         The cellpose model type being used (default: "cyto3").
+    diameter : float, optional
+        The diameter used for evaluation. Cellpose rescales images to fit its
+        internal model diameter (usually 30.0). This scaling significantly
+        affects GPU memory usage.
 
     Returns
     -------
     tuple
         `(n_workers, threads_per_worker)` recommended for the LocalCluster.
     """
+    if blocksize is None:
+        blocksize = (32, 224, 224)
+
+    # Calculate scaling factor. Cellpose models are trained on a specific diameter.
+    # We estimate the scaling factor to adjust memory requirements accordingly.
+    # cyto/cyto2/cyto3/etc ~ 30.0, nuclei ~ 17.0
+    model_diam = 17.0 if "nuclei" in str(model_type).lower() else 30.0
+
+    # If diameter is 0 (auto), assume no scaling (factor 1.0) for safety or use 30 as default
+    eff_diameter = float(diameter) if float(diameter) > 0 else 30.0
+    scaling_factor = model_diam / eff_diameter
+
+    # In Cellpose 3D evaluation (do_3D=True), scaling is typically applied to all
+    # spatial dimensions (XY and Z) to match the model training size.
+    print(
+        f"Memory estimation: model_diam={model_diam}, diameter={eff_diameter}, scaling_factor={scaling_factor:.2f}"
+    )
+
+    # If requested_n_workers is 0, it means auto-detect. We treat it as
+    # 'infinity' for the min() calculation later, so system/GPU limits decide.
+    eff_requested_workers = requested_n_workers if requested_n_workers > 0 else 9999
+
     if not use_gpu:
         # CPU mode: no GPU memory constraints; choose a simple threads-per-worker
-        threads = max(1, (os.cpu_count() or 1) // max(1, requested_n_workers))
-        return (requested_n_workers, threads)
+        max_cpus = os.cpu_count() or 1
+        n_workers = (
+            requested_n_workers if requested_n_workers > 0 else max(1, max_cpus // 4)
+        )
+        threads = max(1, max_cpus // n_workers)
+        return (n_workers, threads)
 
     if torch is None:
         print("Warning: PyTorch not available. Cannot query GPU memory.")
-        threads = max(1, (os.cpu_count() or 1) // max(1, requested_n_workers))
-        return (requested_n_workers, threads)
+        max_cpus = os.cpu_count() or 1
+        n_workers = (
+            requested_n_workers if requested_n_workers > 0 else max(1, max_cpus // 4)
+        )
+        threads = max(1, max_cpus // n_workers)
+        return (n_workers, threads)
 
     try:
         if not torch.cuda.is_available():
             print("Warning: GPU requested but CUDA is not available. Using CPU.")
-            threads = max(1, (os.cpu_count() or 1) // max(1, requested_n_workers))
-            return (requested_n_workers, threads)
+            max_cpus = os.cpu_count() or 1
+            n_workers = (
+                requested_n_workers
+                if requested_n_workers > 0
+                else max(1, max_cpus // 4)
+            )
+            threads = max(1, max_cpus // n_workers)
+            return (n_workers, threads)
 
         # Get GPU memory info (in bytes)
         gpu_count = torch.cuda.device_count()
@@ -159,25 +201,27 @@ def get_optimal_n_workers(use_gpu, requested_n_workers, blocksize, model_type="c
         # Base model memory (approximation for cyto3/nuclei models)
         base_model_memory = 500 * (1024**2)  # ~500 MB for model weights
 
-        # Estimate memory per block based on block dimensions
-        # Cellpose processes blocks with intermediate tensors
-        # Conservative estimate: 10x the input block size (forward + backward flow + gradients + overhead)
-        voxels_per_block = np.prod(blocksize)  # Z*Y*X of block
+        # Estimate memory per block based on rescaled block dimensions
+        # Cellpose processes blocks with intermediate tensors after rescaling.
+        # voxels = (Z * scale) * (Y * scale) * (X * scale)
+        z, y, x = blocksize
+        rescaled_voxels = (
+            (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
+        )
+
         bytes_per_voxel = 4  # float32
-        memory_multiplier = 10  # very conservative for safety
-        block_memory = voxels_per_block * bytes_per_voxel * memory_multiplier
+        memory_multiplier = (
+            10  # very conservative for safety (gradients, intermediate maps)
+        )
+        block_memory = rescaled_voxels * bytes_per_voxel * memory_multiplier
 
         # Memory per concurrent task (each task loads a full model)
         memory_per_task = base_model_memory + block_memory
+        print(
+            f"Estimated Peak GPU Memory per worker: {memory_per_task / (1024**2):.1f} MB (Rescaled 3D voxels: {rescaled_voxels / 1e6:.1f} Mpx)"
+        )
 
         # Reserve part of GPU memory for overhead and fragmentation.
-        # Use 50% on low-VRAM GPUs (<=6GB) to be extra conservative,
-        # otherwise use 70% (the previous behavior).
-        fraction = 0.5 if total_memory <= 6 * (1024**3) else 0.7
-        usable_memory = free_memory * fraction
-        print(
-            f"Using {int(fraction * 100)}% of free GPU memory for tasks (fraction={fraction})"
-        )
 
         # Calculate maximum TOTAL concurrent tasks across all workers
         # This is the hard limit based on GPU memory
@@ -188,7 +232,8 @@ def get_optimal_n_workers(use_gpu, requested_n_workers, blocksize, model_type="c
         # Each worker needs at least 1 thread, preferably 2-4 for efficiency
         # But we MUST respect GPU memory constraints
         # Conservative: don't create more workers than GPUs (one worker per GPU)
-        max_workers = min(requested_n_workers, max_total_tasks, gpu_count)
+        max_workers = min(eff_requested_workers, max_total_tasks, gpu_count)
+        max_workers = max(1, max_workers)
 
         # Calculate threads per worker to stay within memory limits
         # This limits Dask's concurrent task execution per worker
@@ -217,11 +262,16 @@ def get_optimal_n_workers(use_gpu, requested_n_workers, blocksize, model_type="c
         print(f"Threads per worker (to limit concurrency): {max_threads_per_worker}")
 
         # Return tuple: (workers, threads_per_worker)
-        if requested_n_workers > max_workers:
-            print(
-                f"Warning: Requested {requested_n_workers} workers but GPU memory "
-                f"only supports {max_workers} workers with {max_threads_per_worker} threads each."
-            )
+        if requested_n_workers == 0 or requested_n_workers > max_workers:
+            if requested_n_workers > max_workers:
+                print(
+                    f"Warning: Requested {requested_n_workers} workers but GPU memory "
+                    f"only supports {max_workers} workers with {max_threads_per_worker} threads each."
+                )
+            else:
+                print(
+                    f"Auto-selected {max_workers} workers with {max_threads_per_worker} threads each."
+                )
             return (max_workers, max_threads_per_worker)
         else:
             print(
@@ -428,10 +478,11 @@ def _patch_worker_all():
             # This is critical for Zarr 3.x compatibility when worker_patches.py is missing.
             applied = False
             try:
-                import zarr
                 import math
                 import numbers
+
                 import numpy as np
+                import zarr
 
                 # 1. Patch zarr.open
                 _orig_open = zarr.open
@@ -929,9 +980,7 @@ def dask_setup(worker):
                             _patch_worker_all()
 
                     try:
-                        client.register_worker_plugin(
-                            _ZarrPatchPlugin(), name="zarr_patches"
-                        )
+                        client.register_plugin(_ZarrPatchPlugin(), name="zarr_patches")
                         print("Registered zarr patch worker plugin")
                     except Exception:
                         pass
@@ -1252,6 +1301,12 @@ def main():
         help="Minimum size of detected objects in pixels",
     )
     parser.add_argument(
+        "--anisotropy",
+        default=1.0,
+        type=float,
+        help="Anisotropy factor (Z pixel size / XY pixel size)",
+    )
+    parser.add_argument(
         "--n_workers",
         default=None,
         type=int,
@@ -1294,13 +1349,44 @@ def main():
         help="Optional path to save the input Zarr (used when --input_file is supplied)",
     )
     parser.add_argument(
+        "--batch_size",
+        default=1,
+        type=int,
+        help="Batch size for each worker (default: 1, to avoid Cellpose 3 tiling bugs)",
+    )
+    parser.add_argument(
         "--write_zarr",
         default=None,
         help="Path to write the output stitched Zarr (default: <output_tif>.zarr)",
     )
+    parser.add_argument(
+        "--keep_intermediate",
+        action="store_true",
+        default=False,
+        help="If set, do not delete the intermediate stitched Zarr after TIFF conversion",
+    )
+    parser.add_argument(
+        "--log_dir",
+        default=None,
+        help="Directory where the log file should be saved",
+    )
     args, unknown_args = parser.parse_known_args()
 
     blocksize = parse_blocksize(args.blocksize)
+
+    # Ensure all input/output paths are absolute before potentially changing directory
+    if args.input_file:
+        args.input_file = os.path.abspath(args.input_file)
+    if args.input_dir:
+        args.input_dir = os.path.abspath(args.input_dir)
+    if args.output_tif:
+        args.output_tif = os.path.abspath(args.output_tif)
+    if args.output_dir:
+        args.output_dir = os.path.abspath(args.output_dir)
+    if args.write_zarr:
+        args.write_zarr = os.path.abspath(args.write_zarr)
+    if args.model and os.path.exists(args.model):
+        args.model = os.path.abspath(args.model)
 
     # Choose a safe temporary directory if none provided. Prefer a Fiji
     # installation directory (when running from Fiji), otherwise fall back
@@ -1347,6 +1433,57 @@ def main():
 
     args.temporary_directory = _choose_safe_tempdir(args.temporary_directory)
 
+    # Determine log directory (prefer --log_dir, then --output_dir, then --temporary_directory)
+    log_dir = args.log_dir or args.output_dir or args.temporary_directory
+
+    if log_dir:
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            # Force the working directory to a sane, writable location.
+            # This avoids "Access Denied" errors when running from UNC paths
+            # where CMD/Python might default to C:\Windows.
+            if args.temporary_directory:
+                os.chdir(args.temporary_directory)
+                print(
+                    f"Changed working directory to safe location: {args.temporary_directory}"
+                )
+
+            # Add a persistent file logger to help debugging when Fiji crashes.
+            # We Tee stdout and stderr to this file.
+            log_file = os.path.join(log_dir, f"cellpose_dist_{int(time.time())}.log")
+
+            class Tee(object):
+                def __init__(self, *files):
+                    self.files = files
+
+                def write(self, obj):
+                    for f in self.files:
+                        f.write(obj)
+                        f.flush()
+
+                def flush(self):
+                    for f in self.files:
+                        f.flush()
+
+            f_log = open(log_file, "a", encoding="utf-8")
+            sys.stdout = Tee(sys.stdout, f_log)
+            sys.stderr = Tee(sys.stderr, f_log)
+
+            # Also configure logging to use the same file
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(
+                logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+            )
+            logging.getLogger().addHandler(file_handler)
+
+            print(f"Persistent log file created at: {log_file}")
+            sys.stdout.flush()
+        except Exception as e:
+            print(
+                f"Warning: Could not setup persistent logging at {args.temporary_directory}: {e}"
+            )
+            sys.stdout.flush()
+
     # one of --output_tif or --output_dir must be provided
     if not args.output_tif and not args.output_dir:
         parser.error("Either --output_tif or --output_dir must be provided")
@@ -1383,7 +1520,30 @@ def main():
     channel_zarrs = []  # Will be populated for multi-channel inputs
 
     if args.input_file:
-        im = tifffile.imread(args.input_file)
+        with tifffile.TiffFile(args.input_file) as tif:
+            im = tif.asarray()
+            # Handle ImageJ multi-dimensional stacks that may appear 3D
+            if tif.is_imagej and tif.imagej_metadata:
+                meta = tif.imagej_metadata
+                n_channels = meta.get("channels", 1)
+                n_slices = meta.get("slices", 1)
+                n_frames = meta.get("frames", 1)
+                if n_channels > 1 or n_frames > 1:
+                    # Reshape to (T, Z, C, Y, X) order (standard for ImageJ stacks)
+                    target_shape = []
+                    if n_frames > 1:
+                        target_shape.append(n_frames)
+                    if n_slices > 1:
+                        target_shape.append(n_slices)
+                    if n_channels > 1:
+                        target_shape.append(n_channels)
+                    target_shape.extend(im.shape[-2:])  # Y, X
+
+                    if np.prod(target_shape) == im.size:
+                        im = im.reshape(target_shape)
+                        print(
+                            f"Reshaped ImageJ stack to {im.shape} (C={n_channels}, Z={n_slices}, T={n_frames})"
+                        )
 
         # warn about input dtype but accept common integer/float types
         if im.dtype not in ("uint8", "uint16", "uint32", "float32", "float64"):
@@ -1395,11 +1555,23 @@ def main():
 
         # Detect multi-channel input and prepare for preprocessing_steps approach.
         # Prefer explicit 4D layout (Z, C, Y, X) with c_axis=1, but also try to
-        # auto-detect a small channel axis in 3D inputs (common with some TIFFs).
+        # auto-detect a small channel axis in multi-dimensional inputs.
         c_axis_pos = None
-        if len(im.shape) == 4:
-            c_axis_pos = 1
-        elif len(im.shape) == 3:
+        if im.ndim >= 4:
+            # For 4D (Z, C, Y, X) or 5D (T, Z, C, Y, X), channel is typically at axis -3
+            # but we can also check for the smallest dimension among the first ndim-2 axes.
+            spatial_dims = 2
+            possible_axes = list(range(im.ndim - spatial_dims))
+            # Heuristic: choose axis with size <= 4 if plural, or choose axis 1 for 4D
+            if im.ndim == 4:
+                c_axis_pos = 1
+            else:
+                # 5D or more: find smallest candidate
+                candidates = [i for i in possible_axes if im.shape[i] <= 4]
+                if candidates:
+                    # Prefer the one closest to spatial dims but not spatial
+                    c_axis_pos = candidates[-1]
+        elif im.ndim == 3:
             # Heuristic: treat a small axis (<=4) as channel axis when the other
             # axes are significantly larger (to avoid confusing thin spatial
             # dimensions with channels).
@@ -1407,20 +1579,25 @@ def main():
             candidates = [
                 i
                 for i, s in enumerate(sizes)
-                if s <= 4 and max(sizes[j] for j in range(len(sizes)) if j != i) > 8
+                if s <= 4 and max(sizes[j] for j in range(len(sizes)) if j != i) > 10
             ]
             if candidates:
                 c_axis_pos = candidates[0]
 
         if c_axis_pos is not None and im.shape[c_axis_pos] > 1:
-            # Multi-channel data: split into separate per-channel 3D arrays
+            # Multi-channel data: split into separate per-channel 3D/4D arrays
             num_channels = im.shape[c_axis_pos]
-            print(f"Detected {num_channels} channels at axis {c_axis_pos}")
+            print(
+                f"Detected {num_channels} channels at axis {c_axis_pos} (shape {im.shape})"
+            )
             print(
                 "Will use preprocessing_steps to stack channels (cellpose best practice)"
             )
+            sys.stdout.flush()
 
             # Extract spatial dimensions (remove channel axis)
+            # We also flatten any time dimension for the zarr storage if it's 5D
+            # but for now let's assume one timepoint or handle it as a large Z
             spatial_shape = tuple(s for i, s in enumerate(im.shape) if i != c_axis_pos)
 
             # Match blocksize rank to spatial_shape rank for Zarr chunks
@@ -1428,6 +1605,7 @@ def main():
             if len(zarr_chunks) > len(spatial_shape):
                 zarr_chunks = zarr_chunks[-len(spatial_shape) :]
             elif len(zarr_chunks) < len(spatial_shape):
+                # Padding with large chunks for higher dimensions (e.g. time)
                 zarr_chunks = (max(spatial_shape),) * (
                     len(spatial_shape) - len(zarr_chunks)
                 ) + zarr_chunks
@@ -1466,7 +1644,7 @@ def main():
             # Ensure blocksize matches the rank of the spatial zarr
             blocksize = zarr_chunks
             print(
-                f"Using channel 0 as base input, shape: {input_zarr.shape}, blocksize: {blocksize}"
+                f"Using channel {args.chan if args.chan < num_channels else 0} as base input, shape: {input_zarr.shape}, blocksize: {blocksize}"
             )
             sys.stdout.flush()
         else:
@@ -1529,26 +1707,13 @@ def main():
         if isinstance(args.model, str)
         else args.model
     )
-    # cellpose 3.x uses 'channels' instead of 'chan'/'chan2'
-    # channels expects a list: [cytoplasm_channel, nucleus_channel]
-    # When using preprocessing_steps, channels refer to axis indices after stacking
-    # Our stack_channels function stacks channels in order [ch0, ch1, ch2, ...]
-    if len(channel_zarrs) > 1:
-        # Multi-channel: after stacking, channels match their original indices in the stack
-        # If chan=0 and chan2=-1, we use [0, 0]
-        # If chan=0 and chan2=1, we use [0, 1]
-        c1 = args.chan if args.chan >= 0 else 0
-        c2 = args.chan2 if args.chan2 >= 0 else 0
-        channels = [c1, c2]
-        print(
-            f"Multi-channel mode: channels mapped to {channels} (stack axis indices)"
-        )
-    else:
-        # Single channel or 3D input: standard channel indexing
-        if args.chan2 >= 0:
-            channels = [args.chan, args.chan2]
-        else:
-            channels = [args.chan, 0]
+
+    # GUI and CLI now use 1-based indexing consistently (1=First, 2=Second, 0=None).
+    # [1, 0] means Channel 1 for cytoplasm, None for nuclei.
+    # [2, 1] means Channel 2 for cytoplasm, Channel 1 for nuclei.
+    c1 = args.chan if args.chan > 0 else 1
+    c2 = args.chan2 if args.chan2 > 0 else 0
+    channels = [c1, c2]
 
     # Ensure diameter is an integer to avoid float-based slice indices
     try:
@@ -1563,9 +1728,41 @@ def main():
         "cellprob_threshold": args.cellprob_threshold,
         "stitch_threshold": args.stitch_threshold,
         "min_size": args.min_size,
+        "batch_size": args.batch_size,
         # Enable 3D segmentation
         "do_3D": True,
     }
+
+    if args.anisotropy != 1.0:
+        eval_kwargs["anisotropy"] = args.anisotropy
+        print(f"Added anisotropy to eval_kwargs: {args.anisotropy}")
+
+    # When using preprocessing_steps to stack channels, we specify the axis
+    # parameters to match the stack produced by stack_channels.
+    if len(channel_zarrs) > 1:
+        # stack_channels uses axis=1 for 3D (Z, C, Y, X) and axis=0 for 2D (C, Y, X)
+        if input_zarr.ndim == 3:
+            eval_kwargs["channel_axis"] = 1
+            eval_kwargs["z_axis"] = 0
+            print(
+                f"Multi-channel 3D stack detected: setting channel_axis=1, z_axis=0 (channels={channels})"
+            )
+        else:
+            eval_kwargs["channel_axis"] = 0
+            eval_kwargs["do_3D"] = False
+            print(
+                f"Multi-channel 2D stack detected: setting channel_axis=0, do_3D=False (channels={channels})"
+            )
+    else:
+        # For single channel 3D images (Z, Y, X), Cellpose handles it natively.
+        # But for Cellpose 4.x we can be explicit.
+        if (
+            cellpose_version
+            and cellpose_version.startswith("4")
+            and input_zarr.ndim == 3
+        ):
+            eval_kwargs["z_axis"] = 0
+            print("Cellpose 4.x detected: setting z_axis=0")
 
     # Normalize diameter to integer to avoid float slice indices in zarr
     try:
@@ -1580,22 +1777,6 @@ def main():
                 pass
     except Exception:
         pass
-
-    # Add axis parameters for Cellpose 4.x compatibility
-    # In Cellpose 3.x, these parameters are not accepted by model.eval()
-    # In Cellpose 4.x, channel_axis and z_axis are supported
-    if cellpose_version and cellpose_version.startswith("4"):
-        eval_kwargs["z_axis"] = 0  # Z dimension is axis 0
-        eval_kwargs["channel_axis"] = (
-            1  # Channel dimension is axis 1 (after preprocessing stacks channels)
-        )
-        print(
-            f"Cellpose {cellpose_version} detected: adding z_axis and channel_axis to eval_kwargs"
-        )
-    else:
-        print(
-            f"Cellpose {cellpose_version or '3.x'} detected: using preprocessing_steps approach (axis parameters not supported by model.eval())"
-        )
 
     # Parse custom parameters from remaining unknown arguments
     # Can be boolean flags: ['--do_3D', '--verbose']
@@ -1663,6 +1844,7 @@ def main():
         requested_n_workers=args.n_workers,
         blocksize=blocksize,
         model_type=args.model if isinstance(args.model, str) else "cyto3",
+        diameter=args.diameter,
     )
 
     # CRITICAL: Set environment variables in main process BEFORE creating cluster
@@ -1703,23 +1885,8 @@ def main():
     # decide where to write the final output TIFF and stitched Zarr
     if args.output_tif:
         output_tif = args.output_tif
-        # Enforce _labels suffix in the output filename to clearly indicate segmentation result
-        root, ext = os.path.splitext(output_tif)
-        # Check for multiple extensions like .ome.tif
-        if root.lower().endswith(".ome") and ext.lower() == ".tif":
-            root, ext2 = os.path.splitext(root)
-            ext = ext2 + ext
-
-        if not root.endswith("_labels") and not root.endswith(".ome_labels"):
-            print(f"Enforcing '_labels' suffix on output filename: {output_tif}")
-            # If it's an OME-TIFF, we insert .ome_labels
-            if ext.lower().endswith(".ome.tif"):
-                # strip .ome.tif and append .ome_labels.ome.tif
-                root_no_ome = output_tif[: -len(".ome.tif")]
-                output_tif = root_no_ome + ".ome_labels.ome.tif"
-            else:
-                output_tif = f"{root}_labels{ext}"
-            print(f"  -> {output_tif}")
+        # We no longer enforce _labels suffix if a specific path is provided,
+        # to respect programmatic calls from Java/Fiji that expect a specific path.
     else:
         # derive basename from input and append a suffix to indicate labels
         if args.input_file:
@@ -2058,18 +2225,21 @@ def main():
             logger.debug("Wrote output labels to %s", output_tif)
         # Remove intermediate stitched Zarr to avoid leaving large temporary stores
         try:
-            if write_zarr and os.path.exists(write_zarr):
+            if write_zarr and os.path.exists(write_zarr) and not args.keep_intermediate:
+                logger.info(f"Removing intermediate Zarr: {write_zarr}")
+                try:
+                    if os.path.isdir(write_zarr):
+                        import shutil
+
+                        shutil.rmtree(write_zarr, ignore_errors=True)
+                    else:
+                        os.remove(write_zarr)
+                except Exception as _e:
+                    logger.warning(
+                        "Could not remove intermediate Zarr %s: %s", write_zarr, _e
+                    )
+            elif write_zarr and os.path.exists(write_zarr) and args.keep_intermediate:
                 logger.info(f"Retaining intermediate Zarr for debugging: {write_zarr}")
-                # try:
-                #     if os.path.isdir(write_zarr):
-                #         shutil.rmtree(write_zarr, ignore_errors=True)
-                #     else:
-                #         os.remove(write_zarr)
-                #     logger.info("Removed intermediate Zarr: %s", write_zarr)
-                # except Exception as _e:
-                #     logger.warning(
-                #         "Could not remove intermediate Zarr %s: %s", write_zarr, _e
-                #     )
         except Exception:
             pass
     except Exception as e:
@@ -2122,7 +2292,7 @@ def main():
 if __name__ == "__main__":
     # Ensure multiprocessing method is compatible with Dask/distributed
     # We do NOT force spawn here because it might be causing initialization
-    # failures or stale object references in certain environments. 
+    # failures or stale object references in certain environments.
     # Let Dask/System decide the safest method.
     multiprocessing.freeze_support()
     main()
