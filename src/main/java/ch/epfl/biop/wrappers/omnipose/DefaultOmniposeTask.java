@@ -32,7 +32,25 @@ public class DefaultOmniposeTask extends OmniposeTask{
         }
 
         arguments.add("--diameter");
-        arguments.add("" + settings.diameter);
+        arguments.add(String.valueOf(settings.diameter));
+
+        arguments.add("--batch_size");
+        arguments.add(String.valueOf(settings.batch_size));
+
+        if (!settings.use_tile) {
+            arguments.add("--no_tile");
+        } else {
+            if (settings.tile_size > 0) {
+                arguments.add("--tile_size");
+                arguments.add(String.valueOf(settings.tile_size));
+            }
+        }
+
+        arguments.add("--flow_threshold");
+        arguments.add(String.valueOf(settings.flow_threshold));
+
+        arguments.add("--cellprob_threshold");
+        arguments.add(String.valueOf(settings.cellprob_threshold));
 
         arguments.add("--verbose");//we default the verbose now that logger is working
         arguments.add("--save_tif");

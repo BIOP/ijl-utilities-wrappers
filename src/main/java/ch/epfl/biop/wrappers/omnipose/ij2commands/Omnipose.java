@@ -9,7 +9,9 @@ import ij.io.FileSaver;
 import ij.measure.Calibration;
 import ij.plugin.Concatenator;
 import ij.plugin.Duplicator;
+import ij.plugin.HyperStackConverter;
 import ij.plugin.frame.Recorder;
+import ij.process.StackConverter;
 import net.imagej.ImageJ;
 
 import org.scijava.ItemIO;
@@ -29,7 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @SuppressWarnings("CanBeFinal")
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose>Omnipose ...")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Omnipose ...")
 public class Omnipose implements Command {
     static {
         if (IJ.isLinux()) {
@@ -49,43 +51,58 @@ public class Omnipose implements Command {
     @Parameter
     ImagePlus imp;
 
-    @Parameter(label = "conda environment path" ,style="directory")
+    @Parameter(label = "conda environment path" ,style="directory", description = "Path to the conda environment containing omnipose.")
     File env_path = new File(default_conda_env_path);
 
-    @Parameter(label= "virtual environment type", choices= {"conda", "venv"})
+    @Parameter(label= "virtual environment type", choices= {"conda", "venv"}, description = "Type of virtual environment. Typically 'conda'.")
     String env_type = "conda";
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message = "You can use the pretrained model, specify the model name below";
 
-    @Parameter(required = false, label = "--pretrained_model" )
+    @Parameter(required = false, label = "--pretrained_model", description = "Omnipose/Cellpose model name (e.g., cyto2_omni, nuclei, etc.).")
     String model = "cyto2_omni" ;
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message0 ="You can access the list of models by clicking on the button below.";
 
-    @Parameter( label="List of omnipose models", callback="openModelsPage")
+    @Parameter( label="List of omnipose models", callback="openModelsPage", description = "Opens the Omnipose models documentation page.")
     private Button open_models_page_button;
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message1 = "OR To use your own model, specify the path below AND leave --pretrained_model empty";
-    @Parameter(required = false, label = "model_path")
+    @Parameter(required = false, label = "model_path", description = "Full path to a custom trained model.")
     File model_path = new File("path/to/own_omnipose_model");
 
     // value defined from https://omnipose.readthedocs.io/en/latest/api.html
-    @Parameter(label = "--diameter")
-    int diameter = 30;
+    @Parameter(label = "--diameter", description = "Approximate diameter of the objects in pixels. 0 for auto.")
+    double diameter = 30;
 
-    @Parameter(label = "--chan")
+    @Parameter(label = "--flow_threshold", description = "Flow error threshold. Typical values: 0.4 (default). Increase for more masks, decrease for fewer.")
+    double flow_threshold = 0.4;
+
+    @Parameter(label = "--cellprob_threshold", description = "Cell probability threshold. Typical values: -6 to 6. Default 0. Decrease to get more masks.")
+    double cellprob_threshold = 0.0;
+
+    @Parameter(label = "--batch_size", description = "Number of images per batch. For Cellpose 3, batch_size 1 is recommended to avoid tiling bugs.")
+    int batch_size = 1;
+
+    @Parameter(label = "--tile", description = "If true, the image is tiled. For images < 2000px, you can try setting this to false to avoid tiling artifacts.")
+    boolean use_tile = true;
+
+    @Parameter(label = "--tile_size", description = "Size of the tiles. If 0, Cellpose defaults (usually 224 or 512) are used.")
+    int tile_size = 0;
+
+    @Parameter(label = "--chan", description = "Main channel to segment (0=grayscale, 1=red, 2=green, 3=blue).")
     int ch1 = 0;
 
-    @Parameter(label = "--chan2")
+    @Parameter(label = "--chan2", description = "Optional second channel (e.g., nuclei). -1 if not used.")
     int ch2 = -1;
 
     @Parameter (visibility=ItemVisibility.MESSAGE )
     String message2 = "You can add more flags to the command line by adding them here. For example: --omni, --cluster";
 
-    @Parameter(required = false, label = "To add more parameters (use comma separated list of flags)")
+    @Parameter(required = false, label = "To add more parameters (use comma separated list of flags)", description = "Comma-separated list of additional CLI flags supported by Omnipose (e.g., --omni, --cluster).")
     String additional_flags = "--omni, --cluster";
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
@@ -164,6 +181,11 @@ public class Omnipose implements Command {
         }
         settings.setModel(model_used);
         settings.setDiameter(diameter);
+        settings.setFlowThreshold(flow_threshold);
+        settings.setCellprobThreshold(cellprob_threshold);
+        settings.setBatchSize(batch_size);
+        settings.setUseTile(use_tile);
+        settings.setTileSize(tile_size);
         settings.setChannel1(ch1);
         if (ch2 > -1 ) settings.setChannel2(ch2);
         settings.setAdditionalFlags(additional_flags);
@@ -209,11 +231,11 @@ public class Omnipose implements Command {
             ArrayList<ImagePlus> imps = new ArrayList<>(impFrames);
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
                 ImagePlus omnipose_t_imp = IJ.openImage(omnipose_masks_paths.get(t_idx - 1).toString());
-                // make sure to make a 16-bit imp
+                // make sure to make a 32-bit imp
                 // (issue with time-lapse, first frame have less than 254 objects and latest have more)
                 if (omnipose_t_imp.getBitDepth() != 32 ) {
                     if (omnipose_t_imp.getNSlices() > 1) {
-                        omnipose_t_imp.getStack().setBitDepth(32);
+                        new StackConverter(omnipose_t_imp).convertToGray32();
                     } else {
                         omnipose_t_imp.setProcessor(omnipose_t_imp.getProcessor().convertToFloat());
                     }
@@ -229,6 +251,9 @@ public class Omnipose implements Command {
             scriptModeField.setAccessible(true);
             scriptModeField.set(null, false);
             omnipose_imp = Concatenator.run(impsArray);
+            if (imp.getNFrames() > 1 || imp.getNSlices() > 1) {
+                omnipose_imp = HyperStackConverter.toHyperStack(omnipose_imp, 1, imp.getNSlices(), imp.getNFrames());
+            }
             scriptModeField.set(null, tmpScriptMode);
             omnipose_imp.setCalibration(cal);
             omnipose_imp.setTitle(imp.getShortTitle() + "-omnipose");
