@@ -78,17 +78,19 @@ public class ExecutePythonInConda {
                     module_args_cmd.remove(0);
                 }
 
-                // convert to a string
-                module_args_cmd = module_args_cmd.stream().map(s -> {
-                    if (s.trim().contains(" "))
-                        return "\"" + s.trim() + "\"";
-                    return s;
-                }).collect(Collectors.toList());
-                // The last part needs to be sent as a single string, otherwise it does not run
-                String cmdString = module_args_cmd.toString().replace(",","");
+                // convert to a string with proper quoting
+                StringBuilder cmdBuilder = new StringBuilder();
+                for (String arg : module_args_cmd) {
+                    if (arg.contains(" ") || arg.contains("(")|| arg.contains(")")|| arg.contains(",")) {
+                        cmdBuilder.append("\"").append(arg).append("\" ");
+                    } else {
+                        cmdBuilder.append(arg).append(" ");
+                    }
+                }
+                String cmdString = cmdBuilder.toString().trim();
 
                 // finally add to cmd
-                cmd.add(cmdString.substring(1, cmdString.length()-1));
+                cmd.add(cmdString);
 
             }
 
@@ -113,7 +115,7 @@ public class ExecutePythonInConda {
 
 
         System.out.println( "Running "+arguments+" with the command in the line below: ");
-        System.out.println(cmd.toString().replace(",", ""));
+        System.out.println(String.join(" ", cmd));
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
 
         Process p = pb.start();
