@@ -3,6 +3,10 @@
 
 This module provides a command-line interface for running Cellpose segmentation
 distributed across Dask workers, with support for Zarr arrays.
+
+Works on
+--------
+2D, 3D
 """
 
 import argparse
@@ -19,35 +23,30 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import webbrowser
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
 # Optional dependencies handled with try-except to allow partial environments
 try:
     import zarr
-except Exception:
-    zarr = None
-
-try:
-    from zarr.core import array as _zarr_array
-except Exception:
-    _zarr_array = None
-
-try:
+    import zarr.core.array as _zca
     import zarr.core.indexing as _z_idx
-except Exception:
+    from zarr.core import array as _zarr_array
+except ImportError:
+    zarr = None
+    _zarr_array = None
     _z_idx = None
+    _zca = None
 
 try:
     import torch
-except ImportError:
-    torch = None
-
-try:
     import torch.utils.mkldnn as mkldnn
 except (ImportError, AttributeError):
+    torch = None
     mkldnn = None
 
 try:
@@ -63,24 +62,33 @@ except ImportError:
 try:
     import dask
     import dask.array as da
-    from dask.distributed import Client, LocalCluster
+    from dask.distributed import Client, LocalCluster, default_client
     from distributed import WorkerPlugin as _WP
-except Exception:
+except ImportError:
     dask = None
     da = None
     Client = None
     LocalCluster = None
+    default_client = None
     _WP = None
 
 # Try to import central worker patches helper; not fatal if missing.
 try:
     import worker_patches  # type: ignore
-except Exception:
+except ImportError:
     worker_patches = None
 
 
 class Tee:
-    """Redirects stdout/stderr to a file and the original stream."""
+    """Redirects stdout/stderr to a file and the original stream.
+
+    Parameters
+    ----------
+    stream : Any
+        The original stream (e.g., sys.stdout).
+    file_path : str
+        Path to the log file.
+    """
 
     def __init__(self, stream, file_path):
         self.stream = stream
@@ -111,8 +119,16 @@ def _set_worker_logging(log_file):
         print(f"Worker {os.getpid()} logging redirected to {log_file}")
 
 
-def heartbeat(stop_event, log_file):
-    """Thread function to print periodic status and keep the process alive."""
+def heartbeat(stop_event: threading.Event, log_file: Optional[str]) -> None:
+    """Thread function to print periodic status and keep the process alive.
+
+    Parameters
+    ----------
+    stop_event : threading.Event
+        Event to signal when the heartbeat should stop.
+    log_file : str, optional
+        Path to the log file being managed.
+    """
     start_time = time.time()
     while not stop_event.is_set():
         elapsed = time.time() - start_time
@@ -142,8 +158,12 @@ if sys.platform == "win32":
 
 
 def get_optimal_n_workers(
-    use_gpu, requested_n_workers, blocksize, model_type="cyto3", diameter=30.0
-):
+    use_gpu: bool,
+    requested_n_workers: Optional[int],
+    blocksize: Tuple[int, ...],
+    model_type: str = "cyto3",
+    diameter: float = 30.0,
+) -> Tuple[int, int]:
     """Calculate optimal number of workers based on GPU memory availability.
 
     When GPU is enabled, this function queries available GPU memory and
@@ -154,21 +174,19 @@ def get_optimal_n_workers(
     ----------
     use_gpu : bool
         Whether GPU acceleration is enabled.
-    requested_n_workers : int
+    requested_n_workers : int, optional
         The user-requested number of workers.
     blocksize : tuple
-        Block size used for processing (Z, Y, X) - this determines memory per worker.
+        Block size used for processing (Z, Y, X).
     model_type : str, optional
         The cellpose model type being used (default: "cyto3").
     diameter : float, optional
-        The diameter used for evaluation. Cellpose rescales images to fit its
-        internal model diameter (usually 30.0). This scaling significantly
-        affects GPU memory usage.
+        The diameter used for evaluation (default: 30.0).
 
     Returns
     -------
-    tuple
-        `(n_workers, threads_per_worker)` recommended for the LocalCluster.
+    Tuple[int, int]
+        `(n_workers, threads_per_worker)` recommended for the cluster.
     """
     if blocksize is None:
         blocksize = (32, 224, 224)
@@ -207,8 +225,6 @@ def get_optimal_n_workers(
 
     # GPU mode: calculate safe n_workers
     try:
-        import torch
-
         if not torch.cuda.is_available():
             print("Warning: GPU requested but torch.cuda is not available.")
             return min(eff_requested_workers, total_cpus), 1
@@ -271,7 +287,7 @@ def get_optimal_n_workers(
         return n_workers, 1
 
 
-def validate_runtime_requirements():
+def validate_runtime_requirements() -> Tuple[Any, str]:
     """Validate required Python packages and cellpose helpers.
 
     Checks that the Python environment exposes the required Python
@@ -281,9 +297,9 @@ def validate_runtime_requirements():
 
     Returns
     -------
-    module
-        The imported `cellpose.contrib.distributed_segmentation` module
-        when available.
+    Tuple[Any, str]
+        A tuple `(ds_mod, cellpose_version)` where `ds_mod` is the imported
+        module and `cellpose_version` is the version string of cellpose.
     """
     missing = []
     info = []
@@ -345,7 +361,7 @@ def validate_runtime_requirements():
     return ds_mod, cellpose_version
 
 
-def parse_blocksize(s):
+def parse_blocksize(s: str) -> Tuple[int, ...]:
     """Parse a comma-separated blocksize string into a tuple of ints.
 
     Also handles concatenated format like `128256256` -> (128, 256, 256).
@@ -358,7 +374,7 @@ def parse_blocksize(s):
 
     Returns
     -------
-    tuple of int
+    Tuple[int, ...]
         The parsed blocksize tuple, e.g. `(128, 256, 256)`.
     """
     s = s.strip()
@@ -380,7 +396,9 @@ def parse_blocksize(s):
     return tuple(parts)
 
 
-def _apply_zarr_open_compat(z_module, ds_module=None, reload_ds=True):
+def _apply_zarr_open_compat(
+    z_module: Any, ds_module: Any = None, reload_ds: bool = True
+) -> None:
     """Patch `zarr.open` to accept a positional `mode` argument.
 
     Some zarr versions make the `mode` argument keyword-only; older
@@ -391,18 +409,13 @@ def _apply_zarr_open_compat(z_module, ds_module=None, reload_ds=True):
 
     Parameters
     ----------
-    z_module : module
+    z_module : Any
         The imported `zarr` module to patch.
-    ds_module : module, optional
+    ds_module : Any, optional
         The `cellpose.contrib.distributed_segmentation` module; if
         provided, its reference to `zarr.open` will also be patched.
     reload_ds : bool, optional
         If True, attempt to reload `ds_module` after patching.
-
-    Returns
-    -------
-    bool
-        True on success, False on error.
     """
 
     try:
@@ -444,11 +457,11 @@ def _apply_zarr_open_compat(z_module, ds_module=None, reload_ds=True):
         return False
 
 
-def _patch_worker_all():
+def _patch_worker_all() -> None:
     """Apply worker-side compatibility patches inside each Dask worker.
 
     Delegates to the central `worker_patches.apply_zarr_patches()` helper
-    which performs all needed monkeypatches. Returns True on success.
+    which performs all needed monkeypatches.
     """
     try:
         if worker_patches is not None:
@@ -458,12 +471,6 @@ def _patch_worker_all():
             # This is critical for Zarr 3.x compatibility when worker_patches.py is missing.
             applied = False
             try:
-                import math
-                import numbers
-
-                import numpy as np
-                import zarr
-
                 # 1. Patch zarr.open
                 _orig_open = zarr.open
 
@@ -477,8 +484,6 @@ def _patch_worker_all():
 
                 # 2. Patch Array __getitem__ and __setitem__
                 # Handle both zarr.Array (v3 shorthand) and zarr.core.array.Array
-                import zarr.core.array as _zca
-
                 def _coerce(sel, mode="expand"):
                     if isinstance(sel, slice):
                         if sel.start is None:
@@ -695,17 +700,17 @@ def _run_distributed_in_subprocess(
 
 
 def _run_distributed_eval(
-    ds,
-    input_zarr,
-    write_zarr,
-    blocksize,
-    model_kwargs,
-    eval_kwargs,
-    cluster_kwargs,
-    args,
-    channel_zarrs=None,
-    log_file=None,
-):
+    ds: Any,
+    input_zarr: Any,
+    write_zarr: str,
+    blocksize: Tuple[int, ...],
+    model_kwargs: Dict[str, Any],
+    eval_kwargs: Dict[str, Any],
+    cluster_kwargs: Dict[str, Any],
+    args: argparse.Namespace,
+    channel_zarrs: Optional[List[Any]] = None,
+    log_file: Optional[str] = None,
+) -> Tuple[Any, List[Any]]:
     """Run `ds.distributed_eval`, attempting a proactively patched cluster.
 
     Attempts to create a `LocalCluster` and `Client` to patch
@@ -715,31 +720,30 @@ def _run_distributed_eval(
     Parameters
     ----------
     ds : module
-        The imported `cellpose.contrib.distributed_segmentation`
-        module exposing `distributed_eval`.
-    input_zarr : zarr.Array or ZarrArrayProxy
+        The imported `cellpose.contrib.distributed_segmentation` module.
+    input_zarr : Any
         The input zarr array or proxy.
     write_zarr : str
         Path where the stitched Zarr will be written.
-    blocksize : sequence of int
+    blocksize : Tuple[int, ...]
         Block size for segmentation.
-    model_kwargs : dict
+    model_kwargs : Dict[str, Any]
         Model construction keyword arguments.
-    eval_kwargs : dict
+    eval_kwargs : Dict[str, Any]
         Evaluation keyword arguments.
-    cluster_kwargs : dict
-        Cluster configuration passed through to the cluster constructor.
+    cluster_kwargs : Dict[str, Any]
+        Cluster configuration passed to the LocalCluster constructor.
     args : argparse.Namespace
-        Parsed CLI arguments containing runtime options like
-    channel_zarrs : list, optional
-        List of zarr arrays for each channel (for multi-channel preprocessing).
-        `n_workers` and `ncpus`.
+        Parsed CLI arguments.
+    channel_zarrs : List[Any], optional
+        List of zarr arrays for each channel.
+    log_file : str, optional
+        Path to the log file for Tee output.
 
     Returns
     -------
-    tuple
-        A tuple `(out_zarr, boxes)` as returned by
-        `ds.distributed_eval`.
+    Tuple[Any, List[Any]]
+        A tuple `(out_zarr, boxes)` as returned by `ds.distributed_eval`.
     """
 
     # Apply patches globally in the main process first
@@ -891,8 +895,6 @@ def dask_setup(worker):
         client = None
         created = None
         try:
-            from dask.distributed import Client, LocalCluster
-
             cluster_kwargs_local = dict(cluster_kwargs) if cluster_kwargs else {}
             # Ensure local_directory is honored
             if (
@@ -1170,8 +1172,6 @@ def dask_setup(worker):
                     temp_dir, f"distributed_cellpose_input_{os.getpid()}.zarr"
                 )
                 # Copy the temporary zarr to disk
-                import zarr
-
                 dest_zarr = zarr.open(
                     input_path,
                     mode="w",
@@ -1208,8 +1208,6 @@ def dask_setup(worker):
                     pass
 
             # After subprocess completed, open the output and return reference
-            import zarr
-
             out = zarr.open(write_zarr)
             return out, []
         raise
@@ -1234,7 +1232,6 @@ def main():
     -------
     None
     """
-    global tifffile, zarr
     parser = argparse.ArgumentParser(description="Distributed Cellpose CLI helper")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--input_file", help="Single TIFF input file")
@@ -1461,8 +1458,6 @@ def main():
 
             # Start heartbeat thread so the user can see it hasn't crashed even if
             # no dask output happens for a while.
-            import threading
-
             stop_heartbeat = threading.Event()
             hb_thread = threading.Thread(
                 target=heartbeat, args=(stop_heartbeat, log_file), daemon=True
@@ -1481,18 +1476,6 @@ def main():
 
     # Validate that the Python environment has the required modules
     ds, cellpose_version = validate_runtime_requirements()
-
-    # import the I/O modules now that we've validated they're present
-    # `tifffile` was imported at module top (may be None if unavailable).
-    # `zarr` is imported at module top as well; use those variables.
-    try:
-        importlib.reload(tifffile) if tifffile is not None else None
-    except Exception:
-        pass
-    try:
-        importlib.reload(zarr) if zarr is not None else None
-    except Exception:
-        pass
 
     # Apply compatibility wrapper early in the main process so that any
     # subsequent cluster creation has the best chance to see the patched
@@ -2306,8 +2289,6 @@ def main():
                 logger.info(f"Removing intermediate Zarr: {write_zarr}")
                 try:
                     if os.path.isdir(write_zarr):
-                        import shutil
-
                         shutil.rmtree(write_zarr, ignore_errors=True)
                     else:
                         os.remove(write_zarr)
@@ -2332,16 +2313,15 @@ def main():
     # threads from keeping the Fiji launcher process alive after work
     # completes when invoked from the GUI.
     try:
-        from dask.distributed import default_client
-
-        try:
-            c = default_client()
+        if default_client is not None:
             try:
-                c.close()
+                c = default_client()
+                try:
+                    c.close()
+                except Exception:
+                    pass
             except Exception:
                 pass
-        except Exception:
-            pass
     except Exception:
         # dask not available or no active client
         pass
