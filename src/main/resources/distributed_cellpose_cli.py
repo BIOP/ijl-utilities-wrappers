@@ -80,6 +80,52 @@ try:
 except Exception:
     worker_patches = None
 
+
+class Tee:
+    """Redirects stdout/stderr to a file and the original stream."""
+
+    def __init__(self, stream, file_path):
+        self.stream = stream
+        self.log_file = open(file_path, "a", encoding="utf-8")
+
+    def write(self, message):
+        self.stream.write(message)
+        self.log_file.write(message)
+        self.log_file.flush()
+        try:
+            os.fsync(self.log_file.fileno())  # Force write to disk
+        except (AttributeError, OSError):
+            pass
+
+    def flush(self):
+        self.stream.flush()
+        self.log_file.flush()
+
+    def close(self):
+        self.log_file.close()
+
+
+def _set_worker_logging(log_file):
+    """Callback for dask workers to redirect their output to a common file."""
+    if log_file:
+        sys.stdout = Tee(sys.stdout, log_file)
+        sys.stderr = Tee(sys.stderr, log_file)
+        print(f"Worker {os.getpid()} logging redirected to {log_file}")
+
+
+def heartbeat(stop_event, log_file):
+    """Thread function to print periodic status and keep the process alive."""
+    start_time = time.time()
+    while not stop_event.is_set():
+        elapsed = time.time() - start_time
+        msg = (
+            f"--- HEARTBEAT: Process {os.getpid()} alive, elapsed: {elapsed:.1f}s ---\n"
+        )
+        sys.stdout.write(msg)
+        sys.stdout.flush()
+        time.sleep(30)
+
+
 # Configure module logging; Fiji/launcher can redirect or capture stdout/stderr.
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -997,6 +1043,14 @@ def dask_setup(worker):
                 try:
                     res = client.run(_patch_worker_all)
                     print("Applied worker patches via client.run(): %r" % (res,))
+
+                    # Also redirect worker logs to the same file if possible
+                    if "log_file" in locals() and log_file:
+                        try:
+                            client.run(_set_worker_logging, log_file)
+                            print(f"Workers now redirecting output to: {log_file}")
+                        except Exception as e:
+                            print(f"Warning: Could not redirect worker logging: {e}")
                 except Exception as e:
                     print("Warning: client.run(_patch_worker_all) failed:", e)
 
@@ -1447,34 +1501,17 @@ def main():
         try:
             os.makedirs(log_dir, exist_ok=True)
             # Force the working directory to a sane, writable location.
-            # This avoids "Access Denied" errors when running from UNC paths
-            # where CMD/Python might default to C:\Windows.
             if args.temporary_directory:
                 os.chdir(args.temporary_directory)
                 print(
                     f"Changed working directory to safe location: {args.temporary_directory}"
                 )
 
-            # Add a persistent file logger to help debugging when Fiji crashes.
-            # We Tee stdout and stderr to this file.
             log_file = os.path.join(log_dir, f"cellpose_dist_{int(time.time())}.log")
 
-            class Tee(object):
-                def __init__(self, *files):
-                    self.files = files
-
-                def write(self, obj):
-                    for f in self.files:
-                        f.write(obj)
-                        f.flush()
-
-                def flush(self):
-                    for f in self.files:
-                        f.flush()
-
-            f_log = open(log_file, "a", encoding="utf-8")
-            sys.stdout = Tee(sys.stdout, f_log)
-            sys.stderr = Tee(sys.stderr, f_log)
+            # Redirect stdout and stderr using our enhanced Tee class
+            sys.stdout = Tee(sys.stdout, log_file)
+            sys.stderr = Tee(sys.stderr, log_file)
 
             # Also configure logging to use the same file
             file_handler = logging.FileHandler(log_file)
@@ -1485,11 +1522,22 @@ def main():
 
             print(f"Persistent log file created at: {log_file}")
             sys.stdout.flush()
-        except Exception as e:
-            print(
-                f"Warning: Could not setup persistent logging at {args.temporary_directory}: {e}"
+
+            # Start heartbeat thread so the user can see it hasn't crashed even if
+            # no dask output happens for a while.
+            import threading
+
+            stop_heartbeat = threading.Event()
+            hb_thread = threading.Thread(
+                target=heartbeat, args=(stop_heartbeat, log_file), daemon=True
             )
+            hb_thread.start()
+
+        except Exception as e:
+            print(f"Warning: Could not setup persistent logging: {e}")
             sys.stdout.flush()
+            log_file = None
+            stop_heartbeat = None
 
     # one of --output_tif or --output_dir must be provided
     if not args.output_tif and not args.output_dir:
