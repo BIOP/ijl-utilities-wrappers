@@ -86,37 +86,56 @@ class Tee:
     ----------
     stream : Any
         The original stream (e.g., sys.stdout).
-    file_path : str
-        Path to the log file.
+    file_handle : TextIO
+        Open file handle for logging.
+    lock : threading.Lock, optional
+        A shared lock for thread-safe writing.
     """
 
-    def __init__(self, stream, file_path):
+    def __init__(self, stream, file_handle, lock=None):
         self.stream = stream
-        self.log_file = open(file_path, "a", encoding="utf-8")
+        self.file_handle = file_handle
+        self.lock = lock or threading.Lock()
 
     def write(self, message):
-        self.stream.write(message)
-        self.log_file.write(message)
-        self.log_file.flush()
-        try:
-            os.fsync(self.log_file.fileno())  # Force write to disk
-        except (AttributeError, OSError):
-            pass
+        with self.lock:
+            if self.stream:
+                self.stream.write(message)
+                # Flush stream so external wrappers (like Java/Fiji) see output immediately
+                try:
+                    self.stream.flush()
+                except Exception:
+                    pass
+            if self.file_handle:
+                self.file_handle.write(message)
+                # Flush to ensure log updates, but avoid expensive fsync
+                self.file_handle.flush()
 
     def flush(self):
-        self.stream.flush()
-        self.log_file.flush()
+        with self.lock:
+            if self.stream and hasattr(self.stream, "flush"):
+                self.stream.flush()
+            if self.file_handle and hasattr(self.file_handle, "flush"):
+                self.file_handle.flush()
 
     def close(self):
-        self.log_file.close()
+        # We don't close the file handle here as it might be shared
+        pass
 
 
 def _set_worker_logging(log_file):
     """Callback for dask workers to redirect their output to a common file."""
     if log_file:
-        sys.stdout = Tee(sys.stdout, log_file)
-        sys.stderr = Tee(sys.stderr, log_file)
-        print(f"Worker {os.getpid()} logging redirected to {log_file}")
+        try:
+            # Note: Multiple workers writing to the same file on Windows can be
+            # problematic. We use a single handle and avoid multiple opens if possible.
+            # However, dask workers are separate processes.
+            f = open(log_file, "a", encoding="utf-8")
+            sys.stdout = Tee(sys.stdout, f)
+            sys.stderr = Tee(sys.stderr, f)
+            print(f"Worker {os.getpid()} logging redirected to {log_file}")
+        except Exception as e:
+            print(f"Worker {os.getpid()} could not redirect logging: {e}")
 
 
 def heartbeat(stop_event: threading.Event, log_file: Optional[str]) -> None:
@@ -329,19 +348,25 @@ def validate_runtime_requirements() -> Tuple[Any, str]:
     modules_to_check = ["cellpose", "dask", "distributed", "zarr", "tifffile"]
     for mod_name in modules_to_check:
         try:
+            print(f"Checking module: {mod_name}...")
+            sys.stdout.flush()
             mod = importlib.import_module(mod_name)
             ver = getattr(mod, "__version__", None)
             info.append((mod_name, ver))
-        except Exception:
+        except Exception as e:
+            print(f"Warning: Could not import {mod_name}: {e}")
             missing.append(mod_name)
 
     ds_mod = None
     if "cellpose" not in missing:
         try:
+            print("Checking distributed cellpose module...")
+            sys.stdout.flush()
             ds_mod = importlib.import_module(
                 "cellpose.contrib.distributed_segmentation"
             )
-        except Exception:
+        except Exception as e:
+            print(f"Warning: Could not import distributed cellpose components: {e}")
             missing.append("cellpose.contrib.distributed_segmentation")
 
     if missing:
@@ -1463,6 +1488,9 @@ def main():
     # Determine log directory (prefer --log_dir, then --output_dir, then --temporary_directory)
     log_dir = args.log_dir or args.output_dir or args.temporary_directory
     log_file = None
+    log_handle = None
+    stop_heartbeat = None
+    hb_thread = None
 
     if log_dir:
         try:
@@ -1476,17 +1504,17 @@ def main():
 
             log_file = os.path.join(log_dir, f"cellpose_dist_{int(time.time())}.log")
 
-            # Redirect stdout and stderr using our enhanced Tee class
-            sys.stdout = Tee(sys.stdout, log_file)
-            sys.stderr = Tee(sys.stderr, log_file)
+            # Open a single file handle for all redirections to avoid conflicts
+            log_handle = open(log_file, "a", encoding="utf-8")
+            log_lock = threading.Lock()
 
-            # Also configure logging to use the same file
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setFormatter(
-                logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-            )
-            logging.getLogger().addHandler(file_handler)
+            # Redirect stdout and stderr using our thread-safe Tee class
+            sys.stdout = Tee(sys.stdout, log_handle, lock=log_lock)
+            sys.stderr = Tee(sys.stderr, log_handle, lock=log_lock)
 
+            # We don't add a separate FileHandler to the logger because the logger
+            # already writes to sys.stderr (via StreamHandler), which we just redirected.
+            # Adding another handler would result in duplicate entries.
             print(f"Persistent log file created at: {log_file}")
             sys.stdout.flush()
 
@@ -1502,7 +1530,9 @@ def main():
             print(f"Warning: Could not setup persistent logging: {e}")
             sys.stdout.flush()
             log_file = None
+            log_handle = None
             stop_heartbeat = None
+            hb_thread = None
 
     # one of --output_tif or --output_dir must be provided
     if not args.output_tif and not args.output_dir:
@@ -1511,23 +1541,24 @@ def main():
     # Validate that the Python environment has the required modules
     ds, cellpose_version = validate_runtime_requirements()
 
-    # Apply compatibility wrapper early in the main process so that any
-    # subsequent cluster creation has the best chance to see the patched
-    # zarr.open (we still provide a subprocess fallback below).
+    # Apply compatibility wrapper early...
     try:
+        print("Applying zarr compatibility patches...")
+        sys.stdout.flush()
         _apply_zarr_open_compat(zarr, ds, reload_ds=True)
-    except Exception:
+    except Exception as e:
+        print(f"Warning: Could not apply patches: {e}")
         pass
 
-    # Note: ZarrArrayProxy was removed as it's not used in the current flow.
-    # Worker patching via client.run() is the primary mechanism for
-    # ensuring compatibility with zarr indexing and array operations.
-
     # Prepare input zarr
+    print("Preparing input data...")
+    sys.stdout.flush()
     tmpdir = None
     channel_zarrs = []  # Will be populated for multi-channel inputs
 
     if args.input_file:
+        print(f"Opening TIFF file: {args.input_file}")
+        sys.stdout.flush()
         # Load TIFF lazily using aszarr=True to avoid memory pressure
         im = tifffile.imread(args.input_file, aszarr=True)
         # Wrap in a dask array for convenient manipulation if needed, or use directly
@@ -1968,6 +1999,9 @@ def main():
         "death_timeout": 60 if args.use_gpu else 15,
         # Ask the cluster to use our safe temporary directory for worker files
         "local_directory": args.temporary_directory,
+        # On Windows/Networked machines, fixed ports can cause hangs.
+        # dashboard_address=None disables the dashboard if not explicitly requested.
+        "dashboard_address": ":0" if getattr(args, "show_dashboard", False) else None,
     }
 
     # decide where to write the final output TIFF and stitched Zarr
@@ -2368,6 +2402,21 @@ def main():
     try:
         print("Finished distributed segmentation.")
         sys.stdout.flush()
+    except Exception:
+        pass
+
+    # Stop heartbeat thread and close log handle before exiting
+    try:
+        if stop_heartbeat is not None:
+            stop_heartbeat.set()
+        if hb_thread is not None:
+            hb_thread.join(timeout=1.0)
+    except Exception:
+        pass
+
+    try:
+        if log_handle is not None:
+            log_handle.close()
     except Exception:
         pass
 
