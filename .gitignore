@@ -9,3 +9,4 @@
 .idea
 travisify.tmp.bak
 pom.xml.releaseBackup
+__pycache__/
