@@ -351,8 +351,10 @@ def setup_worker(nthreads):
         # This is especially important on Windows.
         try:
             import cellpose.io
+
             def _noop_logger_setup(*args, **kwargs):
                 pass
+
             cellpose.io.logger_setup = _noop_logger_setup
         except Exception:
             pass

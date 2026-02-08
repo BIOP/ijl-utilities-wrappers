@@ -209,28 +209,28 @@ def get_optimal_n_workers(
     # Initial worker counts based on CPU and requested limits
     total_cpus = os.cpu_count() or 1
     eff_requested_workers = requested_n_workers if requested_n_workers > 0 else 9999
-    
+
     # Estimate CPU RAM limits if psutil is available
     max_workers_ram = eff_requested_workers
-    try:
-        import psutil
-        vm = psutil.virtual_memory()
-        available_ram = vm.available  # bytes
-        
-        # Estimate RAM per worker. 
+    if psutil is not None:
+        try:
+            vm = psutil.virtual_memory()
+            available_ram = vm.available  # bytes
+
+        # Estimate RAM per worker.
         # Cellpose 3D can be very hungry. We use a conservative estimate:
         # rescaled_voxels * 4 (float32) * factor (e.g. 20x for all internal buffers)
         z, y, x = blocksize
         rescaled_voxels = (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
         # Using 24x factor for RAM (flows, gradients, original, scales, overhead)
         estimated_ram_per_worker = rescaled_voxels * 4 * 24
-        
+
         # Define usable RAM (leave some for system)
         usable_ram = available_ram * 0.8
-        
+
         max_workers_ram = int(usable_ram // estimated_ram_per_worker)
         max_workers_ram = max(1, max_workers_ram)
-        
+
         print(f"System RAM: {vm.total / (1024**3):.2f} GB (Available: {available_ram / (1024**3):.2f} GB)")
         print(f"Estimated RAM per worker for block {blocksize}: {estimated_ram_per_worker / (1024**2):.2f} MB")
         if max_workers_ram < total_cpus:
