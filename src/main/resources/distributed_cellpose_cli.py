@@ -1482,6 +1482,12 @@ def main():
         help="Path to write the output stitched Zarr (default: <output_tif>.zarr)",
     )
     parser.add_argument(
+        "--optimize_parallel",
+        action="store_true",
+        default=False,
+        help="If set, automatically find the best blocksize and worker count for speed. If unset, uses 1 worker.",
+    )
+    parser.add_argument(
         "--keep_intermediate",
         action="store_true",
         default=False,
@@ -1739,7 +1745,7 @@ def main():
 
                 # Create zarr for this channel
                 ch_path = os.path.join(parent, f"channel_{ch_idx}.zarr")
-                
+
                 # Robustly extract channel data lazily using dask
                 # We use rechunk(zarr_chunks) before to_zarr to satisfy Zarr requirements
                 # and avoid "multiple values for keyword argument 'chunks'" errors.
@@ -1786,7 +1792,7 @@ def main():
                 zpath = args.input_zarr
                 parent = os.path.dirname(zpath) or "."
                 os.makedirs(parent, exist_ok=True)
-                
+
                 print(f"Writing input Zarr to {zpath} (dtype={im.dtype})...")
                 sys.stdout.flush()
                 try:
@@ -1797,7 +1803,7 @@ def main():
                     z = zarr.open(zpath, mode="w", shape=im.shape, chunks=blocksize, dtype=im.dtype)
                     z[...] = im
                     input_zarr = z
-                
+
                 print(f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}")
                 sys.stdout.flush()
             else:
@@ -1805,7 +1811,7 @@ def main():
                     prefix="distributed_cellpose_tmp_", dir=args.temporary_directory
                 )
                 zpath = os.path.join(tmpdir.name, "input.zarr")
-                
+
                 print(f"Writing temporary input Zarr to {zpath}...")
                 sys.stdout.flush()
                 try:
@@ -1977,6 +1983,11 @@ def main():
             args.ncpus = 1
         print(f"Auto-detected ncpus: {args.ncpus}")
 
+    # If optimize_parallel is false, we keep n_workers at 1 as per user request
+    if not args.optimize_parallel and args.n_workers is None:
+        print("Optimization disabled (--optimize_parallel not set). Forcing 1 worker.")
+        args.n_workers = 1
+
     # Optimize n_workers and threads_per_worker based on GPU memory availability
     optimal_n_workers, optimal_threads_per_worker = get_optimal_n_workers(
         use_gpu=args.use_gpu,
@@ -1985,6 +1996,29 @@ def main():
         model_type=args.model if isinstance(args.model, str) else "cyto3",
         diameter=args.diameter,
     )
+
+    # If optimize_parallel is set, check if we can improve blocksize to allow more parallelism
+    if args.optimize_parallel and optimal_n_workers < 2 and args.use_gpu:
+        print("Attempting to find more optimal blocksize for parallel execution...")
+        z, y, x = blocksize
+        if y > 256 or x > 256:
+            new_y, new_x = min(y, 256), min(x, 256)
+            new_blocksize = (z, new_y, new_x)
+            print(f"Testing smaller blocksize: {new_blocksize}")
+            
+            n_parallel, t_parallel = get_optimal_n_workers(
+                use_gpu=args.use_gpu,
+                requested_n_workers=args.n_workers,
+                blocksize=new_blocksize,
+                model_type=args.model if isinstance(args.model, str) else "cyto3",
+                diameter=args.diameter,
+            )
+            
+            if n_parallel > optimal_n_workers:
+                print(f"Found better parameters: workers={n_parallel}, blocksize={new_blocksize}")
+                optimal_n_workers = n_parallel
+                optimal_threads_per_worker = t_parallel
+                blocksize = new_blocksize
 
     # CRITICAL: Set environment variables in main process BEFORE creating cluster
     # These control thread limits for worker processes that will be spawned
@@ -2319,11 +2353,11 @@ def main():
     try:
         # Use streaming write for large volumes to avoid loading everything into RAM
         import tifffile
-        
+
         # Ensure we have a valid numpy-like shape
         shape = out_zarr.shape
         dtype = np.uint32  # Labels are typically uint32
-        
+
         nbytes = np.prod(shape) * np.dtype(dtype).itemsize
         big_threshold = 4 * 1024**3  # 4 GiB
         is_bigtiff = nbytes > big_threshold
