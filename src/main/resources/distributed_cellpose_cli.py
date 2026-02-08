@@ -1737,21 +1737,34 @@ def main():
                     )
                     ch_idx = 0
 
-                # Robustly extract channel data
-                ch_data = np.take(im, ch_idx, axis=c_axis_pos)
-
                 # Create zarr for this channel
                 ch_path = os.path.join(parent, f"channel_{ch_idx}.zarr")
-                z_ch = zarr.open(
-                    ch_path,
-                    mode="w",
-                    shape=spatial_shape,
-                    chunks=zarr_chunks,
-                    dtype=im.dtype,
-                )
-                z_ch[...] = ch_data
-                channel_zarrs.append(z_ch)
-                print(f"  Channel {ch_idx + 1}: extracted and stored at {ch_path}")
+                
+                # Robustly extract channel data lazily using dask
+                # We use rechunk(zarr_chunks) before to_zarr to satisfy Zarr requirements
+                # and avoid "multiple values for keyword argument 'chunks'" errors.
+                # Use as_zarr=True if it was loaded as such via tifffile
+                print(f"  Channel {ch_idx + 1}: extracting to {ch_path}...")
+                sys.stdout.flush()
+
+                try:
+                    ch_dask = da.from_array(im, chunks='auto').take(ch_idx, axis=c_axis_pos)
+                    ch_dask.rechunk(zarr_chunks).to_zarr(ch_path, overwrite=True)
+                    z_ch = zarr.open(ch_path, mode="r")
+                    channel_zarrs.append(z_ch)
+                    print(f"  Channel {ch_idx + 1}: success (shape={z_ch.shape})")
+                except Exception as e:
+                    print(f"  Channel {ch_idx + 1}: failed to extract lazily ({e}). Trying eager...")
+                    ch_data = np.take(im, ch_idx, axis=c_axis_pos)
+                    z_ch = zarr.open(
+                        ch_path,
+                        mode="w",
+                        shape=spatial_shape,
+                        chunks=zarr_chunks,
+                        dtype=im.dtype,
+                    )
+                    z_ch[...] = ch_data
+                    channel_zarrs.append(z_ch)
 
             # Use first requested channel as input_zarr
             input_zarr = channel_zarrs[0]
@@ -1773,34 +1786,36 @@ def main():
                 zpath = args.input_zarr
                 parent = os.path.dirname(zpath) or "."
                 os.makedirs(parent, exist_ok=True)
-                z = zarr.open(
-                    zpath,
-                    mode="w",
-                    shape=im.shape,
-                    chunks=blocksize,
-                    dtype=im.dtype,
-                )
-                z[...] = im
-                input_zarr = z
-                print(f"Wrote input Zarr to {zpath} (dtype={im.dtype})")
-                print(
-                    f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
-                )
+                
+                print(f"Writing input Zarr to {zpath} (dtype={im.dtype})...")
+                sys.stdout.flush()
+                try:
+                    da.from_array(im, chunks='auto').rechunk(blocksize).to_zarr(zpath, overwrite=True)
+                    input_zarr = zarr.open(zpath, mode="r")
+                except Exception as e:
+                    print(f"Lazy write failed ({e}), using eager fallback...")
+                    z = zarr.open(zpath, mode="w", shape=im.shape, chunks=blocksize, dtype=im.dtype)
+                    z[...] = im
+                    input_zarr = z
+                
+                print(f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}")
                 sys.stdout.flush()
             else:
                 tmpdir = tempfile.TemporaryDirectory(
                     prefix="distributed_cellpose_tmp_", dir=args.temporary_directory
                 )
                 zpath = os.path.join(tmpdir.name, "input.zarr")
-                z = zarr.open(
-                    zpath,
-                    mode="w",
-                    shape=im.shape,
-                    chunks=blocksize,
-                    dtype=im.dtype,
-                )
-                z[...] = im
-                input_zarr = z
+                
+                print(f"Writing temporary input Zarr to {zpath}...")
+                sys.stdout.flush()
+                try:
+                    da.from_array(im, chunks='auto').rechunk(blocksize).to_zarr(zpath, overwrite=True)
+                    input_zarr = zarr.open(zpath, mode="r")
+                except Exception as e:
+                    print(f"Lazy write failed ({e}), using eager fallback...")
+                    z = zarr.open(zpath, mode="w", shape=im.shape, chunks=blocksize, dtype=im.dtype)
+                    z[...] = im
+                    input_zarr = z
                 print(f"Created temporary input Zarr at {zpath} (dtype={im.dtype})")
                 print(
                     f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
