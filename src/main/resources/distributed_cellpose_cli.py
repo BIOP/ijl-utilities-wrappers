@@ -206,20 +206,42 @@ def get_optimal_n_workers(
         f"Memory estimation: model_diam={model_diam}, diameter={eff_diameter}, scaling_factor={scaling_factor:.2f}"
     )
 
-    # If requested_n_workers is 0, it means auto-detect. We treat it as
-    # 'infinity' for the min() calculation later, so system/GPU limits decide.
-    eff_requested_workers = requested_n_workers if requested_n_workers > 0 else 9999
-
+    # Initial worker counts based on CPU and requested limits
     total_cpus = os.cpu_count() or 1
+    eff_requested_workers = requested_n_workers if requested_n_workers > 0 else 9999
+    
+    # Estimate CPU RAM limits if psutil is available
+    max_workers_ram = eff_requested_workers
+    try:
+        import psutil
+        vm = psutil.virtual_memory()
+        available_ram = vm.available  # bytes
+        
+        # Estimate RAM per worker. 
+        # Cellpose 3D can be very hungry. We use a conservative estimate:
+        # rescaled_voxels * 4 (float32) * factor (e.g. 20x for all internal buffers)
+        z, y, x = blocksize
+        rescaled_voxels = (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
+        # Using 24x factor for RAM (flows, gradients, original, scales, overhead)
+        estimated_ram_per_worker = rescaled_voxels * 4 * 24
+        
+        # Define usable RAM (leave some for system)
+        usable_ram = available_ram * 0.8
+        
+        max_workers_ram = int(usable_ram // estimated_ram_per_worker)
+        max_workers_ram = max(1, max_workers_ram)
+        
+        print(f"System RAM: {vm.total / (1024**3):.2f} GB (Available: {available_ram / (1024**3):.2f} GB)")
+        print(f"Estimated RAM per worker for block {blocksize}: {estimated_ram_per_worker / (1024**2):.2f} MB")
+        if max_workers_ram < total_cpus:
+            print(f"RAM-limited to {max_workers_ram} workers")
+    except Exception:
+        # Fallback if psutil is missing: assume 4GB per worker is safe-ish for typical blocks
+        pass
 
     if not use_gpu:
-        # CPU mode: no GPU memory constraints; choose a simple threads-per-worker
-        # If the user requested specific workers, use that. Otherwise use total_cpus.
-        n_workers = (
-            min(eff_requested_workers, total_cpus)
-            if requested_n_workers > 0
-            else total_cpus
-        )
+        # CPU mode: use RAM and CPU core constraints
+        n_workers = min(eff_requested_workers, total_cpus, max_workers_ram)
         threads_per_worker = max(1, total_cpus // n_workers)
         return n_workers, threads_per_worker
 
@@ -227,7 +249,7 @@ def get_optimal_n_workers(
     try:
         if not torch.cuda.is_available():
             print("Warning: GPU requested but torch.cuda is not available.")
-            return min(eff_requested_workers, total_cpus), 1
+            return min(eff_requested_workers, total_cpus, max_workers_ram), 1
 
         # Use the first GPU for memory estimation
         gpu_props = torch.cuda.get_device_properties(0)
@@ -268,14 +290,14 @@ def get_optimal_n_workers(
         n_workers_gpu = int(usable_memory // estimated_mem_per_worker)
         n_workers_gpu = max(1, n_workers_gpu)
 
-        # Final n_workers is the minimum of user-requested, CPU cores, and GPU capacity.
-        n_workers = min(eff_requested_workers, total_cpus, n_workers_gpu)
+        # Final n_workers is the minimum of user-requested, CPU cores, GPU capacity, AND available RAM.
+        n_workers = min(eff_requested_workers, total_cpus, n_workers_gpu, max_workers_ram)
         # Use as many threads as possible per worker to maximize CPU utilization
         # while staying within total CPU limits.
         threads_per_worker = max(1, total_cpus // n_workers)
 
         print(
-            f"Calculated n_workers={n_workers}, threads_per_worker={threads_per_worker} (GPU-limited: {n_workers_gpu})"
+            f"Calculated n_workers={n_workers}, threads_per_worker={threads_per_worker} (GPU-limited: {n_workers_gpu}, RAM-limited: {max_workers_ram})"
         )
 
         return n_workers, threads_per_worker
@@ -461,9 +483,21 @@ def _patch_worker_all() -> None:
     """Apply worker-side compatibility patches inside each Dask worker.
 
     Delegates to the central `worker_patches.apply_zarr_patches()` helper
-    which performs all needed monkeypatches.
+    which performs all needed monkeypatches, including zarr indexing
+    and suppressing redundant cellpose logger setup to avoid permission
+    errors on Windows.
     """
     try:
+        # Suppress cellpose's internal logger setup in workers to avoid
+        # PermissionError when multiple workers try to open the same log file.
+        try:
+            import cellpose.io
+            def _noop_logger_setup(*args, **kwargs):
+                pass
+            cellpose.io.logger_setup = _noop_logger_setup
+        except Exception:
+            pass
+
         if worker_patches is not None:
             return worker_patches.apply_zarr_patches()
         else:

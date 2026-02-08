@@ -335,6 +335,7 @@ def setup_worker(nthreads):
 
     def dask_setup(worker):
         import os
+        import sys
 
         # Enforce thread limits
         try:
@@ -342,6 +343,17 @@ def setup_worker(nthreads):
             os.environ["MKL_NUM_THREADS"] = str(nthreads)
             os.environ["OPENBLAS_NUM_THREADS"] = str(nthreads)
             os.environ["NUMEXPR_NUM_THREADS"] = str(nthreads)
+        except Exception:
+            pass
+
+        # Suppress cellpose's internal logger setup in workers to avoid
+        # PermissionError when multiple workers try to open the same log file.
+        # This is especially important on Windows.
+        try:
+            import cellpose.io
+            def _noop_logger_setup(*args, **kwargs):
+                pass
+            cellpose.io.logger_setup = _noop_logger_setup
         except Exception:
             pass
 
