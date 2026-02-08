@@ -51,24 +51,6 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "Nuclear channel (Optional)", description = "Optional second channel (e.g., nuclei). Use 0 if not used/not available.")
     int ch2 = 0;
 
-    @Parameter(label = "blocksize (Z,Y,X) or 'auto'", description = "Size of processing blocks. 'auto' calculates optimal blocks for large 3D images.")
-    String blocksize = "auto";
-
-    @Parameter(label = "Number of workers (0 for auto)", description = "Number of parallel workers. 0 uses half of available CPU cores.")
-    int n_workers = 0;
-
-    @Parameter(label = "--use_gpu", description = "Use GPU acceleration if available.")
-    boolean use_gpu = true;
-
-    @Parameter(label = "Optimize Parallelism", description = "Automatically find the best blocksize and worker count for speed. If unchecked, defaults to 1 worker.")
-    boolean optimize_parallel = false;
-
-    @Parameter(label = "--batch_size", description = "Batch size for each worker. Default 1 is recommended for stability in 3D.")
-    int batch_size = 1;
-
-    @Parameter(label = "Show Dask Dashboard", description = "Opens the Dask distributed dashboard in your default web browser.")
-    boolean show_dashboard = false;
-
     @Parameter(label = "--flow_threshold", description = "Flow error threshold. Typical values: 0.4 (default). Increase for more masks, decrease for fewer.")
     double flow_threshold = 0.4;
 
@@ -78,14 +60,32 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "--stitch_threshold", description = "Stitch threshold for 3D volumes. 0.0 to disable stitching. Typical values: 0.5.")
     double stitch_threshold = 0.0;
 
-    @Parameter(required = false, label = "Save Results Directory", style = "directory", description = "Optional: Directory where the segmentation results (.tif and .zarr) will be saved. If empty, a temporary directory is used.")
-    File output_directory;
-
     @Parameter(label = "--min_size", description = "Minimum size of detected objects in pixels.")
     int min_size = 15;
 
     @Parameter(required = false, label = "To add more parameters (comma separated)", description = "Comma-separated list of additional CLI flags (e.g., --use_gpu).")
     String additional_flags = "";
+
+    @Parameter(label = "blocksize (Z,Y,X) or 'auto'", description = "Size of processing blocks. 'auto' calculates optimal blocks for large 3D images.")
+    String blocksize = "auto";
+
+    @Parameter(label = "Number of workers (0 for auto)", description = "Number of parallel workers. 0 uses half of available CPU cores.")
+    int n_workers = 0;
+
+    @Parameter(label = "--batch_size", description = "Batch size for each worker. Default 1 is recommended for stability in 3D.")
+    int batch_size = 1;
+
+    @Parameter(label = "Optimize Parallelism", description = "Automatically find the best blocksize and worker count for speed. If unchecked, defaults to 1 worker.")
+    boolean optimize_parallel = false;
+
+    @Parameter(label = "--use_gpu", description = "Use GPU acceleration if available.")
+    boolean use_gpu = true;
+
+    @Parameter(label = "Show Dask Dashboard", description = "Opens the Dask distributed dashboard in your default web browser.")
+    boolean show_dashboard = false;
+
+    @Parameter(required = false, label = "Save Results Directory", style = "directory", description = "Optional: Directory where the segmentation results (.tif and .zarr) will be saved. If empty, a temporary directory is used.")
+    File output_directory;
 
     @Parameter(type = ItemIO.OUTPUT)
     ImagePlus cellpose_imp;
