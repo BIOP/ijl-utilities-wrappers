@@ -1636,30 +1636,15 @@ def main():
     channel_zarrs = []  # Will be populated for multi-channel inputs
 
     if args.input_file:
-        with tifffile.TiffFile(args.input_file) as tif:
-            im = tif.asarray()
-            # Handle ImageJ multi-dimensional stacks that may appear 3D
-            if tif.is_imagej and tif.imagej_metadata:
-                meta = tif.imagej_metadata
-                n_channels = meta.get("channels", 1)
-                n_slices = meta.get("slices", 1)
-                n_frames = meta.get("frames", 1)
-                if n_channels > 1 or n_frames > 1:
-                    # Reshape to (T, Z, C, Y, X) order (standard for ImageJ stacks)
-                    target_shape = []
-                    if n_frames > 1:
-                        target_shape.append(n_frames)
-                    if n_slices > 1:
-                        target_shape.append(n_slices)
-                    if n_channels > 1:
-                        target_shape.append(n_channels)
-                    target_shape.extend(im.shape[-2:])  # Y, X
-
-                    if np.prod(target_shape) == im.size:
-                        im = im.reshape(target_shape)
-                        print(
-                            f"Reshaped ImageJ stack to {im.shape} (C={n_channels}, Z={n_slices}, T={n_frames})"
-                        )
+        # Load TIFF lazily using aszarr=True to avoid memory pressure
+        im = tifffile.imread(args.input_file, aszarr=True)
+        # Wrap in a dask array for convenient manipulation if needed, or use directly
+        if hasattr(im, "shape"):
+            print(f"Loaded input {args.input_file} lazily as zarr-like object: {im.shape}")
+        else:
+            # Fallback for unexpected formats
+            with tifffile.TiffFile(args.input_file) as tif:
+                im = tif.asarray()
 
         # warn about input dtype but accept common integer/float types
         if im.dtype not in ("uint8", "uint16", "uint32", "float32", "float64"):
@@ -2317,51 +2302,46 @@ def main():
 
     # Convert the zarr to a single TIFF file (uint32 labels)
     try:
-        arr = out_zarr[...]  # may be large
-        arr = arr.astype(np.uint32)
-        nbytes = arr.nbytes
+        # Use streaming write for large volumes to avoid loading everything into RAM
+        import tifffile
+        
+        # Ensure we have a valid numpy-like shape
+        shape = out_zarr.shape
+        dtype = np.uint32  # Labels are typically uint32
+        
+        nbytes = np.prod(shape) * np.dtype(dtype).itemsize
         big_threshold = 4 * 1024**3  # 4 GiB
+        is_bigtiff = nbytes > big_threshold
 
-        # Heuristic axes metadata for ImageJ/OME
-        axes = None
-        if arr.ndim == 2:
-            axes = "YX"
-        elif arr.ndim == 3:
-            axes = "ZYX"
-        elif arr.ndim == 4:
-            # prefer ZCYX if first dim >= second dim, else CZYX
-            axes = "ZCYX" if arr.shape[0] >= arr.shape[1] else "CZYX"
+        logger.info(f"Writing output TIFF (streaming) to {output_tif} (shape={shape}, bigtiff={is_bigtiff})")
 
-        # Decide writing mode:
-        # - If dtype is uint32 (labels) or very large file -> write as OME-TIFF (supports uint32)
-        # - For small uint8/uint16 images we can write ImageJ-style TIFF
-        try:
-            dt = arr.dtype
-        except Exception:
-            dt = None
+        # Prepare ImageJ or OME metadata
+        axes = "YX" if len(shape) == 2 else ("ZYX" if len(shape) == 3 else "ZCYX")
+        metadata = {'axes': axes}
 
-        tif_kwargs = {}
-        if axes:
-            tif_kwargs["metadata"] = {"axes": axes}
+        with tifffile.TiffWriter(output_tif, bigtiff=is_bigtiff) as tw:
+            if len(shape) == 2:
+                tw.write(out_zarr[:].astype(dtype), metadata=metadata)
+            elif len(shape) == 3:
+                # 3D: Write slice by slice to save memory
+                for z in range(shape[0]):
+                    # Only add metadata to the first page for ImageJ/OME compatibility
+                    page_metadata = metadata if z == 0 else None
+                    tw.write(out_zarr[z, :, :].astype(dtype), metadata=page_metadata, contiguous=True)
+            elif len(shape) == 4:
+                # 4D (e.g. Z, C, Y, X): Write plane by plane
+                first_plane = True
+                for i in range(shape[0]):
+                    for j in range(shape[1]):
+                        page_metadata = metadata if first_plane else None
+                        tw.write(out_zarr[i, j, :, :].astype(dtype), metadata=page_metadata, contiguous=True)
+                        first_plane = False
+            else:
+                # Higher dims: fall back to eager for now if rare, or implement more loops
+                tw.write(out_zarr[...].astype(dtype), metadata=metadata)
 
-        if dt is not None and dt == np.uint32 or nbytes > big_threshold:
-            # Use OME-TIFF which supports uint32 and BigTIFF when needed
-            tif_kwargs["ome"] = True
-            tif_kwargs["bigtiff"] = nbytes > big_threshold
-            logger.info(
-                f"Writing OME-TIFF (ome=True) dtype={dt}, bigtiff={tif_kwargs['bigtiff']}"
-            )
-            tifffile.imwrite(output_tif, arr, **tif_kwargs)
-            logger.debug("Wrote OME-TIFF output labels to %s", output_tif)
-            logger.debug(
-                "Stitched Zarr for inspection: %s",
-                write_zarr,
-            )
-        else:
-            # Safe to write simple ImageJ-compatible TIFF for small uint8/uint16
-            tif_kwargs["imagej"] = True
-            tifffile.imwrite(output_tif, arr, **tif_kwargs)
-            logger.debug("Wrote output labels to %s", output_tif)
+        logger.debug(f"Successfully wrote streaming TIFF to {output_tif}")
+        logger.debug(f"Stitched Zarr remains at: {write_zarr}")
         # Remove intermediate stitched Zarr to avoid leaving large temporary stores
         try:
             if write_zarr and os.path.exists(write_zarr) and not args.keep_intermediate:
