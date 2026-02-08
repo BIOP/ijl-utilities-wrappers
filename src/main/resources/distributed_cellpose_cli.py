@@ -53,16 +53,23 @@ except (ImportError, AttributeError):
     mkldnn = None
 
 try:
+    import psutil
+except ImportError:
+    psutil = None
+
+try:
     import tifffile
 except ImportError:
     tifffile = None
 
 try:
     import dask
+    import dask.array as da
     from dask.distributed import Client, LocalCluster
     from distributed import WorkerPlugin as _WP
 except Exception:
     dask = None
+    da = None
     Client = None
     LocalCluster = None
     _WP = None
