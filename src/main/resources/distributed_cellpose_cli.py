@@ -241,7 +241,9 @@ def get_optimal_n_workers(
         # We add a significant safety factor (e.g., 5-10x) for intermediate
         # gradients, overlays, and other internal buffers.
         z, y, x = blocksize
-        rescaled_voxels = (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
+        rescaled_voxels = (
+            (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
+        )
         # Using a safety overhead of ~12x to be conservative with VRAM
         estimated_mem_per_worker = rescaled_voxels * 4 * 12
 
@@ -269,140 +271,6 @@ def get_optimal_n_workers(
         # Default fallback
         n_workers = min(eff_requested_workers, total_cpus)
         return n_workers, 1
-        )
-        threads = max(1, max_cpus // n_workers)
-        return (n_workers, threads)
-
-    try:
-        if not torch.cuda.is_available():
-            print("Warning: GPU requested but CUDA is not available. Using CPU.")
-            max_cpus = os.cpu_count() or 1
-            n_workers = (
-                requested_n_workers
-                if requested_n_workers > 0
-                else max(1, max_cpus // 4)
-            )
-            threads = max(1, max_cpus // n_workers)
-            return (n_workers, threads)
-
-        # Get GPU memory info (in bytes)
-        gpu_count = torch.cuda.device_count()
-        if gpu_count == 0:
-            print("Warning: No CUDA devices found. Using CPU.")
-            threads = max(1, (os.cpu_count() or 1) // max(1, requested_n_workers))
-            return (requested_n_workers, threads)
-
-        # Use the first GPU for memory estimation
-        gpu_props = torch.cuda.get_device_properties(0)
-        total_memory = gpu_props.total_memory  # bytes
-
-        # Get currently available memory
-        torch.cuda.empty_cache()
-        reserved_memory = torch.cuda.memory_reserved(0)
-        allocated_memory = torch.cuda.memory_allocated(0)
-        free_memory = total_memory - allocated_memory
-
-        print(f"GPU: {gpu_props.name}")
-        print(f"Total GPU memory: {total_memory / (1024**3):.2f} GB")
-        print(f"Reserved: {reserved_memory / (1024**3):.2f} GB")
-        print(f"Allocated: {allocated_memory / (1024**3):.2f} GB")
-        print(f"Free: {free_memory / (1024**3):.2f} GB")
-
-        # Estimate memory per worker
-        # CRITICAL: Dask workers execute multiple tasks concurrently!
-        # Each task loads its own model copy, so we must account for concurrent execution.
-
-        # Base model memory (approximation for cyto3/nuclei models)
-        base_model_memory = 500 * (1024**2)  # ~500 MB for model weights
-
-        # Estimate memory per block based on rescaled block dimensions
-        # Cellpose processes blocks with intermediate tensors after rescaling.
-        # voxels = (Z * scale) * (Y * scale) * (X * scale)
-        z, y, x = blocksize
-        rescaled_voxels = (
-            (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
-        )
-
-        bytes_per_voxel = 4  # float32
-        memory_multiplier = (
-            10  # very conservative for safety (gradients, intermediate maps)
-        )
-        block_memory = rescaled_voxels * bytes_per_voxel * memory_multiplier
-
-        # Memory per concurrent task (each task loads a full model)
-        memory_per_task = base_model_memory + block_memory
-        print(
-            f"Estimated Peak GPU Memory per worker: {memory_per_task / (1024**2):.1f} MB (Rescaled 3D voxels: {rescaled_voxels / 1e6:.1f} Mpx)"
-        )
-
-        # Reserve part of GPU memory for overhead and fragmentation.
-
-        # Calculate maximum TOTAL concurrent tasks across all workers
-        # This is the hard limit based on GPU memory
-        max_total_tasks = int(usable_memory / memory_per_task)
-        max_total_tasks = max(1, max_total_tasks)  # At least 1
-
-        # Distribute tasks across workers
-        # Each worker needs at least 1 thread, preferably 2-4 for efficiency
-        # But we MUST respect GPU memory constraints
-        # Conservative: don't create more workers than GPUs (one worker per GPU)
-        max_workers = min(eff_requested_workers, max_total_tasks, gpu_count)
-        max_workers = max(1, max_workers)
-
-        # Calculate threads per worker to stay within memory limits
-        # This limits Dask's concurrent task execution per worker
-        max_threads_per_worker = max(1, max_total_tasks // max_workers)
-
-        # If the GPU has low total memory (e.g. <=6GB) or usable memory is very small
-        # compared to the estimated memory per task, be extra conservative: force
-        # a single thread per worker and avoid spawning multiple workers per GPU.
-        low_vram = total_memory <= 6 * (1024**3) or usable_memory < (
-            2 * memory_per_task
-        )
-        if low_vram:
-            print(
-                "Low GPU VRAM detected – forcing single-threaded workers and limiting workers to GPUs."
-            )
-            max_threads_per_worker = 1
-            max_workers = min(max_workers, gpu_count)
-
-        print(
-            f"Estimated memory per task (including model): {memory_per_task / (1024**2):.2f} MB"
-        )
-        print(f"Free GPU memory: {free_memory / (1024**2):.2f} MB")
-        print(f"Usable GPU memory (70%): {usable_memory / (1024**2):.2f} MB")
-        print(f"Maximum total concurrent tasks: {max_total_tasks}")
-        print(f"Maximum workers: {max_workers}")
-        print(f"Threads per worker (to limit concurrency): {max_threads_per_worker}")
-
-        # Return tuple: (workers, threads_per_worker)
-        if requested_n_workers == 0 or requested_n_workers > max_workers:
-            if requested_n_workers > max_workers:
-                print(
-                    f"Warning: Requested {requested_n_workers} workers but GPU memory "
-                    f"only supports {max_workers} workers with {max_threads_per_worker} threads each."
-                )
-            else:
-                print(
-                    f"Auto-selected {max_workers} workers with {max_threads_per_worker} threads each."
-                )
-            return (max_workers, max_threads_per_worker)
-        else:
-            print(
-                f"Using {requested_n_workers} workers with {max_threads_per_worker} threads each (within GPU memory limits)."
-            )
-            return (requested_n_workers, max_threads_per_worker)
-
-    except ImportError:
-        print(
-            "Warning: PyTorch not available for GPU memory detection. Using requested n_workers."
-        )
-        # Default to 4 threads per worker if we can't check GPU memory
-        return (requested_n_workers, 4)
-    except Exception as e:
-        print(f"Warning: Could not detect GPU memory: {e}. Using requested n_workers.")
-        threads = max(1, (os.cpu_count() or 1) // max(1, requested_n_workers))
-        return (requested_n_workers, threads)
 
 
 def validate_runtime_requirements():
@@ -1646,7 +1514,9 @@ def main():
         im = tifffile.imread(args.input_file, aszarr=True)
         # Wrap in a dask array for convenient manipulation if needed, or use directly
         if hasattr(im, "shape"):
-            print(f"Loaded input {args.input_file} lazily as zarr-like object: {im.shape}")
+            print(
+                f"Loaded input {args.input_file} lazily as zarr-like object: {im.shape}"
+            )
         else:
             # Fallback for unexpected formats
             with tifffile.TiffFile(args.input_file) as tif:
@@ -1754,13 +1624,17 @@ def main():
                 sys.stdout.flush()
 
                 try:
-                    ch_dask = da.from_array(im, chunks='auto').take(ch_idx, axis=c_axis_pos)
+                    ch_dask = da.from_array(im, chunks="auto").take(
+                        ch_idx, axis=c_axis_pos
+                    )
                     ch_dask.rechunk(zarr_chunks).to_zarr(ch_path, overwrite=True)
                     z_ch = zarr.open(ch_path, mode="r")
                     channel_zarrs.append(z_ch)
                     print(f"  Channel {ch_idx + 1}: success (shape={z_ch.shape})")
                 except Exception as e:
-                    print(f"  Channel {ch_idx + 1}: failed to extract lazily ({e}). Trying eager...")
+                    print(
+                        f"  Channel {ch_idx + 1}: failed to extract lazily ({e}). Trying eager..."
+                    )
                     ch_data = np.take(im, ch_idx, axis=c_axis_pos)
                     z_ch = zarr.open(
                         ch_path,
@@ -1796,15 +1670,25 @@ def main():
                 print(f"Writing input Zarr to {zpath} (dtype={im.dtype})...")
                 sys.stdout.flush()
                 try:
-                    da.from_array(im, chunks='auto').rechunk(blocksize).to_zarr(zpath, overwrite=True)
+                    da.from_array(im, chunks="auto").rechunk(blocksize).to_zarr(
+                        zpath, overwrite=True
+                    )
                     input_zarr = zarr.open(zpath, mode="r")
                 except Exception as e:
                     print(f"Lazy write failed ({e}), using eager fallback...")
-                    z = zarr.open(zpath, mode="w", shape=im.shape, chunks=blocksize, dtype=im.dtype)
+                    z = zarr.open(
+                        zpath,
+                        mode="w",
+                        shape=im.shape,
+                        chunks=blocksize,
+                        dtype=im.dtype,
+                    )
                     z[...] = im
                     input_zarr = z
 
-                print(f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}")
+                print(
+                    f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
+                )
                 sys.stdout.flush()
             else:
                 tmpdir = tempfile.TemporaryDirectory(
@@ -1815,11 +1699,19 @@ def main():
                 print(f"Writing temporary input Zarr to {zpath}...")
                 sys.stdout.flush()
                 try:
-                    da.from_array(im, chunks='auto').rechunk(blocksize).to_zarr(zpath, overwrite=True)
+                    da.from_array(im, chunks="auto").rechunk(blocksize).to_zarr(
+                        zpath, overwrite=True
+                    )
                     input_zarr = zarr.open(zpath, mode="r")
                 except Exception as e:
                     print(f"Lazy write failed ({e}), using eager fallback...")
-                    z = zarr.open(zpath, mode="w", shape=im.shape, chunks=blocksize, dtype=im.dtype)
+                    z = zarr.open(
+                        zpath,
+                        mode="w",
+                        shape=im.shape,
+                        chunks=blocksize,
+                        dtype=im.dtype,
+                    )
                     z[...] = im
                     input_zarr = z
                 print(f"Created temporary input Zarr at {zpath} (dtype={im.dtype})")
@@ -2015,7 +1907,9 @@ def main():
             )
 
             if n_parallel > optimal_n_workers:
-                print(f"Found better parameters: workers={n_parallel}, blocksize={new_blocksize}")
+                print(
+                    f"Found better parameters: workers={n_parallel}, blocksize={new_blocksize}"
+                )
                 optimal_n_workers = n_parallel
                 optimal_threads_per_worker = t_parallel
                 blocksize = new_blocksize
@@ -2362,11 +2256,13 @@ def main():
         big_threshold = 4 * 1024**3  # 4 GiB
         is_bigtiff = nbytes > big_threshold
 
-        logger.info(f"Writing output TIFF (streaming) to {output_tif} (shape={shape}, bigtiff={is_bigtiff})")
+        logger.info(
+            f"Writing output TIFF (streaming) to {output_tif} (shape={shape}, bigtiff={is_bigtiff})"
+        )
 
         # Prepare ImageJ or OME metadata
         axes = "YX" if len(shape) == 2 else ("ZYX" if len(shape) == 3 else "ZCYX")
-        metadata = {'axes': axes}
+        metadata = {"axes": axes}
 
         with tifffile.TiffWriter(output_tif, bigtiff=is_bigtiff) as tw:
             if len(shape) == 2:
@@ -2376,14 +2272,22 @@ def main():
                 for z in range(shape[0]):
                     # Only add metadata to the first page for ImageJ/OME compatibility
                     page_metadata = metadata if z == 0 else None
-                    tw.write(out_zarr[z, :, :].astype(dtype), metadata=page_metadata, contiguous=True)
+                    tw.write(
+                        out_zarr[z, :, :].astype(dtype),
+                        metadata=page_metadata,
+                        contiguous=True,
+                    )
             elif len(shape) == 4:
                 # 4D (e.g. Z, C, Y, X): Write plane by plane
                 first_plane = True
                 for i in range(shape[0]):
                     for j in range(shape[1]):
                         page_metadata = metadata if first_plane else None
-                        tw.write(out_zarr[i, j, :, :].astype(dtype), metadata=page_metadata, contiguous=True)
+                        tw.write(
+                            out_zarr[i, j, :, :].astype(dtype),
+                            metadata=page_metadata,
+                            contiguous=True,
+                        )
                         first_plane = False
             else:
                 # Higher dims: fall back to eager for now if rare, or implement more loops
