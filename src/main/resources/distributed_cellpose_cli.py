@@ -20,9 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
-import traceback
 import webbrowser
-from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -500,7 +498,7 @@ def _patch_worker_all():
                                 try:
                                     length = val - float(sel.start)
                                     stop = start + int(round(length))
-                                except:
+                                except Exception:
                                     stop = int(round(val))
                             else:
                                 stop = (
@@ -512,7 +510,7 @@ def _patch_worker_all():
                         if step is not None:
                             try:
                                 step = int(float(step))
-                            except:
+                            except Exception:
                                 pass
                         return slice(start, stop, step)
                     elif isinstance(sel, (tuple, list)):
@@ -556,7 +554,7 @@ def _patch_worker_all():
                                     else:
                                         new_sel_list.append(_coerce(s, mode="nearest"))
                                 return _orig_set(self, tuple(new_sel_list), value)
-                    except:
+                    except Exception:
                         pass
                     return _orig_set(self, _coerce(selection, mode="nearest"), value)
 
@@ -706,6 +704,7 @@ def _run_distributed_eval(
     cluster_kwargs,
     args,
     channel_zarrs=None,
+    log_file=None,
 ):
     """Run `ds.distributed_eval`, attempting a proactively patched cluster.
 
@@ -974,7 +973,7 @@ def dask_setup(worker):
                     print("Applied worker patches via client.run(): %r" % (res,))
 
                     # Also redirect worker logs to the same file if possible
-                    if "log_file" in locals() and log_file:
+                    if log_file:
                         try:
                             client.run(_set_worker_logging, log_file)
                             print(f"Workers now redirecting output to: {log_file}")
@@ -1235,6 +1234,7 @@ def main():
     -------
     None
     """
+    global tifffile, zarr
     parser = argparse.ArgumentParser(description="Distributed Cellpose CLI helper")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--input_file", help="Single TIFF input file")
@@ -1431,6 +1431,7 @@ def main():
 
     # Determine log directory (prefer --log_dir, then --output_dir, then --temporary_directory)
     log_dir = args.log_dir or args.output_dir or args.temporary_directory
+    log_file = None
 
     if log_dir:
         try:
@@ -1878,7 +1879,9 @@ def main():
     # If optimize_parallel is false, and n_workers is 0/None, we keep n_workers at 1
     # to maintain a safe, single-worker baseline for the user.
     if not args.optimize_parallel and (args.n_workers is None or args.n_workers == 0):
-        print("Parallelism optimization disabled. Using 1 worker for baseline stability.")
+        print(
+            "Parallelism optimization disabled. Using 1 worker for baseline stability."
+        )
         args.n_workers = 1
 
     # Optimize n_workers and threads_per_worker based on GPU memory availability
@@ -2240,6 +2243,7 @@ def main():
         cluster_kwargs,
         args,
         channel_zarrs,
+        log_file,
     )
 
     logger.debug(f"Stitched Zarr written to {write_zarr}")
@@ -2247,7 +2251,7 @@ def main():
     # Convert the zarr to a single TIFF file (uint32 labels)
     try:
         # Use streaming write for large volumes to avoid loading everything into RAM
-        import tifffile
+        # Use the global tifffile imported at module level
 
         # Ensure we have a valid numpy-like shape
         shape = out_zarr.shape
