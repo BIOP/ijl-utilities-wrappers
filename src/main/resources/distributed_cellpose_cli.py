@@ -194,20 +194,81 @@ def get_optimal_n_workers(
     # 'infinity' for the min() calculation later, so system/GPU limits decide.
     eff_requested_workers = requested_n_workers if requested_n_workers > 0 else 9999
 
+    total_cpus = os.cpu_count() or 1
+
     if not use_gpu:
         # CPU mode: no GPU memory constraints; choose a simple threads-per-worker
-        max_cpus = os.cpu_count() or 1
+        # If the user requested specific workers, use that. Otherwise use total_cpus.
         n_workers = (
-            requested_n_workers if requested_n_workers > 0 else max(1, max_cpus // 4)
+            min(eff_requested_workers, total_cpus)
+            if requested_n_workers > 0
+            else total_cpus
         )
-        threads = max(1, max_cpus // n_workers)
-        return (n_workers, threads)
+        threads_per_worker = max(1, total_cpus // n_workers)
+        return n_workers, threads_per_worker
 
-    if torch is None:
-        print("Warning: PyTorch not available. Cannot query GPU memory.")
-        max_cpus = os.cpu_count() or 1
-        n_workers = (
-            requested_n_workers if requested_n_workers > 0 else max(1, max_cpus // 4)
+    # GPU mode: calculate safe n_workers
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            print("Warning: GPU requested but torch.cuda is not available.")
+            return min(eff_requested_workers, total_cpus), 1
+
+        # Use the first GPU for memory estimation
+        gpu_props = torch.cuda.get_device_properties(0)
+        total_memory = gpu_props.total_memory  # bytes
+
+        # Get currently available memory
+        torch.cuda.empty_cache()
+        reserved_memory = torch.cuda.memory_reserved(0)
+        allocated_memory = torch.cuda.memory_allocated(0)
+        free_memory = total_memory - allocated_memory
+
+        print(f"GPU: {gpu_props.name}")
+        print(f"Total GPU memory: {total_memory / (1024**3):.2f} GB")
+        print(f"Reserved: {reserved_memory / (1024**3):.2f} GB")
+        print(f"Allocated: {allocated_memory / (1024**3):.2f} GB")
+        print(f"Free: {free_memory / (1024**3):.2f} GB")
+
+        # Define usable memory (70% of total memory to be safe, or 90% of free memory)
+        # We use a conservative estimate to account for fragmentation and overhead.
+        usable_memory = min(total_memory * 0.7, free_memory * 0.9)
+
+        # Estimate memory per worker
+        # Memory consumption is roughly proportional to the number of voxels
+        # after scaling. Cellpose uses float32 internally (4 bytes per voxel).
+        # We add a significant safety factor (e.g., 5-10x) for intermediate
+        # gradients, overlays, and other internal buffers.
+        z, y, x = blocksize
+        rescaled_voxels = (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
+        # Using a safety overhead of ~12x to be conservative with VRAM
+        estimated_mem_per_worker = rescaled_voxels * 4 * 12
+
+        print(
+            f"Estimated GPU memory per worker for block {blocksize}: {estimated_mem_per_worker / (1024**2):.2f} MB"
+        )
+
+        n_workers_gpu = int(usable_memory // estimated_mem_per_worker)
+        n_workers_gpu = max(1, n_workers_gpu)
+
+        # Final n_workers is the minimum of user-requested, CPU cores, and GPU capacity.
+        n_workers = min(eff_requested_workers, total_cpus, n_workers_gpu)
+        # Use as many threads as possible per worker to maximize CPU utilization
+        # while staying within total CPU limits.
+        threads_per_worker = max(1, total_cpus // n_workers)
+
+        print(
+            f"Calculated n_workers={n_workers}, threads_per_worker={threads_per_worker} (GPU-limited: {n_workers_gpu})"
+        )
+
+        return n_workers, threads_per_worker
+
+    except Exception as e:
+        print(f"Warning: Error during GPU memory estimation: {e}")
+        # Default fallback
+        n_workers = min(eff_requested_workers, total_cpus)
+        return n_workers, 1
         )
         threads = max(1, max_cpus // n_workers)
         return (n_workers, threads)
