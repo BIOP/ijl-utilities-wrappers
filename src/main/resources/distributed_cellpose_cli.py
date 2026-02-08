@@ -1875,9 +1875,10 @@ def main():
             args.ncpus = 1
         print(f"Auto-detected ncpus: {args.ncpus}")
 
-    # If optimize_parallel is false, we keep n_workers at 1 as per user request
-    if not args.optimize_parallel and args.n_workers is None:
-        print("Optimization disabled (--optimize_parallel not set). Forcing 1 worker.")
+    # If optimize_parallel is false, and n_workers is 0/None, we keep n_workers at 1
+    # to maintain a safe, single-worker baseline for the user.
+    if not args.optimize_parallel and (args.n_workers is None or args.n_workers == 0):
+        print("Parallelism optimization disabled. Using 1 worker for baseline stability.")
         args.n_workers = 1
 
     # Optimize n_workers and threads_per_worker based on GPU memory availability

@@ -45,12 +45,6 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "Diameter", description = "Approximate diameter of the objects in calibrated units (e.g., \u00B5m). Use 0 for auto-detection.")
     double diameter = 30;
 
-    @Parameter(label = "Main channel (Cytoplasm or nuclei)", description = "Channel to be segmented (1-based index, e.g. 1 for ImageJ Channel 1).")
-    int ch1 = 1;
-
-    @Parameter(label = "Nuclear channel (Optional)", description = "Optional second channel (e.g., nuclei). Use 0 if not used/not available.")
-    int ch2 = 0;
-
     @Parameter(label = "--flow_threshold", description = "Flow error threshold. Typical values: 0.4 (default). Increase for more masks, decrease for fewer.")
     double flow_threshold = 0.4;
 
@@ -59,6 +53,12 @@ public class CellposeDistributed implements Command {
 
     @Parameter(label = "--stitch_threshold", description = "Stitch threshold for 3D volumes. 0.0 to disable stitching. Typical values: 0.5.")
     double stitch_threshold = 0.0;
+
+    @Parameter(label = "Main channel (Cytoplasm or nuclei)", description = "Channel to be segmented (1-based index, e.g. 1 for ImageJ Channel 1).")
+    int ch1 = 1;
+
+    @Parameter(label = "Nuclear channel (Optional)", description = "Optional second channel (e.g., nuclei). Use 0 if not used/not available.")
+    int ch2 = 0;
 
     @Parameter(label = "--min_size", description = "Minimum size of detected objects in pixels.")
     int min_size = 15;
