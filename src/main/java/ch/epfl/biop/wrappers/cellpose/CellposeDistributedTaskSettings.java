@@ -18,6 +18,7 @@ public class CellposeDistributedTaskSettings {
     public double stitch_threshold = 0.0;
     public int min_size = 15;
     public boolean use_gpu = true;
+    public boolean optimize_parallel = false;
     public int batch_size = 1;
     public boolean show_dashboard = false;
     public double anisotropy = 1.0;
@@ -92,6 +93,11 @@ public class CellposeDistributedTaskSettings {
 
     public CellposeDistributedTaskSettings setUseGpu(boolean use_gpu) {
         this.use_gpu = use_gpu;
+        return this;
+    }
+
+    public CellposeDistributedTaskSettings setOptimizeParallel(boolean optimize_parallel) {
+        this.optimize_parallel = optimize_parallel;
         return this;
     }
 

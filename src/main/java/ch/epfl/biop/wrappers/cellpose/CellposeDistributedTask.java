@@ -62,6 +62,10 @@ public class CellposeDistributedTask {
             arguments.add("--use_gpu");
         }
 
+        if (settings.optimize_parallel) {
+            arguments.add("--optimize_parallel");
+        }
+
         if (settings.show_dashboard) {
             arguments.add("--open_dashboard");
         }

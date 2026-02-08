@@ -60,6 +60,9 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "--use_gpu", description = "Use GPU acceleration if available.")
     boolean use_gpu = true;
 
+    @Parameter(label = "Optimize Parallelism", description = "Automatically find the best blocksize and worker count for speed. If unchecked, defaults to 1 worker.")
+    boolean optimize_parallel = false;
+
     @Parameter(label = "--batch_size", description = "Batch size for each worker. Default 1 is recommended for stability in 3D.")
     int batch_size = 1;
 
@@ -155,14 +158,17 @@ public class CellposeDistributed implements Command {
                 .setModel(model)
                 .setDiameter(diameterInPixels)
                 .setChannels(effectiveCh1, effectiveCh2)
+                .setBlocksize(effectiveBlocksize)
                 .setAnisotropy(anisotropy)
                 .setUseGpu(use_gpu)
+                .setOptimizeParallel(optimize_parallel)
                 .setBatchSize(batch_size)
                 .setShowDashboard(show_dashboard)
                 .setFlowThreshold(flow_threshold)
                 .setCellprobThreshold(cellprob_threshold)
                 .setStitchThreshold(stitch_threshold)
                 .setMinSize(min_size)
+                .setNWorkers(n_workers)
                 .setLogDirectory(output_directory != null ? output_directory.getAbsolutePath() : tempDir.getAbsolutePath())
                 .setAdditionalFlags(additional_flags);
 

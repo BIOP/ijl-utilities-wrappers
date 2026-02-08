@@ -2005,7 +2005,7 @@ def main():
             new_y, new_x = min(y, 256), min(x, 256)
             new_blocksize = (z, new_y, new_x)
             print(f"Testing smaller blocksize: {new_blocksize}")
-            
+
             n_parallel, t_parallel = get_optimal_n_workers(
                 use_gpu=args.use_gpu,
                 requested_n_workers=args.n_workers,
@@ -2013,7 +2013,7 @@ def main():
                 model_type=args.model if isinstance(args.model, str) else "cyto3",
                 diameter=args.diameter,
             )
-            
+
             if n_parallel > optimal_n_workers:
                 print(f"Found better parameters: workers={n_parallel}, blocksize={new_blocksize}")
                 optimal_n_workers = n_parallel
