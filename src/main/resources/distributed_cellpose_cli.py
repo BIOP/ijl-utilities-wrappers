@@ -202,6 +202,7 @@ def get_optimal_n_workers(
     blocksize: Tuple[int, ...],
     model_type: str = "cyto3",
     diameter: float = 30.0,
+    mem_multiplier: float = 0.0,
 ) -> Tuple[int, int, int]:
     """Calculate optimal number of workers based on hardware availability.
 
@@ -240,12 +241,17 @@ def get_optimal_n_workers(
     )
 
     total_cpus = os.cpu_count() or 1
-    eff_requested_workers = requested_n_workers if requested_n_workers > 0 else 9999
+    eff_requested_workers = (
+        requested_n_workers if (requested_n_workers and requested_n_workers > 0) else 9999
+    )
 
     # RAM Estimation
     # Multiplier: float32 image (4) + flows (16) + grad/probs + u-net intermediates
     # 3D needs much more workspace memory.
-    multiplier = 80 if is_3d_mode else 20
+    if mem_multiplier > 0:
+        multiplier = mem_multiplier
+    else:
+        multiplier = 80 if is_3d_mode else 20
     estimated_ram_per_worker = rescaled_voxels * 4 * multiplier
 
     max_workers_ram = eff_requested_workers
@@ -291,7 +297,11 @@ def get_optimal_n_workers(
         usable_memory_per_gpu = min(total_memory_single_gpu * 0.7, free_memory * 0.8)
 
         # VRAM multiplier is lower than RAM but still significant for 3D
-        vram_multiplier = 40 if is_3d_mode else 10
+        if mem_multiplier > 0:
+            vram_multiplier = mem_multiplier / 2.0  # Heuristic: VRAM needs half of RAM multiplier
+        else:
+            vram_multiplier = 40 if is_3d_mode else 10
+        
         estimated_vram_per_worker = rescaled_voxels * 4 * vram_multiplier
 
         workers_per_gpu = int(usable_memory_per_gpu // estimated_vram_per_worker)
@@ -411,23 +421,28 @@ def validate_runtime_requirements() -> Tuple[Any, str]:
     return ds_mod, cellpose_version
 
 
-def parse_blocksize(s: str) -> Tuple[int, ...]:
+def parse_blocksize(s: str) -> Union[Tuple[int, ...], str]:
     """Parse a comma-separated blocksize string into a tuple of ints.
 
     Also handles concatenated format like `128256256` -> (128, 256, 256).
+    Returns the string "auto" if input matches.
 
     Parameters
     ----------
     s : str
         Comma-separated integers, e.g. `"128,256,256"`, or concatenated
-        integers like `128256256` (will be split into equal thirds).
+        integers like `128256256` (will be split into equal thirds),
+        or the literal string "auto".
 
     Returns
     -------
-    Tuple[int, ...]
-        The parsed blocksize tuple, e.g. `(128, 256, 256)`.
+    Union[Tuple[int, ...], str]
+        The parsed blocksize tuple, or "auto".
     """
-    s = s.strip()
+    s = s.strip().lower()
+    if s == "auto":
+        return "auto"
+
     if "," in s:
         # Normal comma-separated format
         parts = [int(x) for x in s.split(",") if x.strip()]
@@ -444,6 +459,59 @@ def parse_blocksize(s: str) -> Tuple[int, ...]:
         # Fallback: try to parse as single integer (will likely fail downstream)
         parts = [int(s)]
     return tuple(parts)
+
+
+def get_auto_blocksize(
+    shape: Tuple[int, ...], is_3d: bool, use_gpu: bool, multiplier: float = 0
+) -> Tuple[int, ...]:
+    """Calculate an optimistically large blocksize based on available hardware."""
+    # Multipliers if not provided
+    if multiplier == 0:
+        if use_gpu:
+            multiplier = 40 if is_3d else 10
+        else:
+            multiplier = 80 if is_3d else 20
+
+    # Determine available memory
+    try:
+        if use_gpu and torch.cuda.is_available():
+            # Use 60% of total VRAM as a target for the block
+            mem_limit = torch.cuda.get_device_properties(0).total_memory * 0.6
+        else:
+            import psutil
+
+            # Use 25% of available RAM per potential worker (conservative)
+            mem_limit = psutil.virtual_memory().available * 0.25
+    except Exception:
+        # Fallback to a safe constant (e.g. 4GB)
+        mem_limit = 4 * 1024**3
+
+    # target_voxels = mem_limit / (bytes_per_float32 * multiplier)
+    target_voxels = mem_limit / (4 * multiplier)
+
+    if is_3d:
+        # For 3D: try to keep blocks somewhat cubic but prioritize XY
+        # Start with Z=64 and expand XY
+        z_target = min(shape[0], 64)
+        spatial_voxels = target_voxels / z_target
+        spatial_side = int(math.sqrt(spatial_voxels))
+        # Clamp to reasonable range
+        spatial_side = max(256, min(2048, spatial_side))
+        block = (z_target, spatial_side, spatial_side)
+    else:
+        # For 2D
+        spatial_side = int(math.sqrt(target_voxels))
+        spatial_side = max(512, min(4096, spatial_side))
+        block = (spatial_side, spatial_side)
+
+    # Rank alignment and clipping
+    if len(block) > len(shape):
+        block = block[-len(shape) :]
+    elif len(block) < len(shape):
+        block = (1,) * (len(shape) - len(block)) + block
+
+    block = tuple(min(b, s) for b, s in zip(block, shape))
+    return block
 
 
 def _apply_zarr_open_compat(
@@ -1419,6 +1487,12 @@ def main():
         help="Batch size for each worker (default: 1, to avoid Cellpose 3 tiling bugs)",
     )
     parser.add_argument(
+        "--mem_multiplier",
+        default=0.0,
+        type=float,
+        help="Custom memory multiplier for auto-blocksize. 0 uses defaults (e.g. 40 for 3D VRAM).",
+    )
+    parser.add_argument(
         "--write_zarr",
         default=None,
         help="Path to write the output stitched Zarr (default: <output_tif>.zarr)",
@@ -1630,6 +1704,14 @@ def main():
             if candidates:
                 c_axis_pos = candidates[0]
 
+        # Resolve 'auto' blocksize using hardware-aware heuristic
+        if blocksize == "auto":
+            is_3d_mode = (im.ndim >= 3 and c_axis_pos is None) or (im.ndim >= 4)
+            blocksize = get_auto_blocksize(
+                im.shape, is_3d_mode, args.use_gpu, multiplier=args.mem_multiplier
+            )
+            print(f"Auto-resolved blocksize based on hardware: {blocksize}")
+
         if c_axis_pos is not None and im.shape[c_axis_pos] > 1:
             # Multi-channel data: extract ONLY the channels required by the user.
             num_channels_total = im.shape[c_axis_pos]
@@ -1794,6 +1876,14 @@ def main():
         filename_pattern = os.path.join(args.input_dir, "*.tif")
         input_zarr = ds.wrap_folder_of_tiffs(filename_pattern)
         print(f"Wrapped folder into Zarr (pattern={filename_pattern})")
+
+        # Resolve 'auto' blocksize using hardware-aware heuristic
+        if blocksize == "auto":
+            is_3d_mode = input_zarr.ndim >= 3
+            blocksize = get_auto_blocksize(
+                input_zarr.shape, is_3d_mode, args.use_gpu, multiplier=args.mem_multiplier
+            )
+            print(f"Auto-resolved blocksize based on hardware: {blocksize}")
         tmpdir = None
 
     # Worker patching handles float slice coercion, no proxy needed
@@ -1957,7 +2047,24 @@ def main():
         f"\nHardware detection: {os.cpu_count()} CPUs, {torch.cuda.device_count() if torch.cuda and torch.cuda.is_available() else 0} GPUs detected. Optimize={args.optimize_parallel}"
     )
 
-    current_block = list(blocksize)
+    current_block = list(blocksize) if isinstance(blocksize, tuple) else []
+    if blocksize == "auto":
+        # Final safety resolution if not handled during input loading
+        is_3d = False
+        shape = (1024, 1024)
+        if "input_zarr" in locals() and input_zarr is not None:
+            is_3d = input_zarr.ndim >= 3
+            shape = input_zarr.shape
+        elif eval_kwargs.get("do_3D"):
+            is_3d = True
+            shape = (64, 1024, 1024)
+            shape, is_3d, args.use_gpu, multiplier=args.mem_multiplier
+        
+
+        blocksize = get_auto_blocksize(shape, is_3d, args.use_gpu)
+        current_block = list(blocksize)
+        print(f"Auto-blocksize final safety resolution: {blocksize}")
+
     optimal_n_workers = 0
     dask_threads = 1
     internal_threads = 1
@@ -1969,6 +2076,7 @@ def main():
             blocksize=tuple(current_block),
             model_type=args.model if isinstance(args.model, str) else "cyto3",
             diameter=args.diameter,
+            mem_multiplier=args.mem_multiplier,
         )
 
         if optimal_n_workers > 0:

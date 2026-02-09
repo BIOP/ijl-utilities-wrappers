@@ -100,19 +100,9 @@ public class CellposeDistributed implements Command {
         // Optimal calculation for distributed blocksize
         String effectiveBlocksize = blocksize;
         if (blocksize.equalsIgnoreCase("auto")) {
-            long z = imp.getNSlices();
-            long y = imp.getHeight();
-            long x = imp.getWidth();
-
-            // Heuristic for 2k+ images: use large spatial blocks to minimize stitching
-            long target_spatial = 512;
-            if (x > 1500 || y > 1500) target_spatial = 1024;
-
-            // Z block depends on depth. If depth is small, process all at once
-            long target_z = Math.min(64, z);
-
-            effectiveBlocksize = target_z + "," + target_spatial + "," + target_spatial;
-            ls.info("Auto-calculated optimal blocksize: " + effectiveBlocksize);
+            // We pass "auto" to the CLI, let the Python side decide based on hardware
+            effectiveBlocksize = "auto";
+            ls.info("Blocksize is 'auto'. Calculating optimal hardware-dependent blocksize...");
         }
 
         File tempDir = new TempDirectory("cellpose_dist").getPath().toFile();
