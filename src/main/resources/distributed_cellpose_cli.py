@@ -2319,8 +2319,9 @@ def main():
         # Prepare ImageJ or OME metadata
         axes = "YX" if len(shape) == 2 else ("ZYX" if len(shape) == 3 else "ZCYX")
         metadata = {"axes": axes}
+        is_ome = output_tif.lower().endswith(".ome.tif")
 
-        with tifffile.TiffWriter(output_tif, bigtiff=is_bigtiff) as tw:
+        with tifffile.TiffWriter(output_tif, bigtiff=is_bigtiff, ome=is_ome) as tw:
             if len(shape) == 2:
                 tw.write(out_zarr[:].astype(dtype), metadata=metadata)
             elif len(shape) == 3:
