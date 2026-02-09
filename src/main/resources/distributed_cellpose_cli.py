@@ -124,16 +124,18 @@ class Tee:
 
 
 def _update_log_handlers():
-    """Update all existing logging handlers to use the current sys.stderr."""
+    """Update all active logging handlers to use the current sys.stderr."""
     try:
+        # Update root logger
         root = logging.getLogger()
         for handler in root.handlers:
             if isinstance(handler, logging.StreamHandler):
                 handler.setStream(sys.stderr)
-        # Also update cellpose logger if it exists
-        if "cellpose" in logging.Logger.manager.loggerDict:
-            cp_logger = logging.getLogger("cellpose")
-            for handler in cp_logger.handlers:
+
+        # Explicitly update all registered loggers
+        for name in logging.Logger.manager.loggerDict:
+            l = logging.getLogger(name)
+            for handler in l.handlers:
                 if isinstance(handler, logging.StreamHandler):
                     handler.setStream(sys.stderr)
     except Exception:
@@ -339,7 +341,14 @@ def validate_runtime_requirements() -> Tuple[Any, str]:
     missing = []
     info = []
 
-    modules_to_check = ["cellpose", "dask", "distributed", "zarr", "tifffile"]
+    modules_to_check = [
+        "cellpose",
+        "dask",
+        "distributed",
+        "zarr",
+        "tifffile",
+        "bokeh",
+    ]
     for mod_name in modules_to_check:
         try:
             print(f"Checking module: {mod_name}...")
@@ -998,10 +1007,17 @@ def dask_setup(worker):
                         except Exception:
                             pass
                     if dashboard:
-                        # Ensure we have a valid status page link (recent dask versions can 404 at root)
-                        if not (dashboard.endswith("/status") or dashboard.endswith("/status/")):
+                        # Normalize dashboard link. Some versions return just 'http://127.0.0.1:8787'
+                        # while others include '/status'. Ensure we don't double it.
+                        if "/status" not in dashboard:
                             dashboard = dashboard.rstrip("/") + "/status"
-                        print(f"Dask dashboard: {dashboard}")
+
+                        # Fallback for systems where 127.0.0.1 is preferred over names
+                        dashboard = dashboard.replace("localhost", "127.0.0.1")
+
+                        print(
+                            f"Dask dashboard: {dashboard}\n"
+                        )  # Extra newline for visibility
                         try:
                             if webbrowser is not None and getattr(
                                 args, "open_dashboard", False
@@ -1014,42 +1030,36 @@ def dask_setup(worker):
                 except Exception:
                     pass
 
-                # Register a simple worker plugin that applies zarr/mkldnn
-                # patches on worker startup.
+                # Register worker plugins and setup logging immediately
                 try:
 
-                    class _ZarrPatchPlugin:
+                    class _WorkerSetupPlugin:
                         def setup(self, worker):
                             _patch_worker_all()
+                            if log_file:
+                                _set_worker_logging(log_file)
 
                     try:
-                        client.register_plugin(_ZarrPatchPlugin(), name="zarr_patches")
-                        print("Registered zarr patch worker plugin")
+                        client.register_plugin(
+                            _WorkerSetupPlugin(), name="worker_setup"
+                        )
+                        print("Registered worker setup plugin (patches + logging)")
                     except Exception:
                         pass
                 except Exception:
                     pass
 
                 try:
-                    res = client.run(_patch_worker_all)
-                    print("Applied worker patches via client.run(): %r" % (res,))
-
-                    # Also redirect worker logs to the same file if possible
+                    # Backward compatibility / aggressive activation
+                    client.run(_patch_worker_all)
                     if log_file:
+                        client.run(_set_worker_logging, log_file)
                         try:
-                            client.run(_set_worker_logging, log_file)
-                            print(f"Workers now redirecting output to: {log_file}")
-
-                            # And the scheduler
-                            try:
-                                client.run_on_scheduler(_set_worker_logging, log_file)
-                                print(f"Scheduler now redirecting output to: {log_file}")
-                            except Exception:
-                                pass
-                        except Exception as e:
-                            print(f"Warning: Could not redirect worker logging: {e}")
+                            client.run_on_scheduler(_set_worker_logging, log_file)
+                        except Exception:
+                            pass
                 except Exception as e:
-                    print("Warning: client.run(_patch_worker_all) failed:", e)
+                    print(f"Warning: Worker setup failed: {e}")
 
                 # Determine whether to pass client/cluster to distributed_eval
                 sig = _inspect.signature(ds.distributed_eval)
