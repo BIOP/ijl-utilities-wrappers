@@ -205,7 +205,9 @@ def get_optimal_n_workers(
     is_3d_mode = z > 1
 
     if is_3d_mode:
-        rescaled_voxels = (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
+        rescaled_voxels = (
+            (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
+        )
     else:
         rescaled_voxels = z * (y * scaling_factor) * (x * scaling_factor)
 
@@ -272,7 +274,13 @@ def get_optimal_n_workers(
     except Exception as e:
         print(f"Error in GPU worker calculation: {e}. Falling back to 1 worker.")
         return 1, 1, 1
-    modules and that `cellpose.contrib.distributed_segmentation`
+
+
+def validate_runtime_requirements() -> Tuple[Any, str]:
+    """Import and validate the presence of required Python libraries.
+
+    Ensures that the environment has `cellpose`, `dask`, `zarr`, and
+    `tifffile` modules and that `cellpose.contrib.distributed_segmentation`
     provides the expected helpers. Exits the program with an
     informative message when a requirement is missing.
 
@@ -457,8 +465,10 @@ def _patch_worker_all() -> None:
         # PermissionError when multiple workers try to open the same log file.
         try:
             import cellpose.io
+
             def _noop_logger_setup(*args, **kwargs):
                 pass
+
             cellpose.io.logger_setup = _noop_logger_setup
         except Exception:
             pass
@@ -2009,220 +2019,6 @@ def main():
 
     if os.path.exists(write_zarr):
         print(f"Warning: will overwrite existing Zarr at {write_zarr}")
-    # Some versions of zarr changed the signature of zarr.open to make
-    # the 'mode' parameter keyword-only. Upstream distributed_segmentation
-    # calls zarr.open(path, 'w', ...). Detect that case and monkeypatch
-    # zarr.open to accept a positional mode to remain compatible.
-    try:
-        # Always wrap zarr.open to accept positional mode argument for compatibility.
-        _orig_zarr_open = zarr.open
-
-        def _zarr_open_compat(*args, **kwargs):
-            # If second positional arg looks like a mode string, forward as keyword
-            if len(args) >= 2 and isinstance(args[1], str):
-                return _orig_zarr_open(store=args[0], mode=args[1], *args[2:], **kwargs)
-            # otherwise try to forward as-is (works if signature accepts positional store only)
-            return _orig_zarr_open(*args, **kwargs)
-
-        zarr.open = _zarr_open_compat
-        # patch the reference inside the distributed_segmentation module as well, if present
-        try:
-            if hasattr(ds, "zarr") and hasattr(ds.zarr, "open"):
-                ds.zarr.open = zarr.open
-        except Exception:
-            pass
-
-        # Apply patches for Zarr compatibility (float slice handling)
-        # Prefer using the shared worker_patches module if available
-        patches_applied = False
-        try:
-            if worker_patches is not None:
-                worker_patches.apply_zarr_patches()
-                patches_applied = True
-                logger.info("Applied zarr patches via worker_patches module")
-        except Exception:
-            pass
-
-        if not patches_applied:
-            logger.info("worker_patches not available; applying inline zarr patches")
-            # Inline fallback: monkeypatch Array.__getitem__ and __setitem__
-            try:
-                if _zarr_array is not None:
-                    _orig_get_main = _zarr_array.Array.__getitem__
-                    _orig_set_main = _zarr_array.Array.__setitem__
-
-                    def _coerce(sel, mode="expand"):
-                        # Minimal recursive coercion with mode support
-                        if isinstance(sel, slice):
-                            if sel.start is None:
-                                start = 0
-                            else:
-                                val = float(sel.start)
-                                start = (
-                                    int(round(val))
-                                    if mode == "nearest"
-                                    else int(math.floor(val))
-                                )
-
-                            if sel.stop is None:
-                                stop = None  # zarr handles None, or we can't easily know dim_len here without 'self'
-                            else:
-                                val = float(sel.stop)
-                                if mode == "nearest" and sel.start is not None:
-                                    # Shape preserving
-                                    try:
-                                        length = val - float(sel.start)
-                                        stop = start + int(round(length))
-                                    except:
-                                        stop = int(round(val))
-                                else:
-                                    stop = (
-                                        int(round(val))
-                                        if mode == "nearest"
-                                        else int(math.ceil(val))
-                                    )
-
-                            # Handle step
-                            step = sel.step
-                            if step is not None:
-                                try:
-                                    step = int(float(step))
-                                except:
-                                    pass
-
-                            return slice(start, stop, step)
-                        elif isinstance(sel, (tuple, list)):
-                            return tuple(_coerce(s, mode) for s in sel)
-                        elif hasattr(sel, "astype"):
-                            return sel.astype(int)
-                        elif isinstance(
-                            sel, (numbers.Number, np.generic)
-                        ) and not isinstance(sel, int):
-                            return int(float(sel))
-                        return sel
-
-                    def _getitem_main(self, selection):
-                        # Use floor for Zarr getitem as well to stay consistent with block boundaries
-                        new_sel = _coerce(selection, mode="expand")
-                        return _orig_get_main(self, new_sel)
-
-                    def _setitem_main(self, selection, value):
-                        # Force slice length to match data length to prevent Zarr crash on mismatch
-                        try:
-                            if isinstance(selection, tuple) and hasattr(value, "shape"):
-                                slices_count = sum(
-                                    1 for s in selection if isinstance(s, slice)
-                                )
-                                if slices_count == len(value.shape):
-                                    new_sel_list = []
-                                    v_idx = 0
-                                    for s in selection:
-                                        if isinstance(s, slice):
-                                            length = value.shape[v_idx]
-                                            if s.start is None:
-                                                start = 0
-                                            else:
-                                                try:
-                                                    # Use math.floor for start to match grid alignment
-                                                    start = int(
-                                                        math.floor(float(s.start))
-                                                    )
-                                                except:
-                                                    start = 0
-
-                                            stop = start + length
-
-                                            step = s.step
-                                            if step is not None:
-                                                try:
-                                                    step = int(float(step))
-                                                except:
-                                                    pass
-
-                                            new_sel_list.append(
-                                                slice(start, stop, step)
-                                            )
-                                            v_idx += 1
-                                        else:
-                                            new_sel_list.append(
-                                                _coerce(s, mode="nearest")
-                                            )
-                                    return _orig_set_main(
-                                        self, tuple(new_sel_list), value
-                                    )
-                        except Exception:
-                            pass
-
-                        new_sel = _coerce(selection, mode="nearest")
-                        return _orig_set_main(self, new_sel, value)
-
-                    _zarr_array.Array.__getitem__ = _getitem_main
-                    _zarr_array.Array.__setitem__ = _setitem_main
-                    logger.info("Patched Array.__getitem__ and __setitem__ (inline)")
-
-                # Also patch SliceDimIndexer if available
-                if _z_idx is not None:
-                    _z_idx_main = _z_idx
-                    _orig_slice_init_main = _z_idx_main.SliceDimIndexer.__init__
-
-                    def _slice_init_compat_main(self, dim_sel, dim_len, dim_chunk_len):
-                        def _coerce_dim(sel):
-                            if isinstance(sel, slice):
-                                # Coerce to integer bounds and clamp to dimension length
-                                # Using mode='nearest' logic: round floats to integers
-                                if sel.start is None:
-                                    start = 0
-                                else:
-                                    start = int(round(float(sel.start)))
-
-                                if sel.stop is None:
-                                    stop = dim_len
-                                else:
-                                    stop = int(round(float(sel.stop)))
-
-                                # Clamp
-                                if start < 0:
-                                    start = max(0, dim_len + start)
-                                if stop < 0:
-                                    stop = max(0, dim_len + stop)
-                                stop = min(stop, dim_len)
-                                # Fix potential empty slice if bounds crossed due to rounding
-                                if stop < start:
-                                    stop = start
-
-                                step = sel.step
-                                if step is not None:
-                                    try:
-                                        step = int(float(step))
-                                    except:
-                                        step = 1
-                                else:
-                                    step = 1
-                                return slice(start, stop, step)
-                            return sel  # Assume other types handled or passed through
-
-                        coerced = _coerce_dim(dim_sel)
-                        return _orig_slice_init_main(
-                            self, coerced, dim_len, dim_chunk_len
-                        )
-
-                    _z_idx_main.SliceDimIndexer.__init__ = _slice_init_compat_main
-            except Exception:
-                pass
-
-        # Reload the distributed_segmentation module to ensure any imported references
-        # to zarr.open inside the module pick up our wrapper.
-        try:
-            importlib.reload(ds)
-            logger.info("Reloaded distributed_segmentation after zarr.open patch.")
-        except Exception as e:
-            print("Could not reload distributed_segmentation:", e)
-
-        logger.info(
-            "Patched zarr.open to be compatible with older callers (accepts positional mode)."
-        )
-    except Exception as e:
-        print("Could not apply zarr.open compatibility patch:", e)
 
     logger.info("Starting distributed segmentation...")
     out_zarr, boxes = _run_distributed_eval(
