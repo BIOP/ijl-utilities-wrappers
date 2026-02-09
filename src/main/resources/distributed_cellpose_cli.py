@@ -225,15 +225,16 @@ def get_optimal_n_workers(
     # RAM Estimation
     # Multiplier: float32 image (4) + flows (16) + grad/probs + u-net intermediates
     # 3D needs much more workspace memory.
-    multiplier = 100 if is_3d_mode else 30
-    
+    multiplier = 80 if is_3d_mode else 20
+    estimated_ram_per_worker = rescaled_voxels * 4 * multiplier
+
     max_workers_ram = eff_requested_workers
     if psutil is not None:
         try:
             available_ram = psutil.virtual_memory().available
             # Reserve a larger safety buffer for OS/Fiji (8GB)
             usable_ram = max(0, available_ram - (8 * 1024**3)) * 0.8
-            max_workers_ram = int(usable_ram // estimated_ram_per_worker)
+            max_workers_ram = int(usable_ram // estimated_ram_per_worker) if estimated_ram_per_worker > 0 else 1
 
             print(
                 f"System RAM: {psutil.virtual_memory().total / 1024**3:.2f} GB "
@@ -266,7 +267,7 @@ def get_optimal_n_workers(
         usable_memory_per_gpu = min(total_memory_single_gpu * 0.7, free_memory * 0.8)
 
         # VRAM multiplier is lower than RAM but still significant for 3D
-        vram_multiplier = 60 if is_3d_mode else 15
+        vram_multiplier = 40 if is_3d_mode else 10
         estimated_vram_per_worker = rescaled_voxels * 4 * vram_multiplier
 
         workers_per_gpu = int(usable_memory_per_gpu // estimated_vram_per_worker)
