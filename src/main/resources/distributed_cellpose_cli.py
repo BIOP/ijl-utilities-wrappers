@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Distributed Cellpose CLI helper.
+"""Cellpose Distributed CLI helper.
 
 This module provides a command-line interface for running Cellpose segmentation
 distributed across Dask workers, with support for Zarr arrays.
@@ -123,6 +123,23 @@ class Tee:
         pass
 
 
+def _update_log_handlers():
+    """Update all existing logging handlers to use the current sys.stderr."""
+    try:
+        root = logging.getLogger()
+        for handler in root.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setStream(sys.stderr)
+        # Also update cellpose logger if it exists
+        if "cellpose" in logging.Logger.manager.loggerDict:
+            cp_logger = logging.getLogger("cellpose")
+            for handler in cp_logger.handlers:
+                if isinstance(handler, logging.StreamHandler):
+                    handler.setStream(sys.stderr)
+    except Exception:
+        pass
+
+
 def _set_worker_logging(log_file):
     """Callback for dask workers to redirect their output to a common file."""
     if log_file:
@@ -133,6 +150,7 @@ def _set_worker_logging(log_file):
             f = open(log_file, "a", encoding="utf-8")
             sys.stdout = Tee(sys.stdout, f)
             sys.stderr = Tee(sys.stderr, f)
+            _update_log_handlers()
             print(f"Worker {os.getpid()} logging redirected to {log_file}")
         except Exception as e:
             print(f"Worker {os.getpid()} could not redirect logging: {e}")
@@ -234,7 +252,11 @@ def get_optimal_n_workers(
             available_ram = psutil.virtual_memory().available
             # Reserve a larger safety buffer for OS/Fiji (8GB)
             usable_ram = max(0, available_ram - (8 * 1024**3)) * 0.8
-            max_workers_ram = int(usable_ram // estimated_ram_per_worker) if estimated_ram_per_worker > 0 else 1
+            max_workers_ram = (
+                int(usable_ram // estimated_ram_per_worker)
+                if estimated_ram_per_worker > 0
+                else 1
+            )
 
             print(
                 f"System RAM: {psutil.virtual_memory().total / 1024**3:.2f} GB "
@@ -332,13 +354,13 @@ def validate_runtime_requirements() -> Tuple[Any, str]:
     ds_mod = None
     if "cellpose" not in missing:
         try:
-            print("Checking distributed cellpose module...")
+            print("Checking cellpose distributed module...")
             sys.stdout.flush()
             ds_mod = importlib.import_module(
                 "cellpose.contrib.distributed_segmentation"
             )
         except Exception as e:
-            print(f"Warning: Could not import distributed cellpose components: {e}")
+            print(f"Warning: Could not import cellpose distributed components: {e}")
             missing.append("cellpose.contrib.distributed_segmentation")
 
     if missing:
@@ -366,7 +388,7 @@ def validate_runtime_requirements() -> Tuple[Any, str]:
         )
         sys.exit(1)
 
-    print("Found required Python packages and distributed cellpose helpers:")
+    print("Found required Python packages and cellpose distributed helpers:")
     for m, v in info:
         print(f" - {m} {v}")
 
@@ -976,11 +998,16 @@ def dask_setup(worker):
                         except Exception:
                             pass
                     if dashboard:
+                        # Ensure we have a valid status page link (recent dask versions can 404 at root)
+                        if not (dashboard.endswith("/status") or dashboard.endswith("/status/")):
+                            dashboard = dashboard.rstrip("/") + "/status"
                         print(f"Dask dashboard: {dashboard}")
                         try:
                             if webbrowser is not None and getattr(
                                 args, "open_dashboard", False
                             ):
+                                # Small delay to let the dashboard server stabilize
+                                time.sleep(1)
                                 webbrowser.open(dashboard)
                         except Exception:
                             pass
@@ -1012,6 +1039,13 @@ def dask_setup(worker):
                         try:
                             client.run(_set_worker_logging, log_file)
                             print(f"Workers now redirecting output to: {log_file}")
+
+                            # And the scheduler
+                            try:
+                                client.run_on_scheduler(_set_worker_logging, log_file)
+                                print(f"Scheduler now redirecting output to: {log_file}")
+                            except Exception:
+                                pass
                         except Exception as e:
                             print(f"Warning: Could not redirect worker logging: {e}")
                 except Exception as e:
@@ -1254,7 +1288,7 @@ def dask_setup(worker):
 
 
 def main():
-    """Command-line entry point for the distributed Cellpose helper.
+    """Command-line entry point for the Cellpose Distributed helper.
 
     Parses CLI arguments, prepares an input Zarr (from a TIFF or a
     directory of TIFFs), applies compatibility patches (`zarr.open`
@@ -1265,7 +1299,7 @@ def main():
     -------
     None
     """
-    parser = argparse.ArgumentParser(description="Distributed Cellpose CLI helper")
+    parser = argparse.ArgumentParser(description="Cellpose Distributed CLI helper")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--input_file", help="Single TIFF input file")
     group.add_argument(
@@ -1485,6 +1519,8 @@ def main():
             # Redirect stdout and stderr using our thread-safe Tee class
             sys.stdout = Tee(sys.stdout, log_handle, lock=log_lock)
             sys.stderr = Tee(sys.stderr, log_handle, lock=log_lock)
+
+            _update_log_handlers()
 
             # We don't add a separate FileHandler to the logger because the logger
             # already writes to sys.stderr (via StreamHandler), which we just redirected.

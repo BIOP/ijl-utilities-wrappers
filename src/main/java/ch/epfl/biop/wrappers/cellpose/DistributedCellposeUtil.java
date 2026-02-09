@@ -34,7 +34,7 @@ public class DistributedCellposeUtil {
 
             Path destinationPath = Paths.get(envDirPath, resourceFileName);
             Files.copy(inputStream, destinationPath, StandardCopyOption.REPLACE_EXISTING);
-            System.out.println("Distributed Cellpose script copied to: " + destinationPath);
+            System.out.println("Cellpose Distributed script copied to: " + destinationPath);
         } catch (Exception e) {
             e.printStackTrace();
             return false;
