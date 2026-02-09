@@ -242,22 +242,22 @@ def get_optimal_n_workers(
         num_gpus = torch.cuda.device_count()
         gpu_props = torch.cuda.get_device_properties(0)
         total_memory_single_gpu = gpu_props.total_memory
-        
+
         torch.cuda.empty_cache()
         free_memory = total_memory_single_gpu - torch.cuda.memory_allocated(0)
         usable_memory_per_gpu = min(total_memory_single_gpu * 0.8, free_memory * 0.95)
 
         estimated_vram_per_worker = rescaled_voxels * 4 * 10
         workers_per_gpu = int(usable_memory_per_gpu // estimated_vram_per_worker)
-        
+
         # PERFORMANCE TUNE: 1 worker per GPU is the official recommendation for stability/speed.
         # This avoids multi-process contention on the same CUDA context.
         optimal_workers_per_gpu = 1 if workers_per_gpu >= 1 else 0
-        
+
         # Determine number of GPU workers
         n_workers_gpu = max(1, num_gpus * optimal_workers_per_gpu)
         n_workers = min(eff_requested_workers, n_workers_gpu, max_workers_ram)
-        
+
         # Internal threads: each worker can use multiple cores for pre/post-processing
         # but we set Dask threads to 1 to ensure blocks are processed sequentially per GPU.
         internal_threads = min(16, max(1, total_cpus // n_workers))
