@@ -204,12 +204,16 @@ def get_optimal_n_workers(
     z, y, x = blocksize
     is_3d_mode = z > 1
 
-    if is_3d_mode:
-        rescaled_voxels = (
-            (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
-        )
-    else:
-        rescaled_voxels = z * (y * scaling_factor) * (x * scaling_factor)
+    # Apply padding factor for volume estimation (default tile_overlap is 0.1)
+    # 3D padding has a much larger impact on voxel count than 2D.
+    padding = 1.25 if is_3d_mode else 1.15
+    padded_voxels = (
+        (z * padding) * (y * padding) * (x * padding)
+        if is_3d_mode
+        else (z * y * padding * x * padding)
+    )
+
+    rescaled_voxels = padded_voxels * (scaling_factor ** (3 if is_3d_mode else 2))
 
     print(
         f"Memory estimation: model_diam={model_diam}, diameter={eff_diameter}, scaling_factor={scaling_factor:.2f}, 3D={is_3d_mode}"
@@ -219,14 +223,25 @@ def get_optimal_n_workers(
     eff_requested_workers = requested_n_workers if requested_n_workers > 0 else 9999
 
     # RAM Estimation
+    # Multiplier: float32 image (4) + flows (16) + grad/probs + u-net intermediates
+    # 3D needs much more workspace memory.
+    multiplier = 100 if is_3d_mode else 30
+    
     max_workers_ram = eff_requested_workers
     if psutil is not None:
         try:
             available_ram = psutil.virtual_memory().available
-            estimated_ram_per_worker = rescaled_voxels * 4 * 20
-            usable_ram = available_ram * 0.8
-            max_workers_ram = max(1, int(usable_ram // estimated_ram_per_worker))
-            print(f"RAM-limited to {max_workers_ram} workers")
+            # Reserve a larger safety buffer for OS/Fiji (8GB)
+            usable_ram = max(0, available_ram - (8 * 1024**3)) * 0.8
+            max_workers_ram = int(usable_ram // estimated_ram_per_worker)
+
+            print(
+                f"System RAM: {psutil.virtual_memory().total / 1024**3:.2f} GB "
+                f"(Available: {available_ram / 1024**3:.2f} GB)"
+            )
+            print(
+                f"Estimated RAM per worker for block {blocksize}: {estimated_ram_per_worker / 1024**2:.2f} MB"
+            )
         except Exception:
             pass
 
@@ -234,12 +249,12 @@ def get_optimal_n_workers(
         # CPU mode: maximize process parallelism for GIL avoidance
         n_workers = min(eff_requested_workers, total_cpus, max_workers_ram)
         # Use 1 Dask thread per worker, 1 OMP thread per worker
-        return n_workers, 1, 1
+        return max(0, n_workers), 1, 1
 
     # GPU mode
     try:
         if not torch.cuda.is_available():
-            return min(eff_requested_workers, total_cpus, max_workers_ram), 1, 1
+            return max(0, min(eff_requested_workers, total_cpus, max_workers_ram)), 1, 1
 
         num_gpus = torch.cuda.device_count()
         gpu_props = torch.cuda.get_device_properties(0)
@@ -247,33 +262,41 @@ def get_optimal_n_workers(
 
         torch.cuda.empty_cache()
         free_memory = total_memory_single_gpu - torch.cuda.memory_allocated(0)
-        usable_memory_per_gpu = min(total_memory_single_gpu * 0.8, free_memory * 0.95)
+        # Be conservative with GPU memory (leave room for OS/display)
+        usable_memory_per_gpu = min(total_memory_single_gpu * 0.7, free_memory * 0.8)
 
-        estimated_vram_per_worker = rescaled_voxels * 4 * 10
+        # VRAM multiplier is lower than RAM but still significant for 3D
+        vram_multiplier = 60 if is_3d_mode else 15
+        estimated_vram_per_worker = rescaled_voxels * 4 * vram_multiplier
+
         workers_per_gpu = int(usable_memory_per_gpu // estimated_vram_per_worker)
+
+        print(
+            f"GPU: {gpu_props.name} | Total: {total_memory_single_gpu / 1024**3:.2f} GB | Free: {free_memory / 1024**3:.2f} GB"
+        )
+        print(
+            f"Estimated GPU memory per worker for block {blocksize}: {estimated_vram_per_worker / 1024**2:.2f} MB"
+        )
 
         # PERFORMANCE TUNE: 1 worker per GPU is the official recommendation for stability/speed.
         # This avoids multi-process contention on the same CUDA context.
-        optimal_workers_per_gpu = 1 if workers_per_gpu >= 1 else 0
+        optimal_workers_per_gpu = min(1, workers_per_gpu)
 
         # Determine number of GPU workers
-        n_workers_gpu = max(1, num_gpus * optimal_workers_per_gpu)
+        n_workers_gpu = num_gpus * optimal_workers_per_gpu
         n_workers = min(eff_requested_workers, n_workers_gpu, max_workers_ram)
 
         # Internal threads: each worker can use multiple cores for pre/post-processing
         # but we set Dask threads to 1 to ensure blocks are processed sequentially per GPU.
-        internal_threads = min(16, max(1, total_cpus // n_workers))
+        internal_threads = min(16, max(1, total_cpus // max(1, n_workers)))
 
-        print(
-            f"GPU mode: n_workers={n_workers}, dask_threads=1, internal_threads={internal_threads} "
-            f"(GPU-limited: {n_workers_gpu}, RAM-limited: {max_workers_ram})"
-        )
-
-        return n_workers, 1, internal_threads
+        return max(0, n_workers), 1, internal_threads
 
     except Exception as e:
-        print(f"Error in GPU worker calculation: {e}. Falling back to 1 worker.")
-        return 1, 1, 1
+        print(
+            f"Error in GPU worker calculation: {e}. Falling back to 0 workers (will trigger retry)."
+        )
+        return 0, 1, 1
 
 
 def validate_runtime_requirements() -> Tuple[Any, str]:
@@ -1882,40 +1905,79 @@ def main():
         )
         args.n_workers = 1
 
-    # Optimize n_workers and threads_per_worker based on GPU memory availability
-    optimal_n_workers, dask_threads, internal_threads = get_optimal_n_workers(
-        use_gpu=args.use_gpu,
-        requested_n_workers=args.n_workers,
-        blocksize=blocksize,
-        model_type=args.model if isinstance(args.model, str) else "cyto3",
-        diameter=args.diameter,
+    # Logic to find a blocksize that actually fits in memory
+    print(
+        f"\nHardware detection: {os.cpu_count()} CPUs, {torch.cuda.device_count() if torch.cuda and torch.cuda.is_available() else 0} GPUs detected. Optimize={args.optimize_parallel}"
     )
 
-    # If optimize_parallel is set, check if we can improve blocksize to allow more parallelism
-    if args.optimize_parallel and optimal_n_workers < 2 and args.use_gpu:
-        print("Attempting to find more optimal blocksize for parallel execution...")
-        z, y, x = blocksize
-        if y > 256 or x > 256:
-            new_y, new_x = min(y, 256), min(x, 256)
-            new_blocksize = (z, new_y, new_x)
-            print(f"Testing smaller blocksize: {new_blocksize}")
+    current_block = list(blocksize)
+    optimal_n_workers = 0
+    dask_threads = 1
+    internal_threads = 1
 
+    while optimal_n_workers == 0:
+        optimal_n_workers, dask_threads, internal_threads = get_optimal_n_workers(
+            use_gpu=args.use_gpu,
+            requested_n_workers=args.n_workers,
+            blocksize=tuple(current_block),
+            model_type=args.model if isinstance(args.model, str) else "cyto3",
+            diameter=args.diameter,
+        )
+
+        if optimal_n_workers > 0:
+            blocksize = tuple(current_block)
+            break
+
+        # If we get here, the block is too large for 1 worker.
+        # Reduce the largest dimension(s) and retry.
+        z, y, x = current_block
+        if y > 128 or x > 128:
+            print(
+                f"CRITICAL: Block {tuple(current_block)} is too large for system RAM/VRAM. Reducing spatial dimensions..."
+            )
+            current_block[1] = max(128, y // 2)
+            current_block[2] = max(128, x // 2)
+        elif z > 16:
+            print(
+                f"CRITICAL: Block {tuple(current_block)} is still too large. Reducing Z dimension..."
+            )
+            current_block[0] = max(16, z // 2)
+        else:
+            # We reached a minimum viable block size and it still doesn't fit
+            print(
+                "ERROR: Even the minimum block size (16, 128, 128) exceeds available memory."
+            )
+            print("Proceeding with 1 worker and hoping for the best (OOM likely).")
+            optimal_n_workers = 1
+            blocksize = tuple(current_block)
+            break
+
+    # If optimize_parallel is ON, we might want to INCREASE workers if possible by shrinking further
+    if args.optimize_parallel and optimal_n_workers < 2 and args.use_gpu:
+        print(
+            "Optimization ON: Checking if further block reduction would allow more parallel workers..."
+        )
+        z, y, x = current_block
+        if y > 256 or x > 256:
+            test_block = (z, 256, 256)
             n_p, d_p, i_p = get_optimal_n_workers(
                 use_gpu=args.use_gpu,
                 requested_n_workers=args.n_workers,
-                blocksize=new_blocksize,
+                blocksize=test_block,
                 model_type=args.model if isinstance(args.model, str) else "cyto3",
                 diameter=args.diameter,
             )
-
             if n_p > optimal_n_workers:
                 print(
-                    f"Found better parameters: workers={n_p}, blocksize={new_blocksize}"
+                    f"Optimization ON: Smaller block {test_block} allowed {n_p} workers. Switching."
                 )
-                optimal_n_workers = n_p
-                dask_threads = d_p
-                internal_threads = i_p
-                blocksize = new_blocksize
+                optimal_n_workers, dask_threads, internal_threads = n_p, d_p, i_p
+                blocksize = test_block
+
+    # Final blocksize update in eval_kwargs if it changed
+    if eval_kwargs.get("do_3D"):
+        # Normalizing diameter again just in case
+        eval_kwargs["diameter"] = int(math.ceil(float(args.diameter)))
 
     # CRITICAL: Set environment variables in main process BEFORE creating cluster
     # These control thread limits for worker processes that will be spawned

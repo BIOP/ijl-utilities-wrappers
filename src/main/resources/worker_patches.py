@@ -343,6 +343,17 @@ def setup_worker(nthreads):
             os.environ["MKL_NUM_THREADS"] = str(nthreads)
             os.environ["OPENBLAS_NUM_THREADS"] = str(nthreads)
             os.environ["NUMEXPR_NUM_THREADS"] = str(nthreads)
+            # Reduce fragmentation and improve stability for small GPUs
+            os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+        except Exception:
+            pass
+
+        # Disable MKLDNN which can cause instability or MemoryError in some 3D scenarios
+        try:
+            import torch.utils.mkldnn as mkldnn
+
+            if mkldnn is not None and hasattr(mkldnn, "set_enabled"):
+                mkldnn.set_enabled(False)
         except Exception:
             pass
 
