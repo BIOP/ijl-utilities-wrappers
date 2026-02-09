@@ -182,156 +182,96 @@ def get_optimal_n_workers(
     blocksize: Tuple[int, ...],
     model_type: str = "cyto3",
     diameter: float = 30.0,
-) -> Tuple[int, int]:
-    """Calculate optimal number of workers based on GPU memory availability.
-
-    When GPU is enabled, this function queries available GPU memory and
-    estimates memory requirements per worker to avoid CUDA out-of-memory
-    errors. Returns a safe n_workers value that won't exceed GPU memory.
-
-    Parameters
-    ----------
-    use_gpu : bool
-        Whether GPU acceleration is enabled.
-    requested_n_workers : int, optional
-        The user-requested number of workers.
-    blocksize : tuple
-        Block size used for processing (Z, Y, X).
-    model_type : str, optional
-        The cellpose model type being used (default: "cyto3").
-    diameter : float, optional
-        The diameter used for evaluation (default: 30.0).
+) -> Tuple[int, int, int]:
+    """Calculate optimal number of workers based on hardware availability.
 
     Returns
     -------
-    Tuple[int, int]
-        `(n_workers, threads_per_worker)` recommended for the cluster.
+    Tuple[int, int, int]
+        `(n_workers, dask_threads, internal_threads)`
+        - n_workers: Number of processes in the cluster.
+        - dask_threads: Threads per worker for Dask task scheduling (blocks).
+        - internal_threads: Threads for internal libraries (MKL/OMP/Torch).
     """
     if blocksize is None:
         blocksize = (32, 224, 224)
 
-    # Calculate scaling factor. Cellpose models are trained on a specific diameter.
-    # We estimate the scaling factor to adjust memory requirements accordingly.
-    # cyto/cyto2/cyto3/etc ~ 30.0, nuclei ~ 17.0
+    # Calculate scaling factor
     model_diam = 17.0 if "nuclei" in str(model_type).lower() else 30.0
-
-    # If diameter is 0 (auto), assume no scaling (factor 1.0) for safety or use 30 as default
     eff_diameter = float(diameter) if float(diameter) > 0 else 30.0
     scaling_factor = model_diam / eff_diameter
 
-    # In Cellpose 3D evaluation (do_3D=True), scaling is typically applied to all
-    # spatial dimensions (XY and Z) to match the model training size.
+    z, y, x = blocksize
+    is_3d_mode = z > 1
+
+    if is_3d_mode:
+        rescaled_voxels = (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
+    else:
+        rescaled_voxels = z * (y * scaling_factor) * (x * scaling_factor)
+
     print(
-        f"Memory estimation: model_diam={model_diam}, diameter={eff_diameter}, scaling_factor={scaling_factor:.2f}"
+        f"Memory estimation: model_diam={model_diam}, diameter={eff_diameter}, scaling_factor={scaling_factor:.2f}, 3D={is_3d_mode}"
     )
 
-    # Initial worker counts based on CPU and requested limits
     total_cpus = os.cpu_count() or 1
     eff_requested_workers = requested_n_workers if requested_n_workers > 0 else 9999
 
-    # Estimate CPU RAM limits if psutil is available
+    # RAM Estimation
     max_workers_ram = eff_requested_workers
     if psutil is not None:
         try:
-            vm = psutil.virtual_memory()
-            available_ram = vm.available  # bytes
-
-        # Estimate RAM per worker.
-        # Cellpose 3D can be very hungry. We use a conservative estimate:
-        # rescaled_voxels * 4 (float32) * factor (e.g. 20x for all internal buffers)
-        z, y, x = blocksize
-        rescaled_voxels = (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
-        # Using 24x factor for RAM (flows, gradients, original, scales, overhead)
-        estimated_ram_per_worker = rescaled_voxels * 4 * 24
-
-        # Define usable RAM (leave some for system)
-        usable_ram = available_ram * 0.8
-
-        max_workers_ram = int(usable_ram // estimated_ram_per_worker)
-        max_workers_ram = max(1, max_workers_ram)
-
-        print(f"System RAM: {vm.total / (1024**3):.2f} GB (Available: {available_ram / (1024**3):.2f} GB)")
-        print(f"Estimated RAM per worker for block {blocksize}: {estimated_ram_per_worker / (1024**2):.2f} MB")
-        if max_workers_ram < total_cpus:
+            available_ram = psutil.virtual_memory().available
+            estimated_ram_per_worker = rescaled_voxels * 4 * 20
+            usable_ram = available_ram * 0.8
+            max_workers_ram = max(1, int(usable_ram // estimated_ram_per_worker))
             print(f"RAM-limited to {max_workers_ram} workers")
-    except Exception:
-        # Fallback if psutil is missing: assume 4GB per worker is safe-ish for typical blocks
-        pass
+        except Exception:
+            pass
 
     if not use_gpu:
-        # CPU mode: use RAM and CPU core constraints
+        # CPU mode: maximize process parallelism for GIL avoidance
         n_workers = min(eff_requested_workers, total_cpus, max_workers_ram)
-        threads_per_worker = max(1, total_cpus // n_workers)
-        return n_workers, threads_per_worker
+        # Use 1 Dask thread per worker, 1 OMP thread per worker
+        return n_workers, 1, 1
 
-    # GPU mode: calculate safe n_workers
+    # GPU mode
     try:
         if not torch.cuda.is_available():
-            print("Warning: GPU requested but torch.cuda is not available.")
-            return min(eff_requested_workers, total_cpus, max_workers_ram), 1
+            return min(eff_requested_workers, total_cpus, max_workers_ram), 1, 1
 
-        # Use the first GPU for memory estimation
+        num_gpus = torch.cuda.device_count()
         gpu_props = torch.cuda.get_device_properties(0)
-        total_memory = gpu_props.total_memory  # bytes
-
-        # Get currently available memory
+        total_memory_single_gpu = gpu_props.total_memory
+        
         torch.cuda.empty_cache()
-        reserved_memory = torch.cuda.memory_reserved(0)
-        allocated_memory = torch.cuda.memory_allocated(0)
-        free_memory = total_memory - allocated_memory
+        free_memory = total_memory_single_gpu - torch.cuda.memory_allocated(0)
+        usable_memory_per_gpu = min(total_memory_single_gpu * 0.8, free_memory * 0.95)
 
-        print(f"GPU: {gpu_props.name}")
-        print(f"Total GPU memory: {total_memory / (1024**3):.2f} GB")
-        print(f"Reserved: {reserved_memory / (1024**3):.2f} GB")
-        print(f"Allocated: {allocated_memory / (1024**3):.2f} GB")
-        print(f"Free: {free_memory / (1024**3):.2f} GB")
-
-        # Define usable memory (70% of total memory to be safe, or 90% of free memory)
-        # We use a conservative estimate to account for fragmentation and overhead.
-        usable_memory = min(total_memory * 0.7, free_memory * 0.9)
-
-        # Estimate memory per worker
-        # Memory consumption is roughly proportional to the number of voxels
-        # after scaling. Cellpose uses float32 internally (4 bytes per voxel).
-        # We add a significant safety factor (e.g., 5-10x) for intermediate
-        # gradients, overlays, and other internal buffers.
-        z, y, x = blocksize
-        rescaled_voxels = (
-            (z * scaling_factor) * (y * scaling_factor) * (x * scaling_factor)
-        )
-        # Using a safety overhead of ~12x to be conservative with VRAM
-        estimated_mem_per_worker = rescaled_voxels * 4 * 12
+        estimated_vram_per_worker = rescaled_voxels * 4 * 10
+        workers_per_gpu = int(usable_memory_per_gpu // estimated_vram_per_worker)
+        
+        # PERFORMANCE TUNE: 1 worker per GPU is the official recommendation for stability/speed.
+        # This avoids multi-process contention on the same CUDA context.
+        optimal_workers_per_gpu = 1 if workers_per_gpu >= 1 else 0
+        
+        # Determine number of GPU workers
+        n_workers_gpu = max(1, num_gpus * optimal_workers_per_gpu)
+        n_workers = min(eff_requested_workers, n_workers_gpu, max_workers_ram)
+        
+        # Internal threads: each worker can use multiple cores for pre/post-processing
+        # but we set Dask threads to 1 to ensure blocks are processed sequentially per GPU.
+        internal_threads = min(16, max(1, total_cpus // n_workers))
 
         print(
-            f"Estimated GPU memory per worker for block {blocksize}: {estimated_mem_per_worker / (1024**2):.2f} MB"
+            f"GPU mode: n_workers={n_workers}, dask_threads=1, internal_threads={internal_threads} "
+            f"(GPU-limited: {n_workers_gpu}, RAM-limited: {max_workers_ram})"
         )
 
-        n_workers_gpu = int(usable_memory // estimated_mem_per_worker)
-        n_workers_gpu = max(1, n_workers_gpu)
-
-        # Final n_workers is the minimum of user-requested, CPU cores, GPU capacity, AND available RAM.
-        n_workers = min(eff_requested_workers, total_cpus, n_workers_gpu, max_workers_ram)
-        # Use as many threads as possible per worker to maximize CPU utilization
-        # while staying within total CPU limits.
-        threads_per_worker = max(1, total_cpus // n_workers)
-
-        print(
-            f"Calculated n_workers={n_workers}, threads_per_worker={threads_per_worker} (GPU-limited: {n_workers_gpu}, RAM-limited: {max_workers_ram})"
-        )
-
-        return n_workers, threads_per_worker
+        return n_workers, 1, internal_threads
 
     except Exception as e:
-        print(f"Warning: Error during GPU memory estimation: {e}")
-        # Default fallback
-        n_workers = min(eff_requested_workers, total_cpus)
-        return n_workers, 1
-
-
-def validate_runtime_requirements() -> Tuple[Any, str]:
-    """Validate required Python packages and cellpose helpers.
-
-    Checks that the Python environment exposes the required Python
+        print(f"Error in GPU worker calculation: {e}. Falling back to 1 worker.")
+        return 1, 1, 1
     modules and that `cellpose.contrib.distributed_segmentation`
     provides the expected helpers. Exits the program with an
     informative message when a requirement is missing.
@@ -1933,7 +1873,7 @@ def main():
         args.n_workers = 1
 
     # Optimize n_workers and threads_per_worker based on GPU memory availability
-    optimal_n_workers, optimal_threads_per_worker = get_optimal_n_workers(
+    optimal_n_workers, dask_threads, internal_threads = get_optimal_n_workers(
         use_gpu=args.use_gpu,
         requested_n_workers=args.n_workers,
         blocksize=blocksize,
@@ -1950,7 +1890,7 @@ def main():
             new_blocksize = (z, new_y, new_x)
             print(f"Testing smaller blocksize: {new_blocksize}")
 
-            n_parallel, t_parallel = get_optimal_n_workers(
+            n_p, d_p, i_p = get_optimal_n_workers(
                 use_gpu=args.use_gpu,
                 requested_n_workers=args.n_workers,
                 blocksize=new_blocksize,
@@ -1958,25 +1898,26 @@ def main():
                 diameter=args.diameter,
             )
 
-            if n_parallel > optimal_n_workers:
+            if n_p > optimal_n_workers:
                 print(
-                    f"Found better parameters: workers={n_parallel}, blocksize={new_blocksize}"
+                    f"Found better parameters: workers={n_p}, blocksize={new_blocksize}"
                 )
-                optimal_n_workers = n_parallel
-                optimal_threads_per_worker = t_parallel
+                optimal_n_workers = n_p
+                dask_threads = d_p
+                internal_threads = i_p
                 blocksize = new_blocksize
 
     # CRITICAL: Set environment variables in main process BEFORE creating cluster
     # These control thread limits for worker processes that will be spawned
     print("\n=== Setting global thread limits in main process ===")
     print(
-        f"Workers: {optimal_n_workers}, Threads per worker: {optimal_threads_per_worker}"
+        f"Workers: {optimal_n_workers}, Dask threads: {dask_threads}, Internal threads: {internal_threads}"
     )
-    os.environ["DASK_DISTRIBUTED__WORKER__THREADS"] = str(optimal_threads_per_worker)
-    os.environ["OMP_NUM_THREADS"] = str(optimal_threads_per_worker)
-    os.environ["MKL_NUM_THREADS"] = str(optimal_threads_per_worker)
-    os.environ["OPENBLAS_NUM_THREADS"] = str(optimal_threads_per_worker)
-    os.environ["NUMEXPR_NUM_THREADS"] = str(optimal_threads_per_worker)
+    os.environ["DASK_DISTRIBUTED__WORKER__THREADS"] = str(dask_threads)
+    os.environ["OMP_NUM_THREADS"] = str(internal_threads)
+    os.environ["MKL_NUM_THREADS"] = str(internal_threads)
+    os.environ["OPENBLAS_NUM_THREADS"] = str(internal_threads)
+    os.environ["NUMEXPR_NUM_THREADS"] = str(internal_threads)
     # Improve PyTorch CUDA allocation behavior to reduce fragmentation on small GPUs
     if args.use_gpu:
         try:
@@ -1987,13 +1928,13 @@ def main():
         except Exception:
             pass
     print(
-        f"Environment variables set - worker threads will be limited to {optimal_threads_per_worker}"
+        f"Environment variables set - internal threads will be limited to {internal_threads}"
     )
     sys.stdout.flush()
 
     cluster_kwargs = {
         "n_workers": optimal_n_workers,
-        "threads_per_worker": optimal_threads_per_worker,  # Use threads_per_worker instead of ncpus
+        "threads_per_worker": dask_threads,  # Use threads_per_worker instead of ncpus
         # Do not pass 'ncpus' here; newer distributed versions reject it.
         # Increase worker death timeout - GPU workers need more time to release CUDA contexts
         "death_timeout": 60 if args.use_gpu else 15,
