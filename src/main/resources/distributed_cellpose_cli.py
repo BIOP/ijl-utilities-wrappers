@@ -242,7 +242,9 @@ def get_optimal_n_workers(
 
     total_cpus = os.cpu_count() or 1
     eff_requested_workers = (
-        requested_n_workers if (requested_n_workers and requested_n_workers > 0) else 9999
+        requested_n_workers
+        if (requested_n_workers and requested_n_workers > 0)
+        else 9999
     )
 
     # RAM Estimation
@@ -293,15 +295,17 @@ def get_optimal_n_workers(
 
         torch.cuda.empty_cache()
         free_memory = total_memory_single_gpu - torch.cuda.memory_allocated(0)
-        # Be conservative with GPU memory (leave room for OS/display)
-        usable_memory_per_gpu = min(total_memory_single_gpu * 0.7, free_memory * 0.8)
+        # Be aggressive with GPU memory (80% usage requested)
+        usable_memory_per_gpu = min(total_memory_single_gpu * 0.8, free_memory * 0.9)
 
         # VRAM multiplier is lower than RAM but still significant for 3D
         if mem_multiplier > 0:
-            vram_multiplier = mem_multiplier / 2.0  # Heuristic: VRAM needs half of RAM multiplier
+            vram_multiplier = (
+                mem_multiplier / 2.0
+            )  # Heuristic: VRAM needs half of RAM multiplier
         else:
             vram_multiplier = 40 if is_3d_mode else 10
-        
+
         estimated_vram_per_worker = rescaled_voxels * 4 * vram_multiplier
 
         workers_per_gpu = int(usable_memory_per_gpu // estimated_vram_per_worker)
@@ -475,8 +479,8 @@ def get_auto_blocksize(
     # Determine available memory
     try:
         if use_gpu and torch.cuda.is_available():
-            # Use 60% of total VRAM as a target for the block
-            mem_limit = torch.cuda.get_device_properties(0).total_memory * 0.6
+            # Use 80% of total VRAM as a target for the block
+            mem_limit = torch.cuda.get_device_properties(0).total_memory * 0.8
         else:
             import psutil
 
@@ -1881,7 +1885,10 @@ def main():
         if blocksize == "auto":
             is_3d_mode = input_zarr.ndim >= 3
             blocksize = get_auto_blocksize(
-                input_zarr.shape, is_3d_mode, args.use_gpu, multiplier=args.mem_multiplier
+                input_zarr.shape,
+                is_3d_mode,
+                args.use_gpu,
+                multiplier=args.mem_multiplier,
             )
             print(f"Auto-resolved blocksize based on hardware: {blocksize}")
         tmpdir = None
@@ -2058,8 +2065,7 @@ def main():
         elif eval_kwargs.get("do_3D"):
             is_3d = True
             shape = (64, 1024, 1024)
-            shape, is_3d, args.use_gpu, multiplier=args.mem_multiplier
-        
+            shape, is_3d, args.use_gpu, multiplier = args.mem_multiplier
 
         blocksize = get_auto_blocksize(shape, is_3d, args.use_gpu)
         current_block = list(blocksize)
