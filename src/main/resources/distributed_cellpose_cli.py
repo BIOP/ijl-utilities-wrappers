@@ -20,6 +20,7 @@ import multiprocessing
 import numbers
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -156,6 +157,12 @@ def _set_worker_logging(log_file):
             print(f"Worker {os.getpid()} logging redirected to {log_file}")
         except Exception as e:
             print(f"Worker {os.getpid()} could not redirect logging: {e}")
+
+
+def is_port_in_use(port: int) -> bool:
+    """Check if a TCP port is currently being used on localhost."""
+    with socket.socket(socket.socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("127.0.0.1", port)) == 0
 
 
 def heartbeat(stop_event: threading.Event, log_file: Optional[str]) -> None:
@@ -1050,6 +1057,19 @@ def dask_setup(worker):
         created = None
         try:
             cluster_kwargs_local = dict(cluster_kwargs) if cluster_kwargs else {}
+
+            # PORT SAFETY: If port 8787 is in use, it might be a zombie process
+            # or a previous crashed run. Dask usually increments itself (8788, etc)
+            # but sometimes users get 404s if it binds to a stale address.
+            # Here we check for 8787 and explicitly try to avoid it if it's busy.
+            if "dashboard_address" not in cluster_kwargs_local:
+                target_port = 8787
+                # We try several ports if 8787 is busy to find a 'fresh' one
+                while is_port_in_use(target_port) and target_port < 8800:
+                    target_port += 1
+                cluster_kwargs_local["dashboard_address"] = f":{target_port}"
+                print(f"Targeting dashboard port: {target_port}")
+
             # Ensure local_directory is honored
             if (
                 args.temporary_directory
@@ -1767,7 +1787,7 @@ def main():
             # Match blocksize rank to spatial_shape rank for Zarr chunks
             # Extract only spatial block components by removing the channel axis index
             zarr_chunks = tuple(b for i, b in enumerate(blocksize) if i != c_axis_pos)
-            
+
             # Final sanity check: if rank still mismatched, use last N
             if len(zarr_chunks) != len(spatial_shape):
                 if len(zarr_chunks) > len(spatial_shape):
