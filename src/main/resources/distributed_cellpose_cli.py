@@ -165,27 +165,6 @@ def is_port_in_use(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def heartbeat(stop_event: threading.Event, log_file: Optional[str]) -> None:
-    """Thread function to print periodic status and keep the process alive.
-
-    Parameters
-    ----------
-    stop_event : threading.Event
-        Event to signal when the heartbeat should stop.
-    log_file : str, optional
-        Path to the log file being managed.
-    """
-    start_time = time.time()
-    while not stop_event.is_set():
-        elapsed = time.time() - start_time
-        msg = (
-            f"--- HEARTBEAT: Process {os.getpid()} alive, elapsed: {elapsed:.1f}s ---\n"
-        )
-        sys.stdout.write(msg)
-        sys.stdout.flush()
-        time.sleep(30)
-
-
 # Configure module logging; Fiji/launcher can redirect or capture stdout/stderr.
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -210,6 +189,7 @@ def get_optimal_n_workers(
     model_type: str = "cyto3",
     diameter: float = 30.0,
     mem_multiplier: float = 0.0,
+    anisotropy: float = 1.0,
 ) -> Tuple[int, int, int]:
     """Calculate optimal number of workers based on hardware availability.
 
@@ -241,10 +221,21 @@ def get_optimal_n_workers(
         else (z * y * padding * x * padding)
     )
 
-    rescaled_voxels = padded_voxels * (scaling_factor ** (3 if is_3d_mode else 2))
+    # Calculate effective voxel count after internal resizing
+    # If using anisotropy, Z will be upscaled significantly or XY downscaled
+    # Effective volume expansion = voxels * (scale_factor^2) * (scale_factor * anisotropy_factor)
+    # Where anisotropy_factor matches Z resolution to XY.
+    if is_3d_mode and anisotropy != 1.0:
+        # Cellpose resize logic roughly: new_z = z * anisotropy
+        rescaled_voxels = (
+            padded_voxels * (scaling_factor**2) * (scaling_factor * anisotropy)
+        )
+    else:
+        rescaled_voxels = padded_voxels * (scaling_factor ** (3 if is_3d_mode else 2))
 
     print(
-        f"Memory estimation: model_diam={model_diam}, diameter={eff_diameter}, scaling_factor={scaling_factor:.2f}, 3D={is_3d_mode}"
+        f"Memory estimation: model_diam={model_diam}, diameter={eff_diameter}, "
+        f"scaling_factor={scaling_factor:.2f}, anisotropy={anisotropy:.2f}, 3D={is_3d_mode}"
     )
 
     total_cpus = os.cpu_count() or 1
