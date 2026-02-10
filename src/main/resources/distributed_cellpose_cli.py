@@ -2417,7 +2417,12 @@ def dask_setup(worker):
     if args.write_zarr:
         write_zarr = args.write_zarr
     else:
-        write_zarr = os.path.splitext(output_tif)[0] + ".zarr"
+        # Prefer placing the intermediate (unstitched) Zarr inside the user's
+        # output folder when one was provided. Use a clear suffix so the
+        # intermediate can be distinguished from final outputs.
+        out_dir = args.output_dir if args.output_dir else os.path.dirname(output_tif) or "."
+        base_name = os.path.splitext(os.path.basename(output_tif))[0]
+        write_zarr = os.path.join(out_dir, base_name + "_unstitched.zarr")
 
     # Safety check: avoid writing the output Zarr into the same path as the
     # input Zarr or inside the input directory. In-place overwrite of an input
