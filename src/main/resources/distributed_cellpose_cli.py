@@ -247,12 +247,12 @@ def get_optimal_n_workers(
 
     # RAM Estimation
     # Multiplier: float32 image (4) + flows (16) + grad/probs + u-net intermediates
-    # 3D needs much more workspace memory, but original estimates (80) were too high
-    # for standard 2D-pass 3D.
     if mem_multiplier > 0:
         multiplier = mem_multiplier
     else:
-        multiplier = 15 if is_3d_mode else 5
+        # Reduced from 6 -> 4 for 3D to allow saturating GPU on high-resscale images
+        # UPDATED: 4.0 was too aggressive (caused OOM). Bump to 5.0 to be safe.
+        multiplier = 5.0 if is_3d_mode else 3.0
 
     estimated_ram_per_worker = rescaled_voxels * 4 * multiplier
 
@@ -260,8 +260,8 @@ def get_optimal_n_workers(
     if psutil is not None:
         try:
             available_ram = psutil.virtual_memory().available
-            # Reserve a larger safety buffer for OS/Fiji (8GB)
-            usable_ram = max(0, available_ram - (8 * 1024**3)) * 0.8
+            # Relaxed safety buffer: use 90% of available RAM, don't subtract static 8GB
+            usable_ram = available_ram * 0.9
             max_workers_ram = (
                 int(usable_ram // estimated_ram_per_worker)
                 if estimated_ram_per_worker > 0
@@ -298,15 +298,37 @@ def get_optimal_n_workers(
         # Be aggressive with GPU memory (80% usage requested)
         usable_memory_per_gpu = min(total_memory_single_gpu * 0.8, free_memory * 0.9)
 
-        # VRAM multiplier is lower than RAM but still significant for 3D
+        # VRAM multiplier is lower than RAM. For Cellpose do_3D, it's very efficient
+        # because it processes plane-by-plane.
         if mem_multiplier > 0:
             vram_multiplier = (
-                mem_multiplier / 2.0
-            )  # Heuristic: VRAM needs half of RAM multiplier
+                mem_multiplier / 4.0
+            )  # Heuristic: VRAM needs much less than RAM multiplier
         else:
-            vram_multiplier = 5 if is_3d_mode else 2.5
+            vram_multiplier = 0.8 if is_3d_mode else 0.4
 
-        estimated_vram_per_worker = rescaled_voxels * 4 * vram_multiplier
+        # For 3D mode (Standard Cellpose), VRAM usage depends on (XY * batch_size), NOT Z via rescaled_voxels.
+        # rescaled_voxels includes Z * anisotropy * scale.
+        # We need to approximate the per-plane VRAM usage.
+        if is_3d_mode:
+            # Reconstruct scaling factors to isolate single plane size
+            # rescaled_voxels = padded_voxels * (scaling_factor^2) * (scaling_factor * anisotropy)
+            # z_depth = z_block_size * padding * (scaling_factor * anisotropy)
+            # So roughly:
+            z_raw = z * padding
+            z_scaled = z_raw * scaling_factor * anisotropy
+            # Avoid division by zero
+            if z_scaled < 1:
+                z_scaled = 1
+
+            estimated_vram_usage = (rescaled_voxels / z_scaled) * 4 * vram_multiplier
+            # But we also need to account for batch_size.
+            # Since get_optimal_n_workers doesn't know batch_size, assume 1 (conservative base)
+            # or we add an argument. For now assume batch_size=1 baseline.
+        else:
+            estimated_vram_usage = rescaled_voxels * 4 * vram_multiplier
+
+        estimated_vram_per_worker = estimated_vram_usage
 
         workers_per_gpu = int(usable_memory_per_gpu // estimated_vram_per_worker)
 
@@ -477,9 +499,9 @@ def get_auto_blocksize(
     if multiplier == 0:
         if use_gpu:
             # Drastically reduced for 2D-pass 3D (Standard Cellpose)
-            multiplier = 5 if is_3d else 2.5
+            multiplier = 1.0 if is_3d else 0.5
         else:
-            multiplier = 15 if is_3d else 5
+            multiplier = 6 if is_3d else 3
 
     # Determine available memory
     try:
@@ -504,13 +526,13 @@ def get_auto_blocksize(
         z_target = 64
         spatial_voxels = target_voxels / z_target
         spatial_side = int(math.sqrt(spatial_voxels))
-        # Clamp to reasonable range
-        spatial_side = max(256, min(2048, spatial_side))
+        # Clamp to reasonable range, allowing up to 4096 for large GPUs
+        spatial_side = max(256, min(4096, spatial_side))
         block3d = [z_target, spatial_side, spatial_side]
     else:
         # For 2D
         spatial_side = int(math.sqrt(target_voxels))
-        spatial_side = max(512, min(4096, spatial_side))
+        spatial_side = max(512, min(8192, spatial_side))
         block3d = [spatial_side, spatial_side]
 
     # Rank alignment based on shape and channel axis
@@ -1010,7 +1032,7 @@ def dask_setup(worker):
         print(f"Input shape: {inp_shape}, blocksize: {blocksize}")
 
         # Calculate expected number of blocks
-
+        num_blocks = 0
         try:
             shapes = getattr(input_zarr, "shape", None)
             if shapes is None:
@@ -1042,6 +1064,15 @@ def dask_setup(worker):
         print("Starting distributed_eval - cluster initialization may take a minute...")
         sys.stdout.flush()
 
+        # Diagnostic versions
+        try:
+            if dask and distributed:
+                print(
+                    f"Environment info: dask={dask.__version__}, distributed={distributed.__version__}"
+                )
+        except Exception:
+            pass
+
         # Prefer creating a LocalCluster and Client here so we can explicitly
         # apply worker patches via `client.run()` and pass `client`/`cluster`
         # into `ds.distributed_eval` when supported. Fall back to letting
@@ -1060,8 +1091,11 @@ def dask_setup(worker):
                 # We try several ports if 8787 is busy to find a 'fresh' one
                 while is_port_in_use(target_port) and target_port < 8800:
                     target_port += 1
-                cluster_kwargs_local["dashboard_address"] = f":{target_port}"
-                print(f"Targeting dashboard port: {target_port}")
+
+                # Explicitly bind to 127.0.0.1 to avoid binding to external IPs
+                # that might be blocked by firewalls or return 404 on loopback.
+                cluster_kwargs_local["dashboard_address"] = f"127.0.0.1:{target_port}"
+                print(f"Targeting dashboard address: 127.0.0.1:{target_port}")
 
             # Ensure local_directory is honored
             if (
@@ -1074,6 +1108,9 @@ def dask_setup(worker):
                 created = LocalCluster(**cluster_kwargs_local)
             except TypeError:
                 # Retry common fallbacks (some dask versions reject 'ncpus' or 'preload')
+                print(
+                    "Warning: LocalCluster initialization with full kwargs failed, retrying with subset..."
+                )
                 try:
                     cluster_kwargs_local.pop("ncpus", None)
                     created = LocalCluster(**cluster_kwargs_local)
@@ -1086,52 +1123,80 @@ def dask_setup(worker):
 
             if created is not None:
                 client = Client(created)
+                # Check for bokeh (dashboard dependency) / diagnostics
+                try:
+                    import bokeh
+
+                    print(f"Bokeh version (dashboard dep): {bokeh.__version__}")
+                except ImportError:
+                    print(
+                        "\n[WARNING] 'bokeh' package not found. Dask dashboard will be DISABLED."
+                    )
+                    print("To enable, run: pip install bokeh\n")
+
                 # Print Dask dashboard address for visibility (helps when launched from Fiji)
                 try:
                     dashboard = getattr(created, "dashboard_link", None) or getattr(
                         client, "dashboard_link", None
                     )
-                    if not dashboard:
+
+                    # More thorough fallback resolution
+                    if not dashboard or "0.0.0.0" in dashboard:
                         try:
-                            services = created.scheduler_info().get("services", {})
+                            # Try to extract from scheduler info
+                            info = created.scheduler_info()
+                            services = info.get("services", {})
                             if "dashboard" in services:
                                 port = services["dashboard"]
-                                addr = getattr(
-                                    created, "scheduler_address", None
-                                ) or getattr(created, "address", None)
-                                host = None
-                                if addr:
-                                    try:
-                                        host = addr.split("//", 1)[-1].split(":")[0]
-                                    except Exception:
-                                        host = None
-                                if host:
-                                    dashboard = f"http://{host}:{port}"
+                                # Primary: 127.0.0.1 (Safest)
+                                dashboard = f"http://127.0.0.1:{port}/status"
                         except Exception:
                             pass
+
+                    # Final sanity check on dashboard string
                     if dashboard:
-                        # Normalize dashboard link. Some versions return just 'http://127.0.0.1:8787'
-                        # while others include '/status'. Ensure we don't double it.
+                        # Ensure we use 127.0.0.1 rather than 0.0.0.0 or localhost
+                        dashboard = dashboard.replace("0.0.0.0", "127.0.0.1")
+                        dashboard = dashboard.replace("localhost", "127.0.0.1")
+
                         if "/status" not in dashboard:
                             dashboard = dashboard.rstrip("/") + "/status"
 
-                        # Fallback for systems where 127.0.0.1 is preferred over names
-                        dashboard = dashboard.replace("localhost", "127.0.0.1")
-                        # Try both IPv4 loopback and 'localhost' if 404 persists
                         dashboard_alt = dashboard.replace("127.0.0.1", "localhost")
 
-                        print(f"Dask dashboard: {dashboard} (Alternative: {dashboard_alt})\n")
+                        print(f"\nDask dashboard: {dashboard}")
+                        print(f"Alternative URL: {dashboard_alt}\n")
+                        sys.stdout.flush()
+
                         try:
+                            # Use open_dashboard (from argparse action) instead of show_dashboard
                             if webbrowser is not None and getattr(
                                 args, "open_dashboard", False
                             ):
-                                # Small delay to let the dashboard server stabilize
-                                time.sleep(1)
+                                # Wait for the dashboard port to actually open.
+                                # This prevents 'Connection Refused' if the browser is too fast.
+                                print("Waiting for dashboard to stabilize...")
+                                try:
+                                    # Parse port
+                                    dash_port = int(
+                                        dashboard.split(":")[-1].split("/")[0]
+                                    )
+                                    for i in range(20):
+                                        if is_port_in_use(dash_port):
+                                            print(
+                                                f"Dashboard port {dash_port} is active."
+                                            )
+                                            break
+                                        time.sleep(0.5)
+                                except Exception:
+                                    time.sleep(2)
+
+                                print(f"Opening dashboard in browser: {dashboard}")
                                 webbrowser.open(dashboard)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
+                        except Exception as browser_err:
+                            print(f"Warning: Could not open browser: {browser_err}")
+                except Exception as dash_err:
+                    print(f"Warning: Could not resolve dashboard address: {dash_err}")
 
                 # Register worker plugins and setup logging immediately
                 try:
@@ -1616,8 +1681,6 @@ def main():
     log_dir = args.log_dir or args.output_dir or args.temporary_directory
     log_file = None
     log_handle = None
-    stop_heartbeat = None
-    hb_thread = None
 
     if log_dir:
         try:
@@ -1647,21 +1710,11 @@ def main():
             print(f"Persistent log file created at: {log_file}")
             sys.stdout.flush()
 
-            # Start heartbeat thread so the user can see it hasn't crashed even if
-            # no dask output happens for a while.
-            stop_heartbeat = threading.Event()
-            hb_thread = threading.Thread(
-                target=heartbeat, args=(stop_heartbeat, log_file), daemon=True
-            )
-            hb_thread.start()
-
         except Exception as e:
             print(f"Warning: Could not setup persistent logging: {e}")
             sys.stdout.flush()
             log_file = None
             log_handle = None
-            stop_heartbeat = None
-            hb_thread = None
 
     # one of --output_tif or --output_dir must be provided
     if not args.output_tif and not args.output_dir:
@@ -2139,6 +2192,7 @@ def main():
             model_type=args.model if isinstance(args.model, str) else "cyto3",
             diameter=args.diameter,
             mem_multiplier=args.mem_multiplier,
+            anisotropy=args.anisotropy if args.anisotropy > 0 else 1.0,
         )
 
         if optimal_n_workers > 0:
@@ -2183,6 +2237,7 @@ def main():
                 blocksize=test_block,
                 model_type=args.model if isinstance(args.model, str) else "cyto3",
                 diameter=args.diameter,
+                anisotropy=args.anisotropy if args.anisotropy > 0 else 1.0,
             )
             if n_p > optimal_n_workers:
                 print(
@@ -2195,6 +2250,56 @@ def main():
     if eval_kwargs.get("do_3D"):
         # Normalizing diameter again just in case
         eval_kwargs["diameter"] = int(math.ceil(float(args.diameter)))
+
+    # Optimization: Auto-tune batch_size if parallel optimization is enabled and GPU is used
+    if (
+        args.use_gpu
+        and args.optimize_parallel
+        and eval_kwargs.get("do_3D")
+        and eval_kwargs.get("batch_size", 1) == 1
+    ):
+        try:
+            # We want to increase batch_size to fill VRAM
+            # We know blocksize (Z, Y, X) and scale factors
+            scale = 30.0 / args.diameter
+            anisotropy = args.anisotropy if args.anisotropy > 0 else 1.0
+
+            # Plane size in VRAM approximation
+            # plane_pixels = (Y * scale) * (X * scale)
+            # float32 = 4 bytes. + intermediates (~5x factor)
+            # Memory per plane ~= pixels * 4 * 5
+
+            bx, by, bz = 0, 0, 0
+            if len(blocksize) == 3:
+                bz, by, bx = blocksize
+            else:
+                by, bx = blocksize
+
+            plane_pixels = (by * scale) * (bx * scale)
+            mem_per_plane = (
+                plane_pixels * 4 * 40.0
+            )  # 40.0 is a safer VRAM multiplier (empirical approx based on 2080 GPU usage)
+
+            # Get available VRAM
+            if torch.cuda.is_available():
+                gpu_mem = torch.cuda.get_device_properties(0).total_memory
+                free_mem = gpu_mem - torch.cuda.memory_allocated(0)
+                target_mem = min(gpu_mem * 0.8, free_mem * 0.9)
+
+                # Check how many planes fit
+                # We assume 1 worker here (optimal_n_workers is likely 1 per GPU)
+                if mem_per_plane > 0:
+                    max_batch = int(target_mem / mem_per_plane)
+                    # Clamp conservatively (e.g. max 256 to allow filling VRAM)
+                    new_batch = max(1, min(256, max_batch))
+
+                    if new_batch > 1:
+                        print(
+                            f"Optimization ON: Increasing batch_size from 1 to {new_batch} to utilize VRAM (Estimated plane mem: {mem_per_plane / 1024**2:.1f} MB)"
+                        )
+                        eval_kwargs["batch_size"] = new_batch
+        except Exception as e:
+            print(f"Optimization warning: could not auto-tune batch_size: {e}")
 
     # CRITICAL: Set environment variables in main process BEFORE creating cluster
     # These control thread limits for worker processes that will be spawned
@@ -2221,18 +2326,70 @@ def main():
     )
     sys.stdout.flush()
 
+    logger.info("Starting distributed segmentation...")
+
+    # Prepare worker patch preload script
+    preload_script = None
+    try:
+        # Preload content definition
+        preload_content = """
+import sys
+import os
+import logging
+
+def dask_setup(worker):
+    logger = logging.getLogger("distributed.worker")
+    logger.info("Worker preload script running...")
+
+    try:
+        import zarr
+        # Patch zarr.open for older compatibility
+        _orig_open = zarr.open
+        def _compat_open(*args, **kwargs):
+            if len(args) >= 2 and isinstance(args[1], str):
+                return _orig_open(store=args[0], mode=args[1], *args[2:], **kwargs)
+            return _orig_open(*args, **kwargs)
+        zarr.open = _compat_open
+        logger.info("Patched zarr.open in worker")
+    except Exception as e:
+        logger.warning(f"Failed to patch zarr: {e}")
+
+    try:
+        # Patch cellpose if available
+        import cellpose.contrib.distributed_segmentation
+        # Add any runtime patches here
+    except ImportError:
+        pass
+"""
+        preload_script = os.path.join(
+            args.temporary_directory,
+            f"zarr_patches_{os.getpid()}_{int(time.time() * 1000) % 100000}.py",
+        )
+        with open(preload_script, "w") as f:
+            f.write(preload_content)
+        print(f"Created worker preload script: {preload_script}")
+
+    except Exception as e:
+        print(f"Warning: Could not create worker preload script: {e}")
+        preload_script = None
+
     cluster_kwargs = {
         "n_workers": optimal_n_workers,
-        "threads_per_worker": dask_threads,  # Use threads_per_worker instead of ncpus
-        # Do not pass 'ncpus' here; newer distributed versions reject it.
-        # Increase worker death timeout - GPU workers need more time to release CUDA contexts
+        "threads_per_worker": dask_threads,
         "death_timeout": 60 if args.use_gpu else 15,
-        # Ask the cluster to use our safe temporary directory for worker files
         "local_directory": args.temporary_directory,
-        # On Windows/Networked machines, fixed ports can cause hangs.
-        # dashboard_address=None disables the dashboard if not explicitly requested.
-        "dashboard_address": ":0" if getattr(args, "show_dashboard", False) else None,
+        # Force binding to 127.0.0.1 with correct port 0 (random free)
+        # to avoid 0.0.0.0 issues on Windows and avoid port collisions.
+        # Note: arg is named 'open_dashboard' in the parser
+        "dashboard_address": "127.0.0.1:0"
+        if getattr(args, "open_dashboard", False)
+        else None,
     }
+
+    # If we made a preload script, attach it
+    if preload_script:
+        cluster_kwargs["preload"] = [preload_script]
+        print("Configured dask to preload patches in all workers")
 
     # decide where to write the final output TIFF and stitched Zarr
     if args.output_tif:
@@ -2422,15 +2579,7 @@ def main():
     except Exception:
         pass
 
-    # Stop heartbeat thread and close log handle before exiting
-    try:
-        if stop_heartbeat is not None:
-            stop_heartbeat.set()
-        if hb_thread is not None:
-            hb_thread.join(timeout=1.0)
-    except Exception:
-        pass
-
+    # Close log handle before exiting
     try:
         if log_handle is not None:
             log_handle.close()
