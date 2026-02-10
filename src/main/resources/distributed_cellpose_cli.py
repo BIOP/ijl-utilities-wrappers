@@ -466,13 +466,18 @@ def parse_blocksize(s: str) -> Union[Tuple[int, ...], str]:
 
 
 def get_auto_blocksize(
-    shape: Tuple[int, ...], is_3d: bool, use_gpu: bool, multiplier: float = 0
+    shape: Tuple[int, ...],
+    is_3d: bool,
+    use_gpu: bool,
+    multiplier: float = 0,
+    c_axis: int = None,
 ) -> Tuple[int, ...]:
     """Calculate an optimistically large blocksize based on available hardware."""
     # Multipliers if not provided
     if multiplier == 0:
         if use_gpu:
-            multiplier = 40 if is_3d else 10
+            # Re-tuned for 80% usage: 2D: 10, 3D: 25 (was 40)
+            multiplier = 25 if is_3d else 10
         else:
             multiplier = 80 if is_3d else 20
 
@@ -496,26 +501,37 @@ def get_auto_blocksize(
     if is_3d:
         # For 3D: try to keep blocks somewhat cubic but prioritize XY
         # Start with Z=64 and expand XY
-        z_target = min(shape[0], 64)
+        z_target = 64
         spatial_voxels = target_voxels / z_target
         spatial_side = int(math.sqrt(spatial_voxels))
         # Clamp to reasonable range
         spatial_side = max(256, min(2048, spatial_side))
-        block = (z_target, spatial_side, spatial_side)
+        block3d = [z_target, spatial_side, spatial_side]
     else:
         # For 2D
         spatial_side = int(math.sqrt(target_voxels))
         spatial_side = max(512, min(4096, spatial_side))
-        block = (spatial_side, spatial_side)
+        block3d = [spatial_side, spatial_side]
 
-    # Rank alignment and clipping
-    if len(block) > len(shape):
-        block = block[-len(shape) :]
-    elif len(block) < len(shape):
-        block = (1,) * (len(shape) - len(block)) + block
+    # Rank alignment based on shape and channel axis
+    # We want to keep the channel axis at 1 (one channel at a time)
+    # and map our 3D/2D block to the spatial dimensions.
+    final_block = list(shape)
+    spatial_indices = [i for i in range(len(shape)) if i != c_axis]
 
-    block = tuple(min(b, s) for b, s in zip(block, shape))
-    return block
+    # Map block3d dims (Z, Y, X) or (Y, X) to spatial indices in reverse (right to left)
+    for i, idx in enumerate(reversed(spatial_indices)):
+        if i < len(block3d):
+            final_block[idx] = block3d[-(i + 1)]
+        else:
+            # If spatial dims > block dims, keep original or 1
+            pass
+
+    # Ensure channel axis is 1 if it exists
+    if c_axis is not None:
+        final_block[c_axis] = 1
+
+    return tuple(min(b, s) for b, s in zip(final_block, shape))
 
 
 def _apply_zarr_open_compat(
@@ -1712,7 +1728,7 @@ def main():
         if blocksize == "auto":
             is_3d_mode = (im.ndim >= 3 and c_axis_pos is None) or (im.ndim >= 4)
             blocksize = get_auto_blocksize(
-                im.shape, is_3d_mode, args.use_gpu, multiplier=args.mem_multiplier
+                im.shape, is_3d_mode, args.use_gpu, multiplier=args.mem_multiplier, c_axis=c_axis_pos
             )
             print(f"Auto-resolved blocksize based on hardware: {blocksize}")
 
@@ -1889,6 +1905,7 @@ def main():
                 is_3d_mode,
                 args.use_gpu,
                 multiplier=args.mem_multiplier,
+                c_axis=None,
             )
             print(f"Auto-resolved blocksize based on hardware: {blocksize}")
         tmpdir = None
@@ -2075,9 +2092,10 @@ def main():
         elif eval_kwargs.get("do_3D"):
             is_3d = True
             shape = (64, 1024, 1024)
-            shape, is_3d, args.use_gpu, multiplier = args.mem_multiplier
 
-        blocksize = get_auto_blocksize(shape, is_3d, args.use_gpu)
+        blocksize = get_auto_blocksize(
+            shape, is_3d, args.use_gpu, multiplier=args.mem_multiplier, c_axis=None
+        )
         current_block = list(blocksize)
         print(f"Auto-blocksize final safety resolution: {blocksize}")
 
