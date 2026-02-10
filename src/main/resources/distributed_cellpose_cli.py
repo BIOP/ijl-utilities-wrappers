@@ -256,11 +256,13 @@ def get_optimal_n_workers(
 
     # RAM Estimation
     # Multiplier: float32 image (4) + flows (16) + grad/probs + u-net intermediates
-    # 3D needs much more workspace memory.
+    # 3D needs much more workspace memory, but original estimates (80) were too high
+    # for standard 2D-pass 3D.
     if mem_multiplier > 0:
         multiplier = mem_multiplier
     else:
-        multiplier = 80 if is_3d_mode else 20
+        multiplier = 15 if is_3d_mode else 5
+
     estimated_ram_per_worker = rescaled_voxels * 4 * multiplier
 
     max_workers_ram = eff_requested_workers
@@ -311,7 +313,7 @@ def get_optimal_n_workers(
                 mem_multiplier / 2.0
             )  # Heuristic: VRAM needs half of RAM multiplier
         else:
-            vram_multiplier = 40 if is_3d_mode else 10
+            vram_multiplier = 5 if is_3d_mode else 2.5
 
         estimated_vram_per_worker = rescaled_voxels * 4 * vram_multiplier
 
@@ -483,10 +485,10 @@ def get_auto_blocksize(
     # Multipliers if not provided
     if multiplier == 0:
         if use_gpu:
-            # Re-tuned for 80% usage: 2D: 10, 3D: 25 (was 40)
-            multiplier = 25 if is_3d else 10
+            # Drastically reduced for 2D-pass 3D (Standard Cellpose)
+            multiplier = 5 if is_3d else 2.5
         else:
-            multiplier = 80 if is_3d else 20
+            multiplier = 15 if is_3d else 5
 
     # Determine available memory
     try:
@@ -1124,10 +1126,10 @@ def dask_setup(worker):
 
                         # Fallback for systems where 127.0.0.1 is preferred over names
                         dashboard = dashboard.replace("localhost", "127.0.0.1")
+                        # Try both IPv4 loopback and 'localhost' if 404 persists
+                        dashboard_alt = dashboard.replace("127.0.0.1", "localhost")
 
-                        print(
-                            f"Dask dashboard: {dashboard}\n"
-                        )  # Extra newline for visibility
+                        print(f"Dask dashboard: {dashboard} (Alternative: {dashboard_alt})\n")
                         try:
                             if webbrowser is not None and getattr(
                                 args, "open_dashboard", False
