@@ -1993,33 +1993,43 @@ def main():
     i = 0
     while i < len(unknown_args):
         arg = unknown_args[i]
-        if arg.startswith("--"):
-            key = arg[2:]  # Remove '--' prefix
+
+        # Handle key=value format (e.g., flow3D_smooth=3)
+        if "=" in arg:
+            key, value = arg.split("=", 1)
+            key = key.lstrip("-")
+        # Handle --key or key (without --)
+        else:
+            key = arg.lstrip("-")
+            value = None
 
             # Check if next arg is a value or another flag
-            if i + 1 < len(unknown_args) and not unknown_args[i + 1].startswith("--"):
-                # This is a key-value pair
+            if i + 1 < len(unknown_args) and not unknown_args[i + 1].startswith("-"):
                 value = unknown_args[i + 1]
-                # Try to convert to appropriate type
-                try:
-                    # Try boolean
-                    if value.lower() in ("true", "false"):
-                        eval_kwargs[key] = value.lower() == "true"
-                    # Try float
-                    elif "." in value:
-                        eval_kwargs[key] = float(value)
-                    # Try int
-                    else:
-                        eval_kwargs[key] = int(value)
-                except (ValueError, AttributeError):
-                    # Keep as string if conversion fails
-                    eval_kwargs[key] = value
                 i += 2
             else:
-                # This is a boolean flag (store_true)
-                eval_kwargs[key] = True
+                value = True
                 i += 1
-        else:
+
+        if value is True:
+            eval_kwargs[key] = True
+        elif value is not None:
+            # Try to convert to appropriate type
+            try:
+                # Try boolean
+                if str(value).lower() in ("true", "false"):
+                    eval_kwargs[key] = str(value).lower() == "true"
+                # Try float
+                elif "." in str(value):
+                    eval_kwargs[key] = float(value)
+                # Try int
+                else:
+                    eval_kwargs[key] = int(value)
+            except (ValueError, AttributeError):
+                # Keep as string if conversion fails
+                eval_kwargs[key] = value
+
+        if "=" in arg:
             i += 1
 
     # Auto-detect n_workers and ncpus if not specified
