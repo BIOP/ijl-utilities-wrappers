@@ -520,11 +520,13 @@ def get_auto_blocksize(
     spatial_indices = [i for i in range(len(shape)) if i != c_axis]
 
     # Map block3d dims (Z, Y, X) or (Y, X) to spatial indices in reverse (right to left)
+    target_spatial_rank = len(block3d)
     for i, idx in enumerate(reversed(spatial_indices)):
-        if i < len(block3d):
-            final_block[idx] = block3d[-(i + 1)]
+        if i < target_spatial_rank:
+            # Match Z to Z, Y to Y, X to X regardless of exact dimension counts
+            final_block[idx] = block3d[target_spatial_rank - 1 - i]
         else:
-            # If spatial dims > block dims, keep original or 1
+            # If spatial dims > 3, keep original for the rest
             pass
 
     # Ensure channel axis is 1 if it exists
@@ -1728,7 +1730,11 @@ def main():
         if blocksize == "auto":
             is_3d_mode = (im.ndim >= 3 and c_axis_pos is None) or (im.ndim >= 4)
             blocksize = get_auto_blocksize(
-                im.shape, is_3d_mode, args.use_gpu, multiplier=args.mem_multiplier, c_axis=c_axis_pos
+                im.shape,
+                is_3d_mode,
+                args.use_gpu,
+                multiplier=args.mem_multiplier,
+                c_axis=c_axis_pos,
             )
             print(f"Auto-resolved blocksize based on hardware: {blocksize}")
 
@@ -1759,13 +1765,17 @@ def main():
             spatial_shape = tuple(s for i, s in enumerate(im.shape) if i != c_axis_pos)
 
             # Match blocksize rank to spatial_shape rank for Zarr chunks
-            zarr_chunks = blocksize
-            if len(zarr_chunks) > len(spatial_shape):
-                zarr_chunks = zarr_chunks[-len(spatial_shape) :]
-            elif len(zarr_chunks) < len(spatial_shape):
-                zarr_chunks = (max(spatial_shape),) * (
-                    len(spatial_shape) - len(zarr_chunks)
-                ) + zarr_chunks
+            # Extract only spatial block components by removing the channel axis index
+            zarr_chunks = tuple(b for i, b in enumerate(blocksize) if i != c_axis_pos)
+            
+            # Final sanity check: if rank still mismatched, use last N
+            if len(zarr_chunks) != len(spatial_shape):
+                if len(zarr_chunks) > len(spatial_shape):
+                    zarr_chunks = zarr_chunks[-len(spatial_shape) :]
+                else:
+                    zarr_chunks = (max(spatial_shape),) * (
+                        len(spatial_shape) - len(zarr_chunks)
+                    ) + zarr_chunks
 
             # Create zarr for each channel
             if args.input_zarr:
@@ -2021,9 +2031,14 @@ def main():
             value = None
 
             # Check if next arg is a value or another flag
-            if i + 1 < len(unknown_args) and not unknown_args[i + 1].startswith("-"):
-                value = unknown_args[i + 1]
-                i += 2
+            if i + 1 < len(unknown_args):
+                next_arg = unknown_args[i + 1]
+                if not next_arg.startswith("-") and "=" not in next_arg:
+                    value = next_arg
+                    i += 2
+                else:
+                    value = True
+                    i += 1
             else:
                 value = True
                 i += 1
