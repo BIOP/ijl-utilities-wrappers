@@ -586,11 +586,32 @@ def _apply_zarr_open_compat(
         _orig_zarr_open = z_module.open
 
         def _zarr_open_compat(*args, **kwargs):
+            # 1. Handle positional mode argument (path, mode, ...)
             if len(args) >= 2 and isinstance(args[1], str):
-                return _orig_zarr_open(store=args[0], mode=args[1], *args[2:], **kwargs)
+                kwargs["mode"] = args[1]
+                args = (args[0],) + args[2:]
+            
+            # 2. Disable synchronization to avoid RLock pickle errors in Dask
+            if "synchronizer" not in kwargs:
+                kwargs["synchronizer"] = None
+                
             return _orig_zarr_open(*args, **kwargs)
 
         z_module.open = _zarr_open_compat
+
+        # 3. Patch Array pickling to be safe (remove locks from state)
+        try:
+            if hasattr(z_module.core, "Array"):
+                def _safe_getstate(self):
+                    d = self.__dict__.copy()
+                    # Remove thread locks which fail serialization
+                    for k in list(d.keys()):
+                        if "lock" in k.lower() or "mutex" in k.lower():
+                            d[k] = None
+                    return d
+                z_module.core.Array.__getstate__ = _safe_getstate
+        except Exception:
+            pass
 
         # patch the reference inside the distributed_segmentation module as well
         if ds_module is not None:
