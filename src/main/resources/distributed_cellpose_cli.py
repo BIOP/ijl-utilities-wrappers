@@ -63,6 +63,7 @@ except ImportError:
 try:
     import dask
     import dask.array as da
+    import distributed
     from dask.distributed import Client, LocalCluster, default_client
     from distributed import WorkerPlugin as _WP
 except ImportError:
@@ -71,6 +72,7 @@ except ImportError:
     Client = None
     LocalCluster = None
     default_client = None
+    distributed = None
     _WP = None
 
 # Try to import central worker patches helper; not fatal if missing.
@@ -1581,6 +1583,18 @@ def main():
         help="Optional path to save the input Zarr (used when --input_file is supplied)",
     )
     parser.add_argument(
+        "--bsize",
+        default=None,
+        type=int,
+        help="Block size for Cellpose internal tiling (default: 224 for v3, 256 for v4). Set larger than tile size to disable tiling.",
+    )
+    parser.add_argument(
+        "--tile_overlap",
+        default=None,
+        type=float,
+        help="Overlap for Cellpose internal tiling (default: 0.1)",
+    )
+    parser.add_argument(
         "--batch_size",
         default=1,
         type=int,
@@ -2029,6 +2043,30 @@ def main():
         "do_3D": True,
     }
 
+    # Explicitly handle bsize and tile_overlap if provided
+    # Note: 'tile' argument is NOT valid for CellposeModel.eval() in v3 or v4 (Cellpose-SAM)
+    # Default behavior: Disable internal tiling (equivalent to tile=False) by setting bsize > block size
+    if args.bsize is not None:
+        eval_kwargs["bsize"] = args.bsize
+    else:
+        # User requested default "No Tiling".
+        # We set bsize to the max dimension of the block to ensure the worker processes the whole block at once.
+        # blocksize is (Z, Y, X) or (Y, X)
+        try:
+            # blocksize variable is available from the scope above (determined by auto-tuning or args)
+            max_dim = max(blocksize) if isinstance(blocksize, (list, tuple)) else 4096
+            # Add safety margin
+            default_bsize = max(2048, max_dim + 256)
+            eval_kwargs["bsize"] = default_bsize
+            print(
+                f"Defaulting to bsize={default_bsize} to disable internal tiling (tile=False behavior)"
+            )
+        except Exception:
+            eval_kwargs["bsize"] = 4096  # Fallback safe large value
+
+    if args.tile_overlap is not None:
+        eval_kwargs["tile_overlap"] = args.tile_overlap
+
     if args.anisotropy != 1.0:
         eval_kwargs["anisotropy"] = args.anisotropy
         print(f"Added anisotropy to eval_kwargs: {args.anisotropy}")
@@ -2420,7 +2458,9 @@ def dask_setup(worker):
         # Prefer placing the intermediate (unstitched) Zarr inside the user's
         # output folder when one was provided. Use a clear suffix so the
         # intermediate can be distinguished from final outputs.
-        out_dir = args.output_dir if args.output_dir else os.path.dirname(output_tif) or "."
+        out_dir = (
+            args.output_dir if args.output_dir else os.path.dirname(output_tif) or "."
+        )
         base_name = os.path.splitext(os.path.basename(output_tif))[0]
         write_zarr = os.path.join(out_dir, base_name + "_unstitched.zarr")
 
