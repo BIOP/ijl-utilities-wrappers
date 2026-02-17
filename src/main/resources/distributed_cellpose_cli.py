@@ -219,6 +219,9 @@ def get_optimal_n_workers(
 
     # Calculate scaling factor
     model_diam = 17.0 if "nuclei" in str(model_type).lower() else 30.0
+    is_3d_mode = z > 1
+    eff_diameter = float(diameter) if float(diameter) > 0 else 30.0
+    scaling_factor = model_diam / eff_diameter
 
     # Apply padding factor for volume estimation (default tile_overlap is 0.1)
     # 3D padding has a much larger impact on voxel count than 2D.
@@ -1031,21 +1034,28 @@ def _run_distributed_eval(
             with open(wp_path, "r") as _f:
                 wp_source = _f.read()
 
+            min_i_val = args.min_intensity if args.min_intensity is not None else "None"
             preload_content = (
-                wp_source + "\n\n" + f"dask_setup = setup_worker({thread_limit})\n"
+                wp_source
+                + "\n\n"
+                + f"dask_setup = setup_worker({thread_limit}, min_intensity={min_i_val})\n"
             )
         except Exception:
             # Last-resort fallback inline minimal script
+            min_i_val = args.min_intensity if args.min_intensity is not None else "None"
             preload_content = f"""
 import os
 
 def dask_setup(worker):
     nthreads = {thread_limit}
+    min_i = {min_i_val}
     os.environ['OMP_NUM_THREADS'] = str(nthreads)
     os.environ['MKL_NUM_THREADS'] = str(nthreads)
     os.environ['OPENBLAS_NUM_THREADS'] = str(nthreads)
     os.environ['NUMEXPR_NUM_THREADS'] = str(nthreads)
     print(f"Worker {{getattr(worker, 'id', '<unknown>')}}: Thread limit enforced to {{nthreads}} threads")
+    if min_i is not None:
+        print(f"Worker {{getattr(worker, 'id', '<unknown>')}}: Skipping intensity check (inline fallback does not support it)")
 """
         # Write to temp file
         fd, preload_file = tempfile.mkstemp(suffix=".py", prefix="zarr_patches_")
@@ -1621,6 +1631,11 @@ def main():
         help="Minimum size of detected objects in pixels",
     )
     parser.add_argument(
+        "--min_intensity",
+        default=None,
+        help="Minimum intensity threshold for a block to be processed. Blocks with max(intensity) < min_intensity are skipped. 'auto' calculates based on image background.",
+    )
+    parser.add_argument(
         "--anisotropy",
         default=1.0,
         type=float,
@@ -1715,6 +1730,18 @@ def main():
         help="Directory where the log file should be saved",
     )
     args, unknown_args = parser.parse_known_args()
+
+    # Parse min_intensity
+    if args.min_intensity is not None and str(args.min_intensity).lower() == "auto":
+        args.min_intensity = "auto"
+    elif args.min_intensity is not None:
+        try:
+            args.min_intensity = float(args.min_intensity)
+        except ValueError:
+            print(
+                f"Warning: could not parse min_intensity '{args.min_intensity}' as float. Disabling."
+            )
+            args.min_intensity = None
 
     blocksize = parse_blocksize(args.blocksize)
 
@@ -2105,6 +2132,44 @@ def main():
         tmpdir = None
 
     # Worker patching handles float slice coercion, no proxy needed
+
+    # Optimization: Early Exit for empty blocks (skip GPU for background blocks)
+    if args.min_intensity == "auto" and input_zarr is not None:
+        try:
+            print(
+                "Calculating automatic intensity threshold for Early Exit optimization..."
+            )
+            sys.stdout.flush()
+            # Use a dask-backed coarsening to get a manageable sample of the image.
+            # We target roughly 1 million pixels for the calculation.
+            d_im = da.from_array(input_zarr, chunks="auto")
+
+            total_elements = np.prod(input_zarr.shape)
+            target_elements = 1_000_000
+            factor = int(
+                math.pow(total_elements / target_elements, 1.0 / input_zarr.ndim)
+            )
+            factor = max(1, min(16, factor))
+
+            coarse_factors = {i: factor for i in range(input_zarr.ndim)}
+            sample = d_im.coarsen(coarse_factors).mean().compute()
+
+            # Threshold: Background is often low-intensity. We use (mean + 0.5 * std)
+            # as a conservative baseline for skipping strictly empty blocks.
+            background_level = float(np.mean(sample))
+            std_level = float(np.std(sample))
+            args.min_intensity = background_level + 0.5 * std_level
+
+            print(
+                f"Auto-calculated min_intensity threshold: {args.min_intensity:.2f} (base_mean: {background_level:.2f}, base_std: {std_level:.2f})"
+            )
+            sys.stdout.flush()
+        except Exception as e:
+            print(
+                f"Warning: could not auto-calculate min_intensity ({e}). Disabling optimization."
+            )
+            sys.stdout.flush()
+            args.min_intensity = None
 
     # Determine model_kwargs
     model_kwargs = (

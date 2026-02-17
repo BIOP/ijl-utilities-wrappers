@@ -17,6 +17,7 @@ public class CellposeDistributedTaskSettings {
     public double cellprob_threshold = 0.0;
     public double stitch_threshold = 0.0;
     public int min_size = 15;
+    public String min_intensity = "None";
     public boolean use_gpu = true;
     public boolean optimize_parallel = false;
     public int batch_size = 1;
@@ -88,6 +89,11 @@ public class CellposeDistributedTaskSettings {
 
     public CellposeDistributedTaskSettings setMinSize(int min_size) {
         this.min_size = min_size;
+        return this;
+    }
+
+    public CellposeDistributedTaskSettings setMinIntensity(String minIntensity) {
+        this.min_intensity = minIntensity;
         return this;
     }
 
