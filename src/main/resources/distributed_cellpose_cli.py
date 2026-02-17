@@ -137,8 +137,8 @@ def _update_log_handlers():
 
         # Explicitly update all registered loggers
         for name in logging.Logger.manager.loggerDict:
-            l = logging.getLogger(name)
-            for handler in l.handlers:
+            log_instance = logging.getLogger(name)
+            for handler in log_instance.handlers:
                 if isinstance(handler, logging.StreamHandler):
                     handler.setStream(sys.stderr)
     except Exception:
@@ -206,13 +206,19 @@ def get_optimal_n_workers(
     if blocksize is None:
         blocksize = (32, 224, 224)
 
+    # Robustly unpack blocksize: can be (Y, X) for 2D or (Z, Y, X) for 3D
+    if len(blocksize) == 3:
+        z, y, x = blocksize
+    elif len(blocksize) == 2:
+        z = 1
+        y, x = blocksize
+    else:
+        # Fallback for unexpected rank: treat as 2D spatial side
+        z = 1
+        y = x = blocksize[0]
+
     # Calculate scaling factor
     model_diam = 17.0 if "nuclei" in str(model_type).lower() else 30.0
-    eff_diameter = float(diameter) if float(diameter) > 0 else 30.0
-    scaling_factor = model_diam / eff_diameter
-
-    z, y, x = blocksize
-    is_3d_mode = z > 1
 
     # Apply padding factor for volume estimation (default tile_overlap is 0.1)
     # 3D padding has a much larger impact on voxel count than 2D.
@@ -248,13 +254,12 @@ def get_optimal_n_workers(
     )
 
     # RAM Estimation
-    # Multiplier: float32 image (4) + flows (16) + grad/probs + u-net intermediates
+    # Multiplier: float32 image (4) + flows (6-10x) + grad/probs + u-net intermediates
     if mem_multiplier > 0:
         multiplier = mem_multiplier
     else:
-        # Reduced from 6 -> 4 for 3D to allow saturating GPU on high-resscale images
-        # UPDATED: 4.0 was too aggressive (caused OOM). Bump to 5.0 to be safe.
-        multiplier = 5.0 if is_3d_mode else 3.0
+        # Cellpose 3 needs ~6x the volumetric memory for flows and stitching
+        multiplier = 6.0 if is_3d_mode else 3.0
 
     estimated_ram_per_worker = rescaled_voxels * 4 * multiplier
 
@@ -262,8 +267,8 @@ def get_optimal_n_workers(
     if psutil is not None:
         try:
             available_ram = psutil.virtual_memory().available
-            # Relaxed safety buffer: use 90% of available RAM, don't subtract static 8GB
-            usable_ram = available_ram * 0.9
+            # Use 80% of available RAM (which is already free)
+            usable_ram = available_ram * 0.8
             max_workers_ram = (
                 int(usable_ram // estimated_ram_per_worker)
                 if estimated_ram_per_worker > 0
@@ -288,7 +293,7 @@ def get_optimal_n_workers(
 
     # GPU mode
     try:
-        if not torch.cuda.is_available():
+        if torch is None or not torch.cuda.is_available():
             return max(0, min(eff_requested_workers, total_cpus, max_workers_ram)), 1, 1
 
         num_gpus = torch.cuda.device_count()
@@ -297,36 +302,66 @@ def get_optimal_n_workers(
 
         torch.cuda.empty_cache()
         free_memory = total_memory_single_gpu - torch.cuda.memory_allocated(0)
-        # Be aggressive with GPU memory (80% usage requested)
-        usable_memory_per_gpu = min(total_memory_single_gpu * 0.8, free_memory * 0.9)
 
-        # VRAM multiplier is lower than RAM. For Cellpose do_3D, it's very efficient
-        # because it processes plane-by-plane.
+        # Target 80% usage for large GPUs, 35% for small GPUs (< 5GB)
+        # 4GB cards (GRID) have very little head-room for post-processing peak tensors.
+        gpu_target_ratio = 0.35 if total_memory_single_gpu < 5 * 1024**3 else 0.8
+        usable_memory_per_gpu = min(
+            total_memory_single_gpu * gpu_target_ratio, free_memory * 0.9
+        )
+
+        # VRAM multiplier: accounts for model weights and activation buffers.
+        # U-Net architectures (Cellpose) require significant VRAM for intermediates.
         if mem_multiplier > 0:
-            vram_multiplier = (
-                mem_multiplier / 4.0
-            )  # Heuristic: VRAM needs much less than RAM multiplier
+            vram_multiplier = mem_multiplier
         else:
-            vram_multiplier = 0.8 if is_3d_mode else 0.4
+            # 3D passes are memory intensive but 45.0 is sufficient for 8GB+ cards.
+            if is_3d_mode:
+                vram_multiplier = (
+                    120.0 if total_memory_single_gpu < 5 * 1024**3 else 45.0
+                )
+            else:
+                vram_multiplier = (
+                    40.0 if total_memory_single_gpu < 5 * 1024**3 else 25.0
+                )
 
-        # For 3D mode (Standard Cellpose), VRAM usage depends on (XY * batch_size), NOT Z via rescaled_voxels.
-        # rescaled_voxels includes Z * anisotropy * scale.
-        # We need to approximate the per-plane VRAM usage.
+        # For 3D mode (Standard Cellpose), VRAM usage is governed by slice-wise passes (XY, YZ, XZ).
+        # We must fit the largest rescaled plane into VRAM, while the whole block must fit in RAM.
         if is_3d_mode:
-            # Reconstruct scaling factors to isolate single plane size
-            # rescaled_voxels = padded_voxels * (scaling_factor^2) * (scaling_factor * anisotropy)
-            # z_depth = z_block_size * padding * (scaling_factor * anisotropy)
-            # So roughly:
-            z_raw = z * padding
-            z_scaled = z_raw * scaling_factor * anisotropy
-            # Avoid division by zero
-            if z_scaled < 1:
-                z_scaled = 1
+            # Reconstruct scaling factors to isolate rescaled plane sizes.
+            # Cellpose rescales the volume, then runs 2D models on each axis.
+            s = scaling_factor
+            a = anisotropy
 
-            estimated_vram_usage = (rescaled_voxels / z_scaled) * 4 * vram_multiplier
-            # But we also need to account for batch_size.
-            # Since get_optimal_n_workers doesn't know batch_size, assume 1 (conservative base)
-            # or we add an argument. For now assume batch_size=1 baseline.
+            # Padded dimensions in pixels
+            pz, py, px = z * padding, y * padding, x * padding
+
+            # Rescaled dimensions
+            rz = pz * s * a
+            ry = py * s
+            rx = px * s
+
+            area_xy = ry * rx
+            area_yz = rz * ry
+            area_xz = rz * rx
+
+            # Area of the three rescaled orthogonal planes (inference phase bottleneck)
+            max_plane_pixels = max(area_xy, area_yz, area_xz)
+            if max_plane_pixels < 1:
+                max_plane_pixels = 1
+
+            # VRAM per rescaled plane (Inference bottleneck)
+            vram_inference = max_plane_pixels * 4 * vram_multiplier
+
+            # NEW: Volume VRAM constraint for GPU post-processing (Stitching bottleneck)
+            # Full-res volume must fit several times for flow-stitching on GPU.
+            # Use 40x for small cards, 10x for large cards.
+            vram_vol_mult = 40.0 if total_memory_single_gpu < 5 * 1024**3 else 10.0
+            vram_postprocessing = (z * y * x) * 4 * vram_vol_mult
+
+            # Total estimated VRAM per block. We assume inference and stitching
+            # don't peak simultaneously, but we need the larger of the two.
+            estimated_vram_usage = max(vram_inference, vram_postprocessing)
         else:
             estimated_vram_usage = rescaled_voxels * 4 * vram_multiplier
 
@@ -495,47 +530,101 @@ def get_auto_blocksize(
     use_gpu: bool,
     multiplier: float = 0,
     c_axis: int = None,
+    diameter: float = 30.0,
+    anisotropy: float = 1.0,
 ) -> Tuple[int, ...]:
-    """Calculate an optimistically large blocksize based on available hardware."""
-    # Multipliers if not provided
-    if multiplier == 0:
-        if use_gpu:
-            # Drastically reduced for 2D-pass 3D (Standard Cellpose)
-            multiplier = 1.0 if is_3d else 0.5
-        else:
-            multiplier = 6 if is_3d else 3
+    """Calculate an optimistically large blocksize based on available hardware.
 
-    # Determine available memory
+    This calculation separates RAM limits (for the 3D volume stitching/flows)
+    and VRAM limits (for slice-wise GPU processing).
+    """
     try:
-        if use_gpu and torch.cuda.is_available():
-            # Use 80% of total VRAM as a target for the block
-            mem_limit = torch.cuda.get_device_properties(0).total_memory * 0.8
-        else:
-            import psutil
+        import psutil
 
-            # Use 25% of available RAM per potential worker (conservative)
-            mem_limit = psutil.virtual_memory().available * 0.25
+        available_ram = psutil.virtual_memory().available
     except Exception:
-        # Fallback to a safe constant (e.g. 4GB)
-        mem_limit = 4 * 1024**3
+        available_ram = 8 * 1024**3  # Fallback 8GB
 
-    # target_voxels = mem_limit / (bytes_per_float32 * multiplier)
-    target_voxels = mem_limit / (4 * multiplier)
+    # 1. RAM constraint (Total Volume)
+    # Target 70% of available RAM for the block (it's the only worker on its GPU usually)
+    ram_limit = available_ram * 0.7
+    # For host RAM, we mainly care about the input + results. 6-8 copies is enough.
+    ram_multiplier = multiplier if multiplier > 0 else (6.0 if is_3d else 3.0)
+    target_voxels_ram = ram_limit / (4 * ram_multiplier)
+
+    # 2. VRAM constraint (Individual Plane + 3D Post-processing)
+    # Target usage: be very conservative with small GPUs
+    vram_total = 0
+    if use_gpu and torch is not None and torch.cuda.is_available():
+        vram_total = torch.cuda.get_device_properties(0).total_memory
+        # 4GB cards need a very safe margin (35% usage) to avoid fragmentation OOMs
+        ratio = 0.35 if vram_total < 5 * 1024**3 else 0.85
+        vram_limit = vram_total * ratio
+    else:
+        vram_limit = available_ram * 0.15  # Fallback
+
+    # 40-120x is a range for 3D activation buffers.
+    if is_3d:
+        vram_multiplier = (
+            multiplier
+            if multiplier > 0
+            else (120.0 if vram_total < 5 * 1024**3 else 40.0)
+        )
+    else:
+        vram_multiplier = (
+            multiplier
+            if multiplier > 0
+            else (30.0 if vram_total < 5 * 1024**3 else 20.0)
+        )
+
+    target_pixels_vram = vram_limit / (4 * vram_multiplier)
+
+    # Calculate scale factor for plane rescaling
+    model_diam = 30.0  # Standard cyto
+    scale = model_diam / (diameter if diameter > 0 else 30.0)
 
     if is_3d:
-        # For 3D: try to keep blocks somewhat cubic but prioritize XY
-        # Start with Z=64 and expand XY
-        z_target = 64
-        spatial_voxels = target_voxels / z_target
-        spatial_side = int(math.sqrt(spatial_voxels))
-        # Clamp to reasonable range, allowing up to 4096 for large GPUs
-        spatial_side = max(256, min(4096, spatial_side))
-        block3d = [z_target, spatial_side, spatial_side]
+        # Start with Z=64 depth for 3D
+        z_target = min(64, shape[0]) if c_axis != 0 else 64
+
+        # Account for anisotropy in VRAM estimation. 3D mode runs XY, YZ, XZ planes.
+        # rescaled_plane_YZ = (z_target * scale * anisotropy) * (side * scale)
+        # rescaled_plane_XY = (side * scale) * (side * scale)
+        # We must limit the largest rescaled plane to target_pixels_vram.
+
+        # Max dimension scale factor across all axes
+        eff_anisotropy = max(1.0, anisotropy)
+        side_vram_plane = int(math.sqrt(target_pixels_vram / eff_anisotropy) / scale)
+
+        # NEW for 3D: Volume VRAM constraint for GPU post-processing
+        # Full-res volume must fit several times for flow-stitching on GPU.
+        # multiplier of 40-60x for 4GB cards to ensure the dynamics step fits.
+        vram_vol_multiplier = 60.0 if vram_total < 5 * 1024**3 else 10.0
+        target_voxels_vram_vol = vram_limit / (4 * vram_vol_multiplier)
+        side_vram_vol = int(math.sqrt(target_voxels_vram_vol / z_target))
+
+        # volume_voxels = (z * side * side) <= target_voxels_ram
+        side_ram = int(math.sqrt(target_voxels_ram / z_target))
+
+        spatial_side = min(side_vram_plane, side_vram_vol, side_ram)
     else:
         # For 2D
-        spatial_side = int(math.sqrt(target_voxels))
-        spatial_side = max(512, min(8192, spatial_side))
-        block3d = [spatial_side, spatial_side]
+        spatial_side = int(math.sqrt(target_pixels_vram) / scale)
+        # Match against total RAM volume too
+        spatial_side = min(spatial_side, int(math.sqrt(target_voxels_ram)))
+
+    min_dim = int(round(3.0 * (diameter if diameter > 1 else 30.0)))
+    spatial_side = max(min_dim, min(4096 if is_3d else 8192, spatial_side))
+
+    # Hard cap for small cards to avoid fragmentation OOM
+    if vram_total > 0 and vram_total < 5 * 1024**3:
+        spatial_side = min(spatial_side, 512)
+
+    block3d = (
+        [z_target, spatial_side, spatial_side]
+        if is_3d
+        else [spatial_side, spatial_side]
+    )
 
     # Rank alignment based on shape and channel axis
     # We want to keep the channel axis at 1 (one channel at a time)
@@ -586,32 +675,11 @@ def _apply_zarr_open_compat(
         _orig_zarr_open = z_module.open
 
         def _zarr_open_compat(*args, **kwargs):
-            # 1. Handle positional mode argument (path, mode, ...)
             if len(args) >= 2 and isinstance(args[1], str):
-                kwargs["mode"] = args[1]
-                args = (args[0],) + args[2:]
-            
-            # 2. Disable synchronization to avoid RLock pickle errors in Dask
-            if "synchronizer" not in kwargs:
-                kwargs["synchronizer"] = None
-                
+                return _orig_zarr_open(store=args[0], mode=args[1], *args[2:], **kwargs)
             return _orig_zarr_open(*args, **kwargs)
 
         z_module.open = _zarr_open_compat
-
-        # 3. Patch Array pickling to be safe (remove locks from state)
-        try:
-            if hasattr(z_module.core, "Array"):
-                def _safe_getstate(self):
-                    d = self.__dict__.copy()
-                    # Remove thread locks which fail serialization
-                    for k in list(d.keys()):
-                        if "lock" in k.lower() or "mutex" in k.lower():
-                            d[k] = None
-                    return d
-                z_module.core.Array.__getstate__ = _safe_getstate
-        except Exception:
-            pass
 
         # patch the reference inside the distributed_segmentation module as well
         if ds_module is not None:
@@ -768,9 +836,6 @@ def _patch_worker_all() -> None:
             except Exception:
                 pass
             return applied
-    except Exception:
-        return False
-        return True
     except Exception:
         return False
 
@@ -1667,15 +1732,24 @@ def main():
     if args.model and os.path.exists(args.model):
         args.model = os.path.abspath(args.model)
 
-    # Choose a safe temporary directory if none provided. Prefer a Fiji
-    # installation directory (when running from Fiji), otherwise fall back
-    # to the user's home directory. Ensure the chosen directory is writable
-    # and create a per-user hidden subfolder to avoid creating folders in
-    # protected system locations (e.g., C:\Windows).
+    # Choose a safe temporary directory if none provided. Prefer the results
+    # output directory if available and writable, otherwise fall back to Fiji
+    # installation or user home. Ensure the chosen directory is writable
+    # and create a per-user hidden subfolder.
     def _choose_safe_tempdir(provided):
         if provided:
             return provided
+
+        # Determine potential output directory to use as first candidate
+        output_candidate = args.output_dir
+        if not output_candidate and args.output_tif:
+            try:
+                output_candidate = os.path.dirname(os.path.abspath(args.output_tif))
+            except Exception:
+                pass
+
         candidates = [
+            output_candidate,
             os.environ.get("FIJI_HOME"),
             os.environ.get("FIJI_APPDIR"),
             os.environ.get("FIJI_INSTALL_DIR"),
@@ -1836,6 +1910,8 @@ def main():
                 args.use_gpu,
                 multiplier=args.mem_multiplier,
                 c_axis=c_axis_pos,
+                diameter=args.diameter,
+                anisotropy=args.anisotropy,
             )
             print(f"Auto-resolved blocksize based on hardware: {blocksize}")
 
@@ -1906,9 +1982,11 @@ def main():
                 sys.stdout.flush()
 
                 try:
-                    ch_dask = da.from_array(im, chunks="auto").take(
-                        ch_idx, axis=c_axis_pos
-                    )
+                    # Use robust slicing instead of .take() to avoid compatibility issues with some array types
+                    slc = [slice(None)] * im.ndim
+                    slc[c_axis_pos] = ch_idx
+                    ch_dask = da.from_array(im, chunks="auto")[tuple(slc)]
+
                     ch_dask.rechunk(zarr_chunks).to_zarr(ch_path, overwrite=True)
                     z_ch = zarr.open(ch_path, mode="r")
                     channel_zarrs.append(z_ch)
@@ -1917,7 +1995,10 @@ def main():
                     print(
                         f"  Channel {ch_idx + 1}: failed to extract lazily ({e}). Trying eager..."
                     )
-                    ch_data = np.take(im, ch_idx, axis=c_axis_pos)
+                    slc_e = [slice(None)] * im.ndim
+                    slc_e[c_axis_pos] = ch_idx
+                    ch_data = im[tuple(slc_e)]
+
                     z_ch = zarr.open(
                         ch_path,
                         mode="w",
@@ -2017,6 +2098,8 @@ def main():
                 args.use_gpu,
                 multiplier=args.mem_multiplier,
                 c_axis=None,
+                diameter=args.diameter,
+                anisotropy=args.anisotropy,
             )
             print(f"Auto-resolved blocksize based on hardware: {blocksize}")
         tmpdir = None
@@ -2087,6 +2170,33 @@ def main():
 
     if args.tile_overlap is not None:
         eval_kwargs["tile_overlap"] = args.tile_overlap
+    else:
+        # Auto-calculate tile_overlap based on diameter to avoid boundary artifacts.
+        # We want the overlap (in pixels) to be at least 1.25x the diameter.
+        # tile_overlap in Cellpose is a fraction (0.1 = 10%) of the block spatial dimensions.
+        try:
+            # blocksize is (Z, Y, X) or (Y, X)
+            spatial_block = blocksize[1:] if len(blocksize) == 3 else blocksize
+            max_spatial_dim = max(spatial_block)
+
+            # Recommendation: 1.25 * diameter for robust stitching.
+            # We use at least 15% as a baseline.
+            eff_diam = args.diameter if args.diameter > 1 else 30.0
+            overlap_fraction = (eff_diam * 1.25) / max_spatial_dim
+
+            # Clamp between 15% and 40% (high overlap slows down processing but ensures quality)
+            # If diameter is huge, we'd rather be slow than have empty pixels.
+            auto_overlap = min(0.4, max(0.15, overlap_fraction))
+
+            eval_kwargs["tile_overlap"] = auto_overlap
+            print(
+                f"Auto-calculated tile_overlap: {auto_overlap:.3f} (based on diameter {eff_diam} and block {max_spatial_dim})"
+            )
+        except Exception as e:
+            print(
+                f"Warning: could not auto-calculate tile_overlap ({e}). Using default 0.1."
+            )
+            eval_kwargs["tile_overlap"] = 0.1
 
     if args.anisotropy != 1.0:
         eval_kwargs["anisotropy"] = args.anisotropy
@@ -2218,7 +2328,7 @@ def main():
 
     # Logic to find a blocksize that actually fits in memory
     print(
-        f"\nHardware detection: {os.cpu_count()} CPUs, {torch.cuda.device_count() if torch.cuda and torch.cuda.is_available() else 0} GPUs detected. Optimize={args.optimize_parallel}"
+        f"\nHardware detection: {os.cpu_count()} CPUs, {torch.cuda.device_count() if (torch is not None and torch.cuda.is_available()) else 0} GPUs detected. Optimize={args.optimize_parallel}"
     )
 
     current_block = list(blocksize) if isinstance(blocksize, tuple) else []
@@ -2234,7 +2344,13 @@ def main():
             shape = (64, 1024, 1024)
 
         blocksize = get_auto_blocksize(
-            shape, is_3d, args.use_gpu, multiplier=args.mem_multiplier, c_axis=None
+            shape,
+            is_3d,
+            args.use_gpu,
+            multiplier=args.mem_multiplier,
+            c_axis=None,
+            diameter=args.diameter,
+            anisotropy=args.anisotropy,
         )
         current_block = list(blocksize)
         print(f"Auto-blocksize final safety resolution: {blocksize}")
@@ -2242,6 +2358,9 @@ def main():
     optimal_n_workers = 0
     dask_threads = 1
     internal_threads = 1
+
+    # Minimum spatial side to avoid boundary artifacts
+    min_spatial_side = int(round(2.0 * (args.diameter if args.diameter > 1 else 30.0)))
 
     while optimal_n_workers == 0:
         optimal_n_workers, dask_threads, internal_threads = get_optimal_n_workers(
@@ -2261,12 +2380,12 @@ def main():
         # If we get here, the block is too large for 1 worker.
         # Reduce the largest dimension(s) and retry.
         z, y, x = current_block
-        if y > 128 or x > 128:
+        if y > min_spatial_side or x > min_spatial_side:
             print(
                 f"CRITICAL: Block {tuple(current_block)} is too large for system RAM/VRAM. Reducing spatial dimensions..."
             )
-            current_block[1] = max(128, y // 2)
-            current_block[2] = max(128, x // 2)
+            current_block[1] = max(min_spatial_side, y // 2)
+            current_block[2] = max(min_spatial_side, x // 2)
         elif z > 16:
             print(
                 f"CRITICAL: Block {tuple(current_block)} is still too large. Reducing Z dimension..."
@@ -2275,7 +2394,7 @@ def main():
         else:
             # We reached a minimum viable block size and it still doesn't fit
             print(
-                "ERROR: Even the minimum block size (16, 128, 128) exceeds available memory."
+                f"ERROR: Even the minimum block size {tuple(current_block)} exceeds available memory."
             )
             print("Proceeding with 1 worker and hoping for the best (OOM likely).")
             optimal_n_workers = 1
@@ -2320,37 +2439,54 @@ def main():
         try:
             # We want to increase batch_size to fill VRAM
             # We know blocksize (Z, Y, X) and scale factors
-            scale = 30.0 / args.diameter
-            anisotropy = args.anisotropy if args.anisotropy > 0 else 1.0
-
-            # Plane size in VRAM approximation
-            # plane_pixels = (Y * scale) * (X * scale)
-            # float32 = 4 bytes. + intermediates (~5x factor)
-            # Memory per plane ~= pixels * 4 * 5
-
-            bx, by, bz = 0, 0, 0
+            # Robustly unpack Z, Y, X
             if len(blocksize) == 3:
                 bz, by, bx = blocksize
             else:
+                bz = 1
                 by, bx = blocksize
 
-            plane_pixels = (by * scale) * (bx * scale)
-            mem_per_plane = (
-                plane_pixels * 4 * 40.0
-            )  # 40.0 is a safer VRAM multiplier (empirical approx based on 2080 GPU usage)
+            # Avoid division by zero if diameter is not set correctly
+            eff_diam = args.diameter if args.diameter > 0 else 30.0
+            scale = 30.0 / eff_diam
+            anisotropy = args.anisotropy if args.anisotropy > 0 else 1.0
 
             # Get available VRAM
-            if torch.cuda.is_available():
-                gpu_mem = torch.cuda.get_device_properties(0).total_memory
+            if torch is not None and torch.cuda.is_available():
+                gpu_props = torch.cuda.get_device_properties(0)
+                gpu_mem = gpu_props.total_memory
                 free_mem = gpu_mem - torch.cuda.memory_allocated(0)
-                target_mem = min(gpu_mem * 0.8, free_mem * 0.9)
+
+                # Plane size in VRAM approximation.
+                # In 3D mode, Cellpose runs the 2D model on XY, YZ and XZ planes (rescaled).
+                # The VRAM bottleneck is the largest of these planes.
+                area_xy = (by * scale) * (bx * scale)
+                area_yz = (bz * scale * anisotropy) * (by * scale)
+                area_xz = (bz * scale * anisotropy) * (bx * scale)
+
+                max_plane_pixels = max(area_xy, area_yz, area_xz)
+
+                # Multiplier for inference activations + overhead. 45.0 is a realistic for 8GB+ GPUs.
+                vram_plane_mult = 150.0 if gpu_mem < 5 * 1024**3 else 45.0
+                mem_per_plane = max_plane_pixels * 4 * vram_plane_mult
+
+                # Targeting usage (conservative for small GPUs)
+                ratio = 0.5 if gpu_mem < 5 * 1024**3 else 0.85
+                target_mem = min(gpu_mem * ratio, free_mem * 0.9)
 
                 # Check how many planes fit
                 # We assume 1 worker here (optimal_n_workers is likely 1 per GPU)
                 if mem_per_plane > 0:
                     max_batch = int(target_mem / mem_per_plane)
-                    # Clamp conservatively (e.g. max 256 to allow filling VRAM)
-                    new_batch = max(1, min(256, max_batch))
+
+                    # Global batch ceiling for 3D stability
+                    batch_cap = 128
+
+                    # Very conservative for small GPUs (< 5GB) to avoid post-processing OOM
+                    if gpu_mem < 5 * 1024**3:
+                        batch_cap = 8
+
+                    new_batch = max(1, min(batch_cap, max_batch))
 
                     if new_batch > 1:
                         print(
