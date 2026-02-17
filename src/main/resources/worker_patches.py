@@ -181,10 +181,15 @@ def apply_zarr_patches():
         try:
             _orig_open = zarr.open
 
-            def _compat_open(*a, **kw):
-                if len(a) >= 2 and isinstance(a[1], str):
-                    return _orig_open(store=a[0], mode=a[1], *a[2:], **kw)
-                return _orig_open(*a, **kw)
+            def _compat_open(*args, **kwargs):
+                # If arguments are passed positionally (path, mode),
+                # move the second argument to kwargs['mode'].
+                if len(args) > 1:
+                    if "mode" not in kwargs:
+                        kwargs["mode"] = args[1]
+                    # Retain only the first argument (path) as positional
+                    args = (args[0],) + args[2:]
+                return _orig_open(*args, **kwargs)
 
             zarr.open = _compat_open
             # print("apply_zarr_patches: patched zarr.open")
