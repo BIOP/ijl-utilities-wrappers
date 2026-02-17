@@ -63,6 +63,9 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "--min_size", description = "Minimum size of detected objects in pixels.")
     int min_size = 15;
 
+    @Parameter(label = "--min_intensity", description = "Skip blocks with max intensity below this threshold. 'auto' calculates background threshold.")
+    String min_intensity = "auto";
+
     @Parameter(required = false, label = "To add more parameters (comma separated)", description = "Comma-separated list of additional CLI flags (e.g., --use_gpu).")
     String additional_flags = "";
 
@@ -158,6 +161,7 @@ public class CellposeDistributed implements Command {
                 .setCellprobThreshold(cellprob_threshold)
                 .setStitchThreshold(stitch_threshold)
                 .setMinSize(min_size)
+                .setMinIntensity(min_intensity)
                 .setNWorkers(n_workers)
                 .setLogDirectory(output_directory != null ? output_directory.getAbsolutePath() : tempDir.getAbsolutePath())
                 .setAdditionalFlags(additional_flags);

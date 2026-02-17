@@ -58,6 +58,11 @@ public class CellposeDistributedTask {
         arguments.add("--min_size");
         arguments.add(String.valueOf(settings.min_size));
 
+        if (settings.min_intensity != null && !settings.min_intensity.equalsIgnoreCase("None")) {
+            arguments.add("--min_intensity");
+            arguments.add(settings.min_intensity);
+        }
+
         if (settings.use_gpu) {
             arguments.add("--use_gpu");
         }
