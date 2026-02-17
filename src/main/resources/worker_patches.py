@@ -379,63 +379,6 @@ def setup_worker(nthreads, min_intensity=None):
         except Exception:
             pass
 
-        # Apply Early Exit optimization if min_intensity is set
-        if min_intensity is not None:
-            try:
-                from cellpose import models
-
-                # Define the patched eval function
-                def get_patched_eval(orig_eval):
-                    def patched_eval(self, x, *args, **kwargs):
-                        # Check if block is below threshold
-                        if np.max(x) < min_intensity:
-                            # Return empty results matching Cellpose signature:
-                            # masks, flows, styles [, diams if compute_diameter]
-                            do_3d = kwargs.get("do_3D", getattr(self, "do_3D", False))
-
-                            # Determine spatial shape (masks)
-                            if do_3d:
-                                if x.ndim == 4:  # (Z, C, Y, X)
-                                    masks_shape = (x.shape[0], x.shape[2], x.shape[3])
-                                else:  # (Z, Y, X)
-                                    masks_shape = x.shape
-                                flows = [
-                                    np.zeros((3,) + masks_shape, dtype=np.float32),
-                                    np.zeros(masks_shape, dtype=np.float32),
-                                ]
-                            else:
-                                if x.ndim == 3:  # (C, Y, X)
-                                    masks_shape = (x.shape[1], x.shape[2])
-                                else:  # (Y, X)
-                                    masks_shape = x.shape
-                                flows = [
-                                    np.zeros((2,) + masks_shape, dtype=np.float32),
-                                    np.zeros(masks_shape, dtype=np.float32),
-                                ]
-
-                            masks = np.zeros(masks_shape, dtype=np.uint32)
-                            styles = np.zeros(64, dtype=np.float32)
-
-                            return masks, flows, styles
-
-                        return orig_eval(self, x, *args, **kwargs)
-
-                    return patched_eval
-
-                # Patch both Cellpose and CellposeModel
-                if hasattr(models, "Cellpose"):
-                    models.Cellpose.eval = get_patched_eval(models.Cellpose.eval)
-                if hasattr(models, "CellposeModel"):
-                    models.CellposeModel.eval = get_patched_eval(
-                        models.CellposeModel.eval
-                    )
-
-                print(
-                    f"Worker {os.getpid()}: Early Exit optimization active (min_intensity={min_intensity})"
-                )
-            except Exception as e:
-                print(f"Worker {os.getpid()}: Failed to apply Early Exit patch: {e}")
-
         # Apply patches
         try:
             apply_zarr_patches()
