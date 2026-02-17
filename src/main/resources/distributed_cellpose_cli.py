@@ -31,6 +31,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+try:
+    import scipy.ndimage as ndimage
+except ImportError:
+    ndimage = None
+
 # Optional dependencies handled with try-except to allow partial environments
 try:
     import zarr
@@ -587,8 +592,11 @@ def get_auto_blocksize(
     scale = model_diam / (diameter if diameter > 0 else 30.0)
 
     if is_3d:
-        # Start with Z=64 depth for 3D
-        z_target = min(64, shape[0]) if c_axis != 0 else 64
+        # Optimization: use one block for Z if it's small enough (avoid small remainders like 3 slices)
+        if shape[0] <= 128:
+            z_target = shape[0]
+        else:
+            z_target = min(64, shape[0]) if c_axis != 0 else 64
 
         # Account for anisotropy in VRAM estimation. 3D mode runs XY, YZ, XZ planes.
         # rescaled_plane_YZ = (z_target * scale * anisotropy) * (side * scale)
@@ -977,6 +985,7 @@ def _run_distributed_eval(
     args: argparse.Namespace,
     channel_zarrs: Optional[List[Any]] = None,
     log_file: Optional[str] = None,
+    mask: Optional[np.ndarray] = None,
 ) -> Tuple[Any, List[Any]]:
     """Run `ds.distributed_eval`, attempting a proactively patched cluster.
 
@@ -1006,6 +1015,8 @@ def _run_distributed_eval(
         List of zarr arrays for each channel.
     log_file : str, optional
         Path to the log file for Tee output.
+    mask : numpy.ndarray, optional
+        Foreground mask to limit processing to relevant regions.
 
     Returns
     -------
@@ -1327,7 +1338,7 @@ def dask_setup(worker):
                 except Exception as e:
                     print(f"Warning: Worker setup failed: {e}")
 
-                # Determine whether to pass client/cluster to distributed_eval
+                # Determine whether to pass client/cluster and other advanced params to distributed_eval
                 sig = _inspect.signature(ds.distributed_eval)
                 if "client" in sig.parameters:
                     kwargs["client"] = client
@@ -1341,6 +1352,60 @@ def dask_setup(worker):
                     if not hasattr(cluster_like, "client"):
                         cluster_like.client = client
                     kwargs["cluster"] = cluster_like
+
+                # Optional foreground mask support
+                if mask is not None and "mask" in sig.parameters:
+                    kwargs["mask"] = mask
+                    print(
+                        "Passing foreground mask to distributed_eval for efficient processing"
+                    )
+
+                # If distributed_eval supports 'overlap', pass margin to help avoid holes between blocks.
+                # We use a tuple to specify different overlaps for Z and XY.
+                # This is critical because 2*diameter overlap in Z would trim away the whole stack
+                # if the stack is thinner than the overlap (e.g. 67 planes vs 278px overlap).
+                if "overlap" in sig.parameters:
+                    diam = eval_kwargs.get("diameter", 30)
+                    dist_overlap_xy = int(math.ceil(float(diam) * 1.5))
+
+                    # For Z, we only need enough overlap to stitch cells (~15-30 pixels).
+                    # For 2D images, this doesn't apply.
+                    dist_overlap_z = min(30, dist_overlap_xy)
+
+                    # Create the overlap parameter based on image dimensionality
+                    if input_zarr.ndim == 3:
+                        # (Z, Y, X)
+                        dist_z = dist_overlap_z
+                        dist_xy = dist_overlap_xy
+
+                        # Safety: overlap must be < blocksize in all dims.
+                        # Dask map_overlap requires depth < chunk_size.
+                        if blocksize is not None and len(blocksize) == 3:
+                            bz, by, bx = blocksize
+                            dist_z = min(dist_z, bz - 2) if bz > 2 else 0
+                            dist_xy = (
+                                min(dist_xy, by - 2, bx - 2)
+                                if (by > 2 and bx > 2)
+                                else 0
+                            )
+
+                        dist_overlap = (dist_z, dist_xy, dist_xy)
+                    else:
+                        # (Y, X) or other
+                        dist_xy = dist_overlap_xy
+                        if blocksize is not None and len(blocksize) >= 2:
+                            by, bx = blocksize[-2], blocksize[-1]
+                            dist_xy = (
+                                min(dist_xy, by - 2, bx - 2)
+                                if (by > 2 and bx > 2)
+                                else 0
+                            )
+                        dist_overlap = dist_xy  # Integer is fine for 2D
+
+                    kwargs["overlap"] = dist_overlap
+                    print(
+                        f"Detected 'overlap' support in distributed_eval: using {dist_overlap} pixels"
+                    )
 
                 # Safety check: ensure write_path does not collide with input and remove stale outputs
                 try:
@@ -1438,6 +1503,21 @@ def dask_setup(worker):
                 pass
 
         msg = str(e)
+
+        # If the error is about 'overlap', retry without it
+        if "unexpected keyword argument 'overlap'" in msg and "overlap" in kwargs:
+            print("Retrying distributed_eval without 'overlap' argument...")
+            sys.stdout.flush()
+            new_kwargs = dict(kwargs)
+            new_kwargs.pop("overlap", None)
+            try:
+                result = ds.distributed_eval(input_zarr, **new_kwargs)
+                return result
+            except TypeError as e2:
+                # If it fails again, continue to other handlers with the NEW error
+                e = e2
+                msg = str(e)
+
         # If TypeError indicates zarr slicing/indexing issues, attempt a quick
         # defensive retry by coercing diameter to an integer (so overlap/block
         # arithmetic yields integer slice bounds) before falling back to the
@@ -2134,42 +2214,124 @@ def main():
     # Worker patching handles float slice coercion, no proxy needed
 
     # Optimization: Early Exit for empty blocks (skip GPU for background blocks)
-    if args.min_intensity == "auto" and input_zarr is not None:
+    segmentation_mask = None
+    if args.min_intensity is not None and input_zarr is not None:
         try:
-            print(
-                "Calculating automatic intensity threshold for Early Exit optimization..."
-            )
-            sys.stdout.flush()
-            # Use a dask-backed coarsening to get a manageable sample of the image.
-            # We target roughly 1 million pixels for the calculation.
-            d_im = da.from_array(input_zarr, chunks="auto")
+            # 1. Resolve 'auto' threshold if requested
+            if args.min_intensity == "auto":
+                try:
+                    print(
+                        "Calculating automatic intensity threshold for Early Exit optimization..."
+                    )
+                    sys.stdout.flush()
 
-            total_elements = np.prod(input_zarr.shape)
-            target_elements = 1_000_000
-            factor = int(
-                math.pow(total_elements / target_elements, 1.0 / input_zarr.ndim)
-            )
-            factor = max(1, min(16, factor))
+                    # Sample a few slices across the stack for more robust statistics.
+                    # We take 5 slices (10%, 30%, 50%, 70%, 90%) to catch signal in both halves.
+                    shape = input_zarr.shape
+                    ndim = input_zarr.ndim
+                    if ndim >= 3:
+                        z_indices = [
+                            int(shape[0] * r) for r in [0.1, 0.3, 0.5, 0.7, 0.9]
+                        ]
+                        samples = []
+                        for zi in z_indices:
+                            try:
+                                samples.append(
+                                    np.array(input_zarr[zi, ::8, ::8]).flatten()
+                                )
+                            except Exception:
+                                pass
+                        if samples:
+                            slice_sample = np.concatenate(samples)
+                        else:
+                            slice_sample = np.array(input_zarr[::8, ::8])
+                    else:
+                        slice_sample = np.array(input_zarr[::8, ::8])
 
-            coarse_factors = {i: factor for i in range(input_zarr.ndim)}
-            sample = d_im.coarsen(coarse_factors).mean().compute()
+                    background_level = float(np.median(slice_sample))
+                    q75, q25 = np.percentile(slice_sample, [75, 25])
+                    iqr = q75 - q25
+                    robust_std = iqr / 1.349 if iqr > 0 else float(np.std(slice_sample))
 
-            # Threshold: Background is often low-intensity. We use (mean + 0.5 * std)
-            # as a conservative baseline for skipping strictly empty blocks.
-            background_level = float(np.mean(sample))
-            std_level = float(np.std(sample))
-            args.min_intensity = background_level + 0.5 * std_level
+                    # Target threshold: clearly above background noise.
+                    # We use a much lower multiplier (1.5) now since we have robust dilation.
+                    # A multiplier of 1.5 is very safe to avoid clipping real signal.
+                    args.min_intensity = background_level + max(robust_std * 1.5, 1.0)
+                    print(
+                        f"Auto-calculated min_intensity threshold: {args.min_intensity:.2f} (median: {background_level:.2f}, robust_std: {robust_std:.2f})"
+                    )
+                except Exception as e:
+                    print(f"Warning: could not auto-calculate min_intensity: {e}")
+                    args.min_intensity = None
 
-            print(
-                f"Auto-calculated min_intensity threshold: {args.min_intensity:.2f} (base_mean: {background_level:.2f}, base_std: {std_level:.2f})"
-            )
-            sys.stdout.flush()
+            # 2. Generate a dilated foreground mask for distributed_eval.
+            # Using a mask is much safer than patching workers' eval() because
+            # we can dilate it to ensure neighboring overlapping blocks are preserved.
+            if args.min_intensity is not None and args.min_intensity > 0:
+                print(
+                    f"Generating foreground mask (threshold={args.min_intensity:.2f})..."
+                )
+                sys.stdout.flush()
+
+                # For reasonable image sizes (<500MP), we can hold the whole boolean mask in RAM.
+                # Thresholding directly at full-res avoids misalignment issues.
+                total_pixels = np.prod(input_zarr.shape)
+                if total_pixels < 500 * 1024 * 1024:
+                    print(
+                        "Image small enough (<500MP): generating full-resolution mask for precise block filtering."
+                    )
+                    segmentation_mask = np.array(input_zarr) > args.min_intensity
+                else:
+                    # For huge images, we generate a downsampled mask.
+                    # Cellpose distributed_eval can handle low-resolution masks by mapping shapes.
+                    ds_factor = 8
+                    print(
+                        f"Image too large ({total_pixels / 1e6:.1f}MP): generating downsampled mask (factor {ds_factor})."
+                    )
+                    slices = tuple(
+                        slice(None, None, ds_factor) for _ in input_zarr.shape
+                    )
+                    segmentation_mask = (
+                        np.array(input_zarr[slices]) > args.min_intensity
+                    )
+
+                # Dilate mask to include cell tails and buffer at block boundaries.
+                # This ensures neighboring chunks are processed for robust stitching.
+                if ndimage is not None:
+                    try:
+                        # Dilation should be ~0.75x diameter to catch overlapping cells.
+                        eff_diam = args.diameter if args.diameter > 1 else 30.0
+                        if total_pixels < 500 * 1024 * 1024:
+                            # Full resolution mask
+                            num_iter = int(math.ceil(eff_diam * 0.75))
+                        else:
+                            # Low resolution mask (already downsampled by ds_factor=8)
+                            num_iter = int(math.ceil(eff_diam * 0.75 / 8))
+
+                        # Ensure at least 2 pixels of dilation
+                        num_iter = max(2, num_iter)
+
+                        segmentation_mask = ndimage.binary_dilation(
+                            segmentation_mask,
+                            structure=np.ones((3,) * segmentation_mask.ndim),
+                            iterations=num_iter,
+                        )
+                        print(
+                            f"Dilated mask to protect boundaries (iterations={num_iter})"
+                        )
+                    except Exception as de:
+                        print(f"Warning: dilation failed: {de}")
+
+                coverage = np.mean(segmentation_mask) * 100
+                print(
+                    f"Early Exit mask created. Will process approx {coverage:.1f}% of blocks."
+                )
+                sys.stdout.flush()
+
         except Exception as e:
-            print(
-                f"Warning: could not auto-calculate min_intensity ({e}). Disabling optimization."
-            )
-            sys.stdout.flush()
+            print(f"Warning: could not create Early Exit mask: {e}")
             args.min_intensity = None
+            segmentation_mask = None
 
     # Determine model_kwargs
     model_kwargs = (
@@ -2214,24 +2376,12 @@ def main():
 
     # Explicitly handle bsize and tile_overlap if provided
     # Note: 'tile' argument is NOT valid for CellposeModel.eval() in v3 or v4 (Cellpose-SAM)
-    # Default behavior: Disable internal tiling (equivalent to tile=False) by setting bsize > block size
     if args.bsize is not None:
         eval_kwargs["bsize"] = args.bsize
     else:
-        # User requested default "No Tiling".
-        # We set bsize to the max dimension of the block to ensure the worker processes the whole block at once.
-        # blocksize is (Z, Y, X) or (Y, X)
-        try:
-            # blocksize variable is available from the scope above (determined by auto-tuning or args)
-            max_dim = max(blocksize) if isinstance(blocksize, (list, tuple)) else 4096
-            # Add safety margin
-            default_bsize = max(2048, max_dim + 256)
-            eval_kwargs["bsize"] = default_bsize
-            print(
-                f"Defaulting to bsize={default_bsize} to disable internal tiling (tile=False behavior)"
-            )
-        except Exception:
-            eval_kwargs["bsize"] = 4096  # Fallback safe large value
+        # Default behavior: Let Cellpose use its internal tiling or bsize defaults.
+        # This is safer for coordination between distributed blocks.
+        pass
 
     if args.tile_overlap is not None:
         eval_kwargs["tile_overlap"] = args.tile_overlap
@@ -2424,8 +2574,15 @@ def main():
     dask_threads = 1
     internal_threads = 1
 
-    # Minimum spatial side to avoid boundary artifacts
+    # Minimum spatial side to avoid boundary artifacts.
+    # To prevent "holes" or visual truncation, the block size MUST be larger
+    # than the overlap depth (typically 1.5 * diameter).
+    # We allow the block size to go as low as 2.0 * diameter to find a memory fit
+    # before we ever consider splitting the Z-axis.
     min_spatial_side = int(round(2.0 * (args.diameter if args.diameter > 1 else 30.0)))
+
+    # Hard minimum for safety: never go below 1.5x diameter or Dask stitching will fail.
+    hard_min_spatial = int(round(1.5 * (args.diameter if args.diameter > 1 else 30.0)))
 
     while optimal_n_workers == 0:
         optimal_n_workers, dask_threads, internal_threads = get_optimal_n_workers(
@@ -2449,17 +2606,28 @@ def main():
             print(
                 f"CRITICAL: Block {tuple(current_block)} is too large for system RAM/VRAM. Reducing spatial dimensions..."
             )
-            current_block[1] = max(min_spatial_side, y // 2)
-            current_block[2] = max(min_spatial_side, x // 2)
-        elif z > 16:
+            current_block[1] = max(min_spatial_side, int(y * 0.75))
+            current_block[2] = max(min_spatial_side, int(x * 0.75))
+        elif y > hard_min_spatial or x > hard_min_spatial:
+            # Drop down from min_spatial_side to absolute hard minimum (1.5x diameter)
+            # before ever touching the Z-axis.
+            print(
+                f"CRITICAL: Block {tuple(current_block)} is still too large. Dropping to hard minimum spatial sides ({hard_min_spatial})..."
+            )
+            current_block[1] = max(hard_min_spatial, int(y * 0.75))
+            current_block[2] = max(hard_min_spatial, int(x * 0.75))
+        elif z > 150:
+            # Only reduce Z if it's already large enough to be split safely.
+            # (Assuming a ~30px overlap, we need at least 100-150px to split reliably).
             print(
                 f"CRITICAL: Block {tuple(current_block)} is still too large. Reducing Z dimension..."
             )
-            current_block[0] = max(16, z // 2)
+            current_block[0] = max(100, z // 2)
         else:
             # We reached a minimum viable block size and it still doesn't fit
             print(
-                f"ERROR: Even the minimum block size {tuple(current_block)} exceeds available memory."
+                f"ERROR: Even at the minimum viable block size {tuple(current_block)}, the memory estimation "
+                f"exceeds hardware limits (Possibly very large diameter or batch_size)."
             )
             print("Proceeding with 1 worker and hoping for the best (OOM likely).")
             optimal_n_workers = 1
@@ -2512,8 +2680,13 @@ def main():
                 by, bx = blocksize
 
             # Avoid division by zero if diameter is not set correctly
-            eff_diam = args.diameter if args.diameter > 0 else 30.0
+            # We treat diameters <= 1.0 as "default" or "auto" to avoid extreme scaling
+            eff_diam = args.diameter if args.diameter > 1.0 else 30.0
             scale = 30.0 / eff_diam
+
+            # Cap scaling factor to avoid blowing up VRAM estimations on tiny diameters
+            scale = min(5.0, max(0.2, scale))
+
             anisotropy = args.anisotropy if args.anisotropy > 0 else 1.0
 
             # Get available VRAM
@@ -2735,6 +2908,7 @@ def dask_setup(worker):
         args,
         channel_zarrs,
         log_file,
+        mask=segmentation_mask,
     )
 
     logger.debug(f"Stitched Zarr written to {write_zarr}")
