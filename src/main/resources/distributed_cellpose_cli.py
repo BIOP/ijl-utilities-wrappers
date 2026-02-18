@@ -2067,108 +2067,66 @@ def main():
                         len(spatial_shape) - len(zarr_chunks)
                     ) + zarr_chunks
 
-            # Determine layout of the new Zarr: if more than 1 channel, we must
-            # include a channel axis to satisfy CellposeModel expectations.
-            is_multi = len(needed_indices) > 1
-            if is_multi:
-                # Layout: (Z, C, Y, X) or (C, Y, X) - we'll use C at axis 1 for 4D
-                # to stay consistent with typical (Z, C, Y, X) convention.
-                if len(spatial_shape) == 3:
-                    # (Z, C, Y, X)
-                    final_input_shape = (
-                        spatial_shape[0],
-                        len(needed_indices),
-                        spatial_shape[1],
-                        spatial_shape[2],
-                    )
-                    # Adjust chunks to match the new axis.
-                    # chunks = (bz, 1, by, bx)
-                    final_zarr_chunks = (
-                        zarr_chunks[0],
-                        1,
-                        zarr_chunks[1],
-                        zarr_chunks[2],
-                    )
-                    multi_c_axis = 1
-                else:
-                    # (C, Y, X)
-                    final_input_shape = (
-                        len(needed_indices),
-                        spatial_shape[0],
-                        spatial_shape[1],
-                    )
-                    final_zarr_chunks = (1, zarr_chunks[0], zarr_chunks[1])
-                    multi_c_axis = 0
-            else:
-                final_input_shape = spatial_shape
-                final_zarr_chunks = zarr_chunks
-                multi_c_axis = None
-
             # Create path for the unified input Zarr
             if args.input_zarr:
-                main_zarr_path = args.input_zarr
-                parent = os.path.dirname(main_zarr_path) or "."
+                parent = os.path.dirname(args.input_zarr) or "."
                 os.makedirs(parent, exist_ok=True)
             else:
                 tmpdir = tempfile.TemporaryDirectory(
                     prefix="distributed_cellpose_tmp_", dir=args.temporary_directory
                 )
                 parent = tmpdir.name
-                main_zarr_path = os.path.join(parent, "input_multi.zarr")
 
-            # Create the unified Zarr
-            print(f"Creating input Zarr at {main_zarr_path}...")
-            sys.stdout.flush()
+            for i, ch_idx in enumerate(needed_indices):
+                if ch_idx >= num_channels_total:
+                    print(
+                        f"Warning: requested channel {ch_idx + 1} exceeds image depth {num_channels_total}. Falling back to channel 1."
+                    )
+                    ch_idx = 0
 
-            try:
-                # Prepare a lazy dask array by picking selected channels
-                # stack them on a new axis if multiple
-                channel_arrays = []
-                for idx in needed_indices:
+                # Create zarr for this channel
+                ch_path = os.path.join(parent, f"channel_{ch_idx}.zarr")
+
+                # Robustly extract channel data lazily using dask
+                print(f"  Channel {ch_idx + 1}: extracting to {ch_path}...")
+                sys.stdout.flush()
+
+                try:
+                    # Use robust slicing
                     slc = [slice(None)] * im.ndim
-                    slc[c_axis_pos] = idx
-                    channel_arrays.append(da.from_array(im, chunks="auto")[tuple(slc)])
+                    slc[c_axis_pos] = ch_idx
+                    ch_dask = da.from_array(im, chunks="auto")[tuple(slc)]
 
-                if is_multi:
-                    # Stack on the channel axis we chose
-                    unified_dask = da.stack(channel_arrays, axis=multi_c_axis)
-                else:
-                    unified_dask = channel_arrays[0]
+                    ch_dask.rechunk(zarr_chunks).to_zarr(ch_path, overwrite=True)
+                    z_ch = zarr.open(ch_path, mode="r")
+                    channel_zarrs.append(z_ch)
+                    print(f"  Channel {ch_idx + 1}: success (shape={z_ch.shape})")
+                except Exception as e:
+                    print(
+                        f"  Channel {ch_idx + 1}: failed to extract lazily ({e}). Trying eager..."
+                    )
+                    slc_e = [slice(None)] * im.ndim
+                    slc_e[c_axis_pos] = ch_idx
+                    ch_data = im[tuple(slc_e)]
 
-                unified_dask.rechunk(final_zarr_chunks).to_zarr(
-                    main_zarr_path, overwrite=True
-                )
-                input_zarr = zarr.open(main_zarr_path, mode="r")
-                print(f"Success (shape={input_zarr.shape})")
-            except Exception as e:
-                print(f"Lazy unified extraction failed ({e}). Trying eager...")
-                input_zarr = zarr.open(
-                    main_zarr_path,
-                    mode="w",
-                    shape=final_input_shape,
-                    chunks=final_zarr_chunks,
-                    dtype=im.dtype,
-                )
+                    z_ch = zarr.open(
+                        ch_path,
+                        mode="w",
+                        shape=spatial_shape,
+                        chunks=zarr_chunks,
+                        dtype=im.dtype,
+                    )
+                    z_ch[...] = ch_data
+                    channel_zarrs.append(z_ch)
 
-                # Copy data from original image
-                for i, idx in enumerate(needed_indices):
-                    slc_in = [slice(None)] * im.ndim
-                    slc_in[c_axis_pos] = idx
-                    data = im[tuple(slc_in)]
-
-                    if is_multi:
-                        slc_out = [slice(None)] * input_zarr.ndim
-                        slc_out[multi_c_axis] = i
-                        input_zarr[tuple(slc_out)] = data
-                    else:
-                        input_zarr[...] = data
-
-            # Update blocksize and c_axis to match our new Zarr
-            blocksize = final_zarr_chunks
-            c_axis_pos = multi_c_axis
+            # Use first requested channel as input_zarr
+            input_zarr = channel_zarrs[0]
+            # Ensure blocksize matches the rank of the spatial zarr
+            blocksize = zarr_chunks
+            c_axis_pos = None  # No longer has a channel axis in single-ch Zarr
             was_subsetted = True
             print(
-                f"Resolved input to {main_zarr_path}, shape: {input_zarr.shape}, blocksize: {blocksize}, c_axis: {c_axis_pos}"
+                f"Using input channel {needed_indices[0] + 1} as base, shape: {input_zarr.shape}, blocksize: {blocksize}"
             )
             sys.stdout.flush()
         else:
@@ -2389,13 +2347,18 @@ def main():
 
     # GUI and CLI now use 1-based indexing consistently (1=First, 2=Second, 0=None).
     # However, if we subsetted the channels during extraction (was_subsetted),
+    # GUI and CLI now use 1-based indexing consistently (1=First, 2=Second, 0=None).
+    # However, if we subsetted the channels during extraction (was_subsetted),
     # the 'channels' indices must refer to the indices in the stack we created.
     if was_subsetted:
-        # If we have only 1 channel extracted, it's [0, 0] for a 3D ZYX grayscale
-        # If we have 2 or more, it's [1, 2] referring to the new channel axis
-        if c_axis_pos is not None:
-            c1, c2 = 1, 2
+        # If we extracted multiple channels into channel_zarrs,
+        # preprocessing_steps will stack them, creating a [Channel, Z, Y, X]
+        # or [Z, Channel, Y, X] result.
+        if len(channel_zarrs) > 1:
+            c1 = 1
+            c2 = 2
         else:
+            # Single channel extracted: treat as grayscale for safety
             c1, c2 = 0, 0
         channels = [c1, c2]
         print(f"Subsetting/Stacking mode: mapping channels to stack indices {channels}")
@@ -2472,24 +2435,30 @@ def main():
 
     # When using preprocessing_steps to stack channels, we specify the axis
     # parameters to match the stack produced by stack_channels.
-    if c_axis_pos is not None:
-        # Our extraction uses axis 1 for 3D (Z, C, Y, X) and axis 0 for 2D (C, Y, X)
-        if input_zarr.ndim == (4 if c_axis_pos == 1 else 3):
-            # 4D (Z, C, Y, X) or 3D (C, Y, X)
-            eval_kwargs["channel_axis"] = c_axis_pos
-            if input_zarr.ndim == 4:
-                # Specify Z axis for 4D stacks
-                eval_kwargs["z_axis"] = 0
+    if len(channel_zarrs) > 1:
+        # stack_channels uses axis=1 for 3D (Z, C, Y, X) and axis=0 for 2D (C, Y, X)
+        if input_zarr.ndim == 3:
+            eval_kwargs["channel_axis"] = 1
+            eval_kwargs["z_axis"] = 0
             print(
-                f"Multi-channel stack detected: setting channel_axis={c_axis_pos}, ndim={input_zarr.ndim} (channels={channels})"
+                f"Multi-channel 3D stack detected: setting channel_axis=1, z_axis=0 (channels={channels})"
             )
         else:
-            # Fallback for other layouts
-            eval_kwargs["channel_axis"] = c_axis_pos
+            eval_kwargs["channel_axis"] = 0
+            eval_kwargs["do_3D"] = False
             print(
-                f"Setting explicit channel_axis={c_axis_pos} for ndim={input_zarr.ndim}"
+                f"Multi-channel 2D stack detected: setting channel_axis=0, do_3D=False (channels={channels})"
             )
     else:
+        # For single channel 3D images (Z, Y, X), Cellpose handles it natively.
+        # But for Cellpose 4.x we can be explicit.
+        if (
+            cellpose_version
+            and cellpose_version.startswith("4")
+            and input_zarr.ndim == 3
+        ):
+            eval_kwargs["z_axis"] = 0
+            print("Cellpose 4.x detected: setting z_axis=0")
         # For single channel 3D images (Z, Y, X), Cellpose handles it natively.
         # But for Cellpose 4.x we can be explicit.
         if (
