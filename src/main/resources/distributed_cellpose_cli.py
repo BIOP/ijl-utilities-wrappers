@@ -991,6 +991,7 @@ def _run_distributed_eval(
     channel_zarrs: Optional[List[Any]] = None,
     log_file: Optional[str] = None,
     mask: Optional[np.ndarray] = None,
+    global_limits: Optional[Tuple[float, float]] = None,
 ) -> Tuple[Any, List[Any]]:
     """Run `ds.distributed_eval`, attempting a proactively patched cluster.
 
@@ -1089,80 +1090,84 @@ def dask_setup(worker):
         preload_file = None
 
     try:
-        # Create preprocessing_steps if we have multiple channels or Gaussian blur
+        # Create preprocessing_steps if we have multiple channels or Gaussian/Median/Norm blur
         preprocessing_steps = []
 
-        if args.gauss > 0:
-            if ndimage is not None:
-                print(f"Adding Gaussian blur preprocessing step (sigma={args.gauss:.2f})")
+        # Define common preprocessing logic once to ensure it's applied correctly to all channels
+        def apply_manual_preprocessing(img):
+            if img is None:
+                return None
+            res = img
+            if args.gauss > 0 and ndimage is not None:
+                s_xy = args.gauss
+                s_z = args.gauss / args.anisotropy if args.anisotropy > 0 else 1.0
+                if res.ndim == 3:
+                    res = ndimage.gaussian_filter(res, sigma=(s_z, s_xy, s_xy))
+                else:
+                    res = ndimage.gaussian_filter(res, sigma=s_xy)
 
-                def apply_gaussian_pre(image, crop):
-                    """Apply Gaussian blur while respecting anisotropy and skipping channel axis."""
-                    sigma_xy = args.gauss
-                    sigma_z = args.gauss / args.anisotropy if args.anisotropy > 0 else 1.0
+            if args.median > 0 and ndimage is not None:
+                m_xy = args.median
+                m_z = max(1, int(round(args.median / args.anisotropy)))
+                if res.ndim == 3:
+                    res = ndimage.median_filter(res, size=(m_z, m_xy, m_xy))
+                else:
+                    res = ndimage.median_filter(res, size=m_xy)
 
-                    # (Y, X)
-                    if image.ndim == 2:
-                        return ndimage.gaussian_filter(image, sigma=sigma_xy)
-                    # (Z, Y, X) or (C, Y, X) - difficult to distinguish here
-                    # But for Cellpose, C is typically small index, and Z is large
-                    elif image.ndim == 3:
-                        # Assume (Z, Y, X) for spatial 3D.
-                        # If it's (C, Y, X), the 1st dim is channels.
-                        # We use 0 sigma for whatever we think is the channel axis.
-                        # For single-channel 3D, we blur in Z, Y, X.
-                        return ndimage.gaussian_filter(
-                            image, sigma=(sigma_z, sigma_xy, sigma_xy)
-                        )
-                    # (Z, C, Y, X) or (C, Z, Y, X)?
-                    # distributed_eval usually passes the same rank as the input.
-                    else:
-                        # Defensive: apply per-slice if rank is weird
-                        # but for now, we leave as-is and rely on user to not over-blur.
-                        return ndimage.gaussian_filter(image, sigma=sigma_xy)
+            if args.global_norm and global_limits is not None:
+                low, high = global_limits
+                res = res.astype(np.float32)
+                res = np.clip(res, low, high)
+                res = (res - low) / (high - low) * 255.0  # Cellpose likes 0-255 scale
+                res = res.astype(np.float32)
 
-                preprocessing_steps.append((apply_gaussian_pre, {}))
-            else:
-                print("Warning: scipy.ndimage not found. Gaussian blur disabled.")
+            return res
 
+        # 1. Add general preprocessing (Blur, Median, Norm)
+        if args.gauss > 0 or args.median > 0 or args.global_norm:
+            if args.gauss > 0:
+                print(f"Applying Gaussian blur (sigma={args.gauss:.2f})")
+            if args.median > 0:
+                print(f"Applying Median filter (size={args.median})")
+            if args.global_norm and global_limits:
+                print(
+                    f"Applying Global Normalization ({global_limits[0]:.2f} - {global_limits[1]:.2f})"
+                )
+                # Ensure Cellpose doesn't do its own normalization if we just did it globally
+                eval_kwargs["normalize"] = False
+
+            def pre_all(image, crop):
+                return apply_manual_preprocessing(image)
+
+            preprocessing_steps.append((pre_all, {}))
+
+        # 2. Add Multi-channel stacking (with preprocessing applied to each channel)
         if channel_zarrs and len(channel_zarrs) > 1:
 
-            # Create preprocessing function to stack additional channels
             def stack_channels(image, crop):
                 """Stack additional channels onto the base channel.
                 Following cellpose documentation pattern for multi-channel segmentation.
+                Each channel is preprocessed before stacking.
                 """
-                channels_to_stack = [image]  # Start with base channel
+                # image has already been preprocessed by 'pre_all' if it exists.
+                # However, Cellpose's distributed_eval architecture for preprocessing_steps
+                # is slightly different for multi-channels. We must ensure we apply our
+                # manual preprocessing to ALL channels here.
+                channels_to_stack = [apply_manual_preprocessing(image)]
                 for ch_idx in range(1, len(channel_zarrs)):
-                    ch_img = channel_zarrs[ch_idx][crop]
-                    # If we already applied blur to the first channel, we should apply it to these too
-                    if args.gauss > 0 and ndimage is not None:
-                        sigma_xy = args.gauss
-                        sigma_z = (
-                            args.gauss / args.anisotropy if args.anisotropy > 0 else 1.0
-                        )
-                        if ch_img.ndim == 3:
-                            ch_img = ndimage.gaussian_filter(
-                                ch_img, sigma=(sigma_z, sigma_xy, sigma_xy)
-                            )
-                        else:
-                            ch_img = ndimage.gaussian_filter(ch_img, sigma=sigma_xy)
+                    ch_img = apply_manual_preprocessing(channel_zarrs[ch_idx][crop])
                     channels_to_stack.append(ch_img)
 
                 # Determine where to insert the channel axis.
                 # If image is 3D (Z, Y, X), we want (Z, C, Y, X) -> axis 1
-                # If image is 2D (Y, X), we want (C, Y, X) -> axis 0
                 if image.ndim == 3:
-                    # In cellpose.contrib.distributed_segmentation, the image passed
-                    # to preprocessing_steps matches the input_zarr's rank.
-                    # Celpose's model.eval(do_3D=True) expects (Z, C, Y, X)
                     return np.stack(channels_to_stack, axis=1)
                 else:
                     # For 2D model, cellpose expects (C, Y, X)
                     return np.stack(channels_to_stack, axis=0)
 
             preprocessing_steps.append((stack_channels, {}))
-            print(f"Created preprocessing_steps to stack {len(channel_zarrs)} channels")
+            print(f"Added preprocessing_steps to stack {len(channel_zarrs)} channels")
             sys.stdout.flush()
 
         if not preprocessing_steps:
@@ -1188,6 +1193,9 @@ def dask_setup(worker):
                     "compute_masks",
                 ]
             )
+            # Ensure manually passed flags are always considered valid
+            if hasattr(args, "additional_eval_kwargs"):
+                valid_keys.update(args.additional_eval_kwargs.keys())
 
             filtered_eval = {k: v for k, v in eval_kwargs.items() if k in valid_keys}
             if len(filtered_eval) < len(eval_kwargs):
@@ -1208,6 +1216,10 @@ def dask_setup(worker):
             cluster_kwargs=cluster_kwargs,
             temporary_directory=args.temporary_directory,
         )
+
+        if mask is not None:
+            kwargs["mask"] = mask
+            print(f"Applying segmentation mask (skipping blocks with no signal)...")
 
         # Add preprocessing_steps if multi-channel
         if preprocessing_steps:
@@ -1918,11 +1930,63 @@ def main():
         help="Sigma for Gaussian blur preprocessing (0 to disable)",
     )
     parser.add_argument(
+        "--median",
+        default=0,
+        type=int,
+        help="Size for Median filter preprocessing (0 to disable)",
+    )
+    parser.add_argument(
+        "--global_norm",
+        action="store_true",
+        default=False,
+        help="If set, use global image statistics for normalization instead of per-block normalization",
+    )
+    parser.add_argument(
         "--log_dir",
         default=None,
         help="Directory where the log file should be saved",
     )
     args, unknown_args = parser.parse_known_args()
+
+    # Parse unknown args as potential eval_kwargs (e.g. --do_3D, --flow3D_smooth=3)
+    args.additional_eval_kwargs = {}
+    if unknown_args:
+        i = 0
+        while i < len(unknown_args):
+            arg = unknown_args[i]
+            if arg.startswith("--"):
+                key = arg[2:]
+                # Check if it's key=value or just a flag
+                if "=" in key:
+                    key, val = key.split("=", 1)
+                    # Try to parse as float/int
+                    try:
+                        if "." in val:
+                            args.additional_eval_kwargs[key] = float(val)
+                        else:
+                            args.additional_eval_kwargs[key] = int(val)
+                    except ValueError:
+                        args.additional_eval_kwargs[key] = val
+                else:
+                    # Look ahead for value
+                    if i + 1 < len(unknown_args) and not unknown_args[i + 1].startswith(
+                        "-"
+                    ):
+                        val = unknown_args[i + 1]
+                        try:
+                            if "." in val:
+                                args.additional_eval_kwargs[key] = float(val)
+                            else:
+                                args.additional_eval_kwargs[key] = int(val)
+                        except ValueError:
+                            args.additional_eval_kwargs[key] = val
+                        i += 1
+                    else:
+                        # Assume it's a boolean flag set to True
+                        args.additional_eval_kwargs[key] = True
+            i += 1
+        if args.additional_eval_kwargs:
+            print(f"Parsed additional eval kwargs: {args.additional_eval_kwargs}")
 
     # Parse min_intensity
     if args.min_intensity is not None and str(args.min_intensity).lower() == "auto":
@@ -2327,14 +2391,17 @@ def main():
     # Worker patching handles float slice coercion, no proxy needed
 
     # Optimization: Early Exit for empty blocks (skip GPU for background blocks)
+    # Also find global statistics for normalization if requested.
     segmentation_mask = None
-    if args.min_intensity is not None and input_zarr is not None:
+    global_limits = None
+
+    if (args.min_intensity is not None or args.global_norm) and input_zarr is not None:
         try:
-            # 1. Resolve 'auto' threshold if requested
-            if args.min_intensity == "auto":
+            # 1. Calculate statistics from sampled slices if needed
+            if args.min_intensity == "auto" or args.global_norm:
                 try:
                     print(
-                        "Calculating automatic intensity threshold for Early Exit optimization..."
+                        "Calculating robust image statistics (Threshold/Normalization)..."
                     )
                     sys.stdout.flush()
 
@@ -2364,12 +2431,25 @@ def main():
                     background_level = float(np.median(slice_sample))
                     q75, q25 = np.percentile(slice_sample, [75, 25])
                     iqr = q75 - q25
-                    robust_std = iqr / 1.349 if iqr > 0 else float(np.std(slice_sample))
+                    robust_std = qiqr = (
+                        iqr / 1.349 if iqr > 0 else float(np.std(slice_sample))
+                    )
                     noise_floor = background_level + max(robust_std * 3, 1.0)
 
-                    # 2. More advanced heuristics (Triangle/Otsu-lite) to catch real signals
-                    # that are far away from the background noise floor (typical in microscopy).
-                    try:
+                    # Calculate Global Normalization Limits (p1, p99)
+                    if args.global_norm:
+                        p1, p99 = np.percentile(slice_sample, [1, 99])
+                        # If p1 == p99, use min/max of sample
+                        if p1 >= p99:
+                            p1, p99 = np.min(slice_sample), np.max(slice_sample)
+                        # Avoid div/0 and non-zero normalization range
+                        global_limits = (float(p1), float(max(p99, p1 + 1.0)))
+                        print(
+                            f"Global normalization limits (p1/p99): {global_limits[0]:.2f} - {global_limits[1]:.2f}"
+                        )
+
+                    # Resolve 'auto' threshold if requested
+                    if args.min_intensity == "auto":
                         # Triangle algorithm: find the point on the 'slope' of the background
                         # peak where it starts to level off into signal.
                         def _triangle_threshold(data, bins=512):
@@ -2445,15 +2525,11 @@ def main():
                             f"(noise_floor: {noise_floor:.2f}, triangle: {triangle_t:.2f}, "
                             f"otsu-lite: {conservative_otsu:.2f})"
                         )
-                    except Exception as _ie:
-                        # Fallback to noise floor if triangle/otsu fail
-                        args.min_intensity = noise_floor
-                        print(
-                            f"Auto-calculated min_intensity threshold (fallback): {args.min_intensity:.2f} (noise_floor only)"
-                        )
                 except Exception as e:
-                    print(f"Warning: could not auto-calculate min_intensity: {e}")
-                    args.min_intensity = None
+                    print(f"Warning: could not auto-calculate stats: {e}")
+                    if args.min_intensity == "auto":
+                        args.min_intensity = None
+                    global_limits = None
 
             # 2. Generate a dilated foreground mask for distributed_eval.
             # Using a mask is much safer than patching workers' eval() because
@@ -2579,6 +2655,12 @@ def main():
         "do_3D": is_3d_spatial,
         "normalize": not args.no_norm,
     }
+
+    # Add any extra args from CLI (e.g. --do_3D, --flow3D_smooth, etc.)
+    if hasattr(args, "additional_eval_kwargs"):
+        for k, v in args.additional_eval_kwargs.items():
+            print(f"Adding extra eval kwarg: {k}={v}")
+            eval_kwargs[k] = v
 
     # Explicitly handle bsize and tile_overlap if provided
     # Note: 'tile' argument is NOT valid for CellposeModel.eval() in v3 or v4 (Cellpose-SAM)
@@ -3129,6 +3211,7 @@ def dask_setup(worker):
         channel_zarrs,
         log_file,
         mask=segmentation_mask,
+        global_limits=global_limits,
     )
 
     logger.debug(f"Stitched Zarr written to {write_zarr}")
