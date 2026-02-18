@@ -78,6 +78,12 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "blocksize (Z,Y,X) or 'auto'", description = "Size of processing blocks. 'auto' calculates optimal blocks for large 3D images.")
     String blocksize = "auto";
 
+    @Parameter(label = "Cellpose Internal bsize", description = "Internal Cellpose tile size. Set to 0 to use Cellpose default (224 or 256). Set larger than blocksize to disable internal tiling.")
+    int bsize = 0;
+
+    @Parameter(label = "Cellpose Internal tile_overlap", description = "Overlap between internal tiles (0.1 to 0.5). Default is 0.1.")
+    double tile_overlap = 0.1;
+
     @Parameter(label = "Number of workers (0 for auto)", description = "Number of parallel workers. 0 uses half of available CPU cores.")
     int n_workers = 0;
 
@@ -152,6 +158,8 @@ public class CellposeDistributed implements Command {
 
         String intensityString = auto_min_intensity ? "auto" : String.valueOf(min_intensity);
 
+        int effectiveBsize = bsize > 0 ? bsize : -1;
+
         CellposeDistributedTaskSettings settings = new CellposeDistributedTaskSettings()
                 .setEnvPath(env_path.getAbsolutePath())
                 .setInputPath(inputTif.getAbsolutePath())
@@ -169,6 +177,8 @@ public class CellposeDistributed implements Command {
                 .setCellprobThreshold(cellprob_threshold)
                 .setStitchThreshold(stitch_threshold)
                 .setGauss(gauss)
+                .setBsize(effectiveBsize)
+                .setTileOverlap(tile_overlap)
                 .setMinSize(min_size)
                 .setMinIntensity(intensityString)
                 .setNWorkers(n_workers)

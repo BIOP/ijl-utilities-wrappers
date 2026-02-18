@@ -80,6 +80,16 @@ public class CellposeDistributedTask {
             arguments.add(String.valueOf(settings.gauss));
         }
 
+        if (settings.bsize != -1) {
+            arguments.add("--bsize");
+            arguments.add(String.valueOf(settings.bsize));
+        }
+
+        if (settings.tile_overlap != 0.1) {
+            arguments.add("--tile_overlap");
+            arguments.add(String.valueOf(settings.tile_overlap));
+        }
+
         if (settings.anisotropy != 1.0) {
             arguments.add("--anisotropy");
             arguments.add(String.valueOf(settings.anisotropy));

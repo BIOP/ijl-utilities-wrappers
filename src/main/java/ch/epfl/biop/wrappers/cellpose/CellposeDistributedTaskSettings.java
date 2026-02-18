@@ -24,6 +24,8 @@ public class CellposeDistributedTaskSettings {
     public boolean show_dashboard = false;
     public double anisotropy = 1.0;
     public double gauss = 0.0;
+    public int bsize = -1;
+    public double tile_overlap = 0.1;
     public String logDirectory;
     public String additional_flags = "";
 
@@ -130,6 +132,16 @@ public class CellposeDistributedTaskSettings {
 
     public CellposeDistributedTaskSettings setGauss(double gauss) {
         this.gauss = gauss;
+        return this;
+    }
+
+    public CellposeDistributedTaskSettings setBsize(int bsize) {
+        this.bsize = bsize;
+        return this;
+    }
+
+    public CellposeDistributedTaskSettings setTileOverlap(double tile_overlap) {
+        this.tile_overlap = tile_overlap;
         return this;
     }
 
