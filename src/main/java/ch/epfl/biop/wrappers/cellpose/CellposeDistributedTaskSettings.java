@@ -24,6 +24,8 @@ public class CellposeDistributedTaskSettings {
     public boolean show_dashboard = false;
     public double anisotropy = 1.0;
     public double gauss = 0.0;
+    public int median = 0;
+    public boolean global_norm = false;
     public int bsize = -1;
     public double tile_overlap = 0.1;
     public String logDirectory;
@@ -132,6 +134,16 @@ public class CellposeDistributedTaskSettings {
 
     public CellposeDistributedTaskSettings setGauss(double gauss) {
         this.gauss = gauss;
+        return this;
+    }
+
+    public CellposeDistributedTaskSettings setMedian(int median) {
+        this.median = median;
+        return this;
+    }
+
+    public CellposeDistributedTaskSettings setGlobalNorm(boolean global_norm) {
+        this.global_norm = global_norm;
         return this;
     }
 

@@ -75,21 +75,6 @@ public class CellposeDistributedTask {
             arguments.add("--open_dashboard");
         }
 
-        if (settings.gauss > 0) {
-            arguments.add("--gauss");
-            arguments.add(String.valueOf(settings.gauss));
-        }
-
-        if (settings.bsize != -1) {
-            arguments.add("--bsize");
-            arguments.add(String.valueOf(settings.bsize));
-        }
-
-        if (settings.tile_overlap != 0.1) {
-            arguments.add("--tile_overlap");
-            arguments.add(String.valueOf(settings.tile_overlap));
-        }
-
         if (settings.anisotropy != 1.0) {
             arguments.add("--anisotropy");
             arguments.add(String.valueOf(settings.anisotropy));
@@ -103,11 +88,40 @@ public class CellposeDistributedTask {
         arguments.add("--batch_size");
         arguments.add(String.valueOf(settings.batch_size));
 
+        if (settings.gauss > 0) {
+            arguments.add("--gauss");
+            arguments.add("" + settings.gauss);
+        }
+
+        if (settings.median > 0) {
+            arguments.add("--median");
+            arguments.add("" + settings.median);
+        }
+
+        if (settings.global_norm) {
+            arguments.add("--global_norm");
+        }
+
+        if (settings.bsize > 0) {
+            arguments.add("--bsize");
+            arguments.add("" + settings.bsize);
+        }
+
+        if (settings.tile_overlap != 0.1) {
+            arguments.add("--tile_overlap");
+            arguments.add("" + settings.tile_overlap);
+        }
+
         if (!settings.additional_flags.trim().isEmpty()) {
             String[] flagsList = settings.additional_flags.split(",");
             for (String s : flagsList) {
-                if (!s.trim().isEmpty()) {
-                    arguments.add(s.trim());
+                String flag = s.trim();
+                if (!flag.isEmpty()) {
+                    // Automatically add -- if it's missing from a flag-like string
+                    if (!flag.startsWith("-")) {
+                        flag = "--" + flag;
+                    }
+                    arguments.add(flag);
                 }
             }
         }
