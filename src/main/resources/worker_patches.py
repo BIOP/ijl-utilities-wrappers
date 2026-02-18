@@ -324,15 +324,13 @@ def apply_zarr_patches():
     return applied_any
 
 
-def setup_worker(nthreads, min_intensity=None):
+def setup_worker(nthreads):
     """Return a worker setup callable that enforces thread limits.
 
     Parameters
     ----------
     nthreads : int
         Number of threads to enforce in environment variables.
-    min_intensity : float, optional
-        Minimum intensity threshold. Blocks with max < min_intensity will be skipped.
 
     Returns
     -------

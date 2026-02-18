@@ -1054,7 +1054,7 @@ def _run_distributed_eval(
             preload_content = (
                 wp_source
                 + "\n\n"
-                + f"dask_setup = setup_worker({thread_limit}, min_intensity={min_i_val})\n"
+                + f"dask_setup = setup_worker({thread_limit})\n"
             )
         except Exception:
             # Last-resort fallback inline minimal script
