@@ -1119,8 +1119,9 @@ def dask_setup(worker):
         # Proactively filter eval_kwargs to match CellposeModel.eval signature
         # to avoid TypeErrors from unknown parameters (e.g. CLI flags vs API keys).
         try:
-            from cellpose.models import CellposeModel
             import inspect
+
+            from cellpose.models import CellposeModel
 
             sig_eval = inspect.signature(CellposeModel.eval)
             valid_keys = set(sig_eval.parameters.keys())
@@ -1139,7 +1140,9 @@ def dask_setup(worker):
             filtered_eval = {k: v for k, v in eval_kwargs.items() if k in valid_keys}
             if len(filtered_eval) < len(eval_kwargs):
                 dropped = set(eval_kwargs.keys()) - set(filtered_eval.keys())
-                print(f"Filtering eval_kwargs: dropped unsupported parameters {dropped}")
+                print(
+                    f"Filtering eval_kwargs: dropped unsupported parameters {dropped}"
+                )
                 eval_kwargs = filtered_eval
         except Exception as _fe:
             print(f"Warning: could not filter eval_kwargs: {_fe}")
@@ -2304,14 +2307,88 @@ def main():
                     q75, q25 = np.percentile(slice_sample, [75, 25])
                     iqr = q75 - q25
                     robust_std = iqr / 1.349 if iqr > 0 else float(np.std(slice_sample))
+                    noise_floor = background_level + max(robust_std * 3, 1.0)
 
-                    # Target threshold: clearly above background noise.
-                    # We use a much lower multiplier (1.5) now since we have robust dilation.
-                    # A multiplier of 1.5 is very safe to avoid clipping real signal.
-                    args.min_intensity = background_level + max(robust_std * 1.5, 1.0)
-                    print(
-                        f"Auto-calculated min_intensity threshold: {args.min_intensity:.2f} (median: {background_level:.2f}, robust_std: {robust_std:.2f})"
-                    )
+                    # 2. More advanced heuristics (Triangle/Otsu-lite) to catch real signals
+                    # that are far away from the background noise floor (typical in microscopy).
+                    try:
+                        # Triangle algorithm: find the point on the 'slope' of the background
+                        # peak where it starts to level off into signal.
+                        def _triangle_threshold(data, bins=512):
+                            low = float(np.min(data))
+                            high = float(np.max(data))
+                            if low >= high:
+                                return low
+                            counts, edges = np.histogram(data, bins=bins, range=(low, high))
+                            centers = (edges[:-1] + edges[1:]) / 2
+                            counts = counts.astype(float)
+                            peak_idx = np.argmax(counts)
+
+                            # Determine if peak is left or right and where farthest bin is
+                            flipped = False
+                            if peak_idx < bins // 2:
+                                # Standard left-peak
+                                x_pts = np.arange(peak_idx, bins)
+                                y_pts = counts[peak_idx:]
+                                start_x, start_y = peak_idx, counts[peak_idx]
+                                end_x, end_y = bins - 1, counts[-1]
+                            else:
+                                # Right-peak fallback
+                                flipped = True
+                                counts = counts[::-1]
+                                peak_idx = bins - 1 - peak_idx
+                                x_pts = np.arange(peak_idx, bins)
+                                y_pts = counts[peak_idx:]
+                                start_x, start_y = peak_idx, counts[peak_idx]
+                                end_x, end_y = bins - 1, counts[-1]
+
+                            # Distance to triangle line
+                            a = start_y - end_y
+                            b = end_x - start_x
+                            c = -a * start_x - b * start_y
+                            dist = np.abs(a * x_pts + b * y_pts + c)
+                            best_idx = peak_idx + np.argmax(dist)
+                            if flipped:
+                                best_idx = bins - 1 - best_idx
+                            return centers[best_idx]
+
+                        triangle_t = _triangle_threshold(slice_sample)
+
+                        # Otsu's method (Simplified Numpy/Native version)
+                        def _otsu_threshold(data, bins=256):
+                            counts, edges = np.histogram(data, bins=bins)
+                            centers = (edges[:-1] + edges[1:]) / 2
+                            p = counts / counts.sum()
+                            w = p.cumsum()
+                            mu = (centers * p).cumsum()
+                            mu_total = mu[-1]
+                            # Variance between classes
+                            idx = (w > 0) & (w < 1)
+                            sigma_b2 = np.zeros_like(w)
+                            sigma_b2[idx] = (mu_total * w[idx] - mu[idx]) ** 2 / (
+                                w[idx] * (1 - w[idx])
+                            )
+                            return centers[np.argmax(sigma_b2)]
+
+                        otsu_t = _otsu_threshold(slice_sample)
+
+                        # We use Triangle as it is more conservative for microscopy backgrounds,
+                        # but we cap it at a fraction of Otsu to avoid over-thresholding
+                        # if Otsu is very aggressive, or taking it if Triangle is too close to noise.
+                        conservative_otsu = otsu_t * 0.33 + background_level * 0.67
+                        args.min_intensity = max(noise_floor, triangle_t, conservative_otsu)
+
+                        print(
+                            f"Auto-calculated min_intensity threshold: {args.min_intensity:.2f} "
+                            f"(noise_floor: {noise_floor:.2f}, triangle: {triangle_t:.2f}, "
+                            f"otsu-lite: {conservative_otsu:.2f})"
+                        )
+                    except Exception as _ie:
+                        # Fallback to noise floor if triangle/otsu fail
+                        args.min_intensity = noise_floor
+                        print(
+                            f"Auto-calculated min_intensity threshold (fallback): {args.min_intensity:.2f} (noise_floor only)"
+                        )
                 except Exception as e:
                     print(f"Warning: could not auto-calculate min_intensity: {e}")
                     args.min_intensity = None
