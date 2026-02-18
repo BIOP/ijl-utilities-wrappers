@@ -1116,6 +1116,34 @@ def dask_setup(worker):
             print(f"Created preprocessing_steps to stack {len(channel_zarrs)} channels")
             sys.stdout.flush()
 
+        # Proactively filter eval_kwargs to match CellposeModel.eval signature
+        # to avoid TypeErrors from unknown parameters (e.g. CLI flags vs API keys).
+        try:
+            from cellpose.models import CellposeModel
+            import inspect
+
+            sig_eval = inspect.signature(CellposeModel.eval)
+            valid_keys = set(sig_eval.parameters.keys())
+            # Add known common parameters that might not be in the signature but are used
+            valid_keys.update(
+                [
+                    "normalize",
+                    "flow_threshold",
+                    "cellprob_threshold",
+                    "stitch_threshold",
+                    "min_size",
+                    "compute_masks",
+                ]
+            )
+
+            filtered_eval = {k: v for k, v in eval_kwargs.items() if k in valid_keys}
+            if len(filtered_eval) < len(eval_kwargs):
+                dropped = set(eval_kwargs.keys()) - set(filtered_eval.keys())
+                print(f"Filtering eval_kwargs: dropped unsupported parameters {dropped}")
+                eval_kwargs = filtered_eval
+        except Exception as _fe:
+            print(f"Warning: could not filter eval_kwargs: {_fe}")
+
         # Let cellpose create its own cluster with our preload script
         kwargs = dict(
             blocksize=blocksize,
@@ -2554,6 +2582,17 @@ def main():
 
         if "=" in arg:
             i += 1
+
+    # Map CLI-specific flags to Cellpose API parameters
+    if "no_norm" in eval_kwargs:
+        if eval_kwargs["no_norm"]:
+            eval_kwargs["normalize"] = False
+            print("Mapping 'no_norm' flag to 'normalize=False'")
+        del eval_kwargs["no_norm"]
+
+    # cellpose CLI uses --total_mask for what API calls 'flow_threshold'
+    if "total_mask" in eval_kwargs:
+        eval_kwargs["flow_threshold"] = eval_kwargs.pop("total_mask")
 
     # Auto-detect n_workers and ncpus if not specified
     if args.n_workers is None:
