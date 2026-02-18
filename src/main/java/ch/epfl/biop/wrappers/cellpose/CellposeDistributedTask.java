@@ -75,6 +75,11 @@ public class CellposeDistributedTask {
             arguments.add("--open_dashboard");
         }
 
+        if (settings.gauss > 0) {
+            arguments.add("--gauss");
+            arguments.add(String.valueOf(settings.gauss));
+        }
+
         if (settings.anisotropy != 1.0) {
             arguments.add("--anisotropy");
             arguments.add(String.valueOf(settings.anisotropy));

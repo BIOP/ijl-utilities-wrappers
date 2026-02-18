@@ -23,6 +23,7 @@ public class CellposeDistributedTaskSettings {
     public int batch_size = 1;
     public boolean show_dashboard = false;
     public double anisotropy = 1.0;
+    public double gauss = 0.0;
     public String logDirectory;
     public String additional_flags = "";
 
@@ -124,6 +125,11 @@ public class CellposeDistributedTaskSettings {
 
     public CellposeDistributedTaskSettings setAnisotropy(double anisotropy) {
         this.anisotropy = anisotropy;
+        return this;
+    }
+
+    public CellposeDistributedTaskSettings setGauss(double gauss) {
+        this.gauss = gauss;
         return this;
     }
 

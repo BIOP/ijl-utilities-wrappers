@@ -60,6 +60,9 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "--stitch_threshold", description = "Stitch threshold for 3D volumes. 0.0 to disable stitching. Typical values: 0.5.")
     double stitch_threshold = 0.0;
 
+    @Parameter(label = "Gaussian blur sigma (XY)", description = "Apply a Gaussian blur before segmentation to reduce noise. 0 to disable.")
+    double gauss = 0.0;
+
     @Parameter(label = "--min_size", description = "Minimum size of detected objects in pixels.")
     int min_size = 15;
 
@@ -165,6 +168,7 @@ public class CellposeDistributed implements Command {
                 .setFlowThreshold(flow_threshold)
                 .setCellprobThreshold(cellprob_threshold)
                 .setStitchThreshold(stitch_threshold)
+                .setGauss(gauss)
                 .setMinSize(min_size)
                 .setMinIntensity(intensityString)
                 .setNWorkers(n_workers)

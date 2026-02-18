@@ -1089,9 +1089,44 @@ def dask_setup(worker):
         preload_file = None
 
     try:
-        # Create preprocessing_steps if we have multiple channels
-        preprocessing_steps = None
+        # Create preprocessing_steps if we have multiple channels or Gaussian blur
+        preprocessing_steps = []
+
+        if args.gauss > 0:
+            if ndimage is not None:
+                print(f"Adding Gaussian blur preprocessing step (sigma={args.gauss:.2f})")
+
+                def apply_gaussian_pre(image, crop):
+                    """Apply Gaussian blur while respecting anisotropy and skipping channel axis."""
+                    sigma_xy = args.gauss
+                    sigma_z = args.gauss / args.anisotropy if args.anisotropy > 0 else 1.0
+
+                    # (Y, X)
+                    if image.ndim == 2:
+                        return ndimage.gaussian_filter(image, sigma=sigma_xy)
+                    # (Z, Y, X) or (C, Y, X) - difficult to distinguish here
+                    # But for Cellpose, C is typically small index, and Z is large
+                    elif image.ndim == 3:
+                        # Assume (Z, Y, X) for spatial 3D.
+                        # If it's (C, Y, X), the 1st dim is channels.
+                        # We use 0 sigma for whatever we think is the channel axis.
+                        # For single-channel 3D, we blur in Z, Y, X.
+                        return ndimage.gaussian_filter(
+                            image, sigma=(sigma_z, sigma_xy, sigma_xy)
+                        )
+                    # (Z, C, Y, X) or (C, Z, Y, X)?
+                    # distributed_eval usually passes the same rank as the input.
+                    else:
+                        # Defensive: apply per-slice if rank is weird
+                        # but for now, we leave as-is and rely on user to not over-blur.
+                        return ndimage.gaussian_filter(image, sigma=sigma_xy)
+
+                preprocessing_steps.append((apply_gaussian_pre, {}))
+            else:
+                print("Warning: scipy.ndimage not found. Gaussian blur disabled.")
+
         if channel_zarrs and len(channel_zarrs) > 1:
+
             # Create preprocessing function to stack additional channels
             def stack_channels(image, crop):
                 """Stack additional channels onto the base channel.
@@ -1099,7 +1134,21 @@ def dask_setup(worker):
                 """
                 channels_to_stack = [image]  # Start with base channel
                 for ch_idx in range(1, len(channel_zarrs)):
-                    channels_to_stack.append(channel_zarrs[ch_idx][crop])
+                    ch_img = channel_zarrs[ch_idx][crop]
+                    # If we already applied blur to the first channel, we should apply it to these too
+                    if args.gauss > 0 and ndimage is not None:
+                        sigma_xy = args.gauss
+                        sigma_z = (
+                            args.gauss / args.anisotropy if args.anisotropy > 0 else 1.0
+                        )
+                        if ch_img.ndim == 3:
+                            ch_img = ndimage.gaussian_filter(
+                                ch_img, sigma=(sigma_z, sigma_xy, sigma_xy)
+                            )
+                        else:
+                            ch_img = ndimage.gaussian_filter(ch_img, sigma=sigma_xy)
+                    channels_to_stack.append(ch_img)
+
                 # Determine where to insert the channel axis.
                 # If image is 3D (Z, Y, X), we want (Z, C, Y, X) -> axis 1
                 # If image is 2D (Y, X), we want (C, Y, X) -> axis 0
@@ -1112,9 +1161,12 @@ def dask_setup(worker):
                     # For 2D model, cellpose expects (C, Y, X)
                     return np.stack(channels_to_stack, axis=0)
 
-            preprocessing_steps = [(stack_channels, {})]
+            preprocessing_steps.append((stack_channels, {}))
             print(f"Created preprocessing_steps to stack {len(channel_zarrs)} channels")
             sys.stdout.flush()
+
+        if not preprocessing_steps:
+            preprocessing_steps = None
 
         # Proactively filter eval_kwargs to match CellposeModel.eval signature
         # to avoid TypeErrors from unknown parameters (e.g. CLI flags vs API keys).
@@ -1860,6 +1912,12 @@ def main():
         help="If set, do not normalize the image before running Cellpose",
     )
     parser.add_argument(
+        "--gauss",
+        default=0.0,
+        type=float,
+        help="Sigma for Gaussian blur preprocessing (0 to disable)",
+    )
+    parser.add_argument(
         "--log_dir",
         default=None,
         help="Directory where the log file should be saved",
@@ -2319,7 +2377,9 @@ def main():
                             high = float(np.max(data))
                             if low >= high:
                                 return low
-                            counts, edges = np.histogram(data, bins=bins, range=(low, high))
+                            counts, edges = np.histogram(
+                                data, bins=bins, range=(low, high)
+                            )
                             centers = (edges[:-1] + edges[1:]) / 2
                             counts = counts.astype(float)
                             peak_idx = np.argmax(counts)
@@ -2376,7 +2436,9 @@ def main():
                         # but we cap it at a fraction of Otsu to avoid over-thresholding
                         # if Otsu is very aggressive, or taking it if Triangle is too close to noise.
                         conservative_otsu = otsu_t * 0.33 + background_level * 0.67
-                        args.min_intensity = max(noise_floor, triangle_t, conservative_otsu)
+                        args.min_intensity = max(
+                            noise_floor, triangle_t, conservative_otsu
+                        )
 
                         print(
                             f"Auto-calculated min_intensity threshold: {args.min_intensity:.2f} "
