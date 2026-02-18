@@ -63,6 +63,12 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "Gaussian blur sigma (XY)", description = "Apply a Gaussian blur before segmentation to reduce noise. 0 to disable.")
     double gauss = 0.0;
 
+    @Parameter(label = "Median filter radius (px)", description = "Apply a median filter to remove hotspots. 0 to disable.")
+    int median = 0;
+
+    @Parameter(label = "Global Normalization (Beta)", description = "Normalize the entire volume before tiling. Prevents stitching artifacts in noisy images.")
+    boolean global_norm = false;
+
     @Parameter(label = "--min_size", description = "Minimum size of detected objects in pixels.")
     int min_size = 15;
 
@@ -177,6 +183,8 @@ public class CellposeDistributed implements Command {
                 .setCellprobThreshold(cellprob_threshold)
                 .setStitchThreshold(stitch_threshold)
                 .setGauss(gauss)
+                .setMedian(median)
+                .setGlobalNorm(global_norm)
                 .setBsize(effectiveBsize)
                 .setTileOverlap(tile_overlap)
                 .setMinSize(min_size)
