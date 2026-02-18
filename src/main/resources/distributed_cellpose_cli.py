@@ -1052,9 +1052,7 @@ def _run_distributed_eval(
 
             min_i_val = args.min_intensity if args.min_intensity is not None else "None"
             preload_content = (
-                wp_source
-                + "\n\n"
-                + f"dask_setup = setup_worker({thread_limit})\n"
+                wp_source + "\n\n" + f"dask_setup = setup_worker({thread_limit})\n"
             )
         except Exception:
             # Last-resort fallback inline minimal script
@@ -1364,6 +1362,18 @@ def dask_setup(worker):
                     print(
                         "Passing foreground mask to distributed_eval for efficient processing"
                     )
+
+                # Optional preprocessing_steps support
+                if preprocessing_steps and "preprocessing_steps" in sig.parameters:
+                    kwargs["preprocessing_steps"] = preprocessing_steps
+                    print(
+                        f"Passing preprocessing_steps to distributed_eval to stack {len(channel_zarrs)} channels"
+                    )
+                elif preprocessing_steps:
+                    # If not supported, we might have a problem if it's multi-channel,
+                    # but we keep it in kwargs and let distributed_eval try to use it
+                    # or fail gracefully later.
+                    pass
 
                 # If distributed_eval supports 'overlap', pass margin to help avoid holes between blocks.
                 # We use a tuple to specify different overlaps for Z and XY.
@@ -1686,7 +1696,10 @@ def main():
         "--diameter", default=30, type=float, help="Diameter for evaluation"
     )
     parser.add_argument(
-        "--chan", default=0, type=int, help="Channel index to use (1-based, 0 is auto/first)"
+        "--chan",
+        default=0,
+        type=int,
+        help="Channel index to use (1-based, 0 is auto/first)",
     )
     parser.add_argument(
         "--chan2", default=-0, type=int, help="Second channel index or 0 (None)"
@@ -2346,7 +2359,6 @@ def main():
     )
 
     # GUI and CLI now use 1-based indexing consistently (1=First, 2=Second, 0=None).
-    # However, if we subsetted the channels during extraction (was_subsetted),
     # GUI and CLI now use 1-based indexing consistently (1=First, 2=Second, 0=None).
     # However, if we subsetted the channels during extraction (was_subsetted),
     # the 'channels' indices must refer to the indices in the stack we created.
@@ -2365,12 +2377,17 @@ def main():
     else:
         # Single channel or folder of TIFFs: use user-provided indices
         # If the input doesn't have a channel axis, we must use [0, 0] for grayscale.
-        if c_axis_pos is None and input_zarr.ndim <= 3:
+        if c_axis_pos is None and input_zarr.ndim < 3:
             channels = [0, 0]
         else:
             c1 = args.chan if args.chan > 0 else 1
             c2 = args.chan2 if args.chan2 > 0 else 0
             channels = [c1, c2]
+
+    # Resolve dimensionality
+    is_3d_spatial = (input_zarr.ndim >= 3 and c_axis_pos is None) or (
+        input_zarr.ndim >= 4 and c_axis_pos is not None
+    )
 
     # Ensure diameter is an integer to avoid float-based slice indices
     try:
@@ -2386,8 +2403,7 @@ def main():
         "stitch_threshold": args.stitch_threshold,
         "min_size": args.min_size,
         "batch_size": args.batch_size,
-        # Enable 3D segmentation
-        "do_3D": True,
+        "do_3D": is_3d_spatial,
     }
 
     # Explicitly handle bsize and tile_overlap if provided
