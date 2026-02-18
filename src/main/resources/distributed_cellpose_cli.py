@@ -1851,6 +1851,12 @@ def main():
         help="If set, do not delete the intermediate stitched Zarr after TIFF conversion",
     )
     parser.add_argument(
+        "--no_norm",
+        action="store_true",
+        default=False,
+        help="If set, do not normalize the image before running Cellpose",
+    )
+    parser.add_argument(
         "--log_dir",
         default=None,
         help="Directory where the log file should be saved",
@@ -2432,6 +2438,7 @@ def main():
         "min_size": args.min_size,
         "batch_size": args.batch_size,
         "do_3D": is_3d_spatial,
+        "normalize": not args.no_norm,
     }
 
     # Explicitly handle bsize and tile_overlap if provided
@@ -2583,13 +2590,7 @@ def main():
         if "=" in arg:
             i += 1
 
-    # Map CLI-specific flags to Cellpose API parameters
-    if "no_norm" in eval_kwargs:
-        if eval_kwargs["no_norm"]:
-            eval_kwargs["normalize"] = False
-            print("Mapping 'no_norm' flag to 'normalize=False'")
-        del eval_kwargs["no_norm"]
-
+    # Map CLI-specific flags from unknown_args to Cellpose API parameters
     # cellpose CLI uses --total_mask for what API calls 'flow_threshold'
     if "total_mask" in eval_kwargs:
         eval_kwargs["flow_threshold"] = eval_kwargs.pop("total_mask")
