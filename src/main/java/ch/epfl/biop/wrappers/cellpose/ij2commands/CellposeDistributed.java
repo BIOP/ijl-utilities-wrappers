@@ -63,8 +63,11 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "--min_size", description = "Minimum size of detected objects in pixels.")
     int min_size = 15;
 
-    @Parameter(label = "--min_intensity", description = "Skip blocks with max intensity below this threshold. 'auto' calculates background threshold.")
-    String min_intensity = "auto";
+    @Parameter(label = "Auto Min Intensity Threshold", description = "If checked, automatically calculates background threshold ('auto').")
+    boolean auto_min_intensity = true;
+
+    @Parameter(label = "Min Intensity Value", description = "Skip blocks with max intensity below this threshold. Used only if Auto is unchecked.")
+    double min_intensity = 0.0;
 
     @Parameter(required = false, label = "To add more parameters (comma separated)", description = "Comma-separated list of additional CLI flags (e.g., --use_gpu).")
     String additional_flags = "";
@@ -144,6 +147,8 @@ public class CellposeDistributed implements Command {
         int effectiveCh1 = ch1;
         int effectiveCh2 = ch2 > 0 ? ch2 : -1;
 
+        String intensityString = auto_min_intensity ? "auto" : String.valueOf(min_intensity);
+
         CellposeDistributedTaskSettings settings = new CellposeDistributedTaskSettings()
                 .setEnvPath(env_path.getAbsolutePath())
                 .setInputPath(inputTif.getAbsolutePath())
@@ -161,7 +166,7 @@ public class CellposeDistributed implements Command {
                 .setCellprobThreshold(cellprob_threshold)
                 .setStitchThreshold(stitch_threshold)
                 .setMinSize(min_size)
-                .setMinIntensity(min_intensity)
+                .setMinIntensity(intensityString)
                 .setNWorkers(n_workers)
                 .setLogDirectory(output_directory != null ? output_directory.getAbsolutePath() : tempDir.getAbsolutePath())
                 .setAdditionalFlags(additional_flags);
