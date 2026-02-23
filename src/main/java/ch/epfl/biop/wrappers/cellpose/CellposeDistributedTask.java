@@ -20,10 +20,19 @@ public class CellposeDistributedTask {
         List<String> arguments = new ArrayList<>();
         arguments.add(DistributedCellposeUtil.getScriptPath(settings.envPath));
 
-        arguments.add("--input_file");
+        File input = new File(settings.inputPath);
+        if (input.isDirectory()) {
+            arguments.add("--input_dir");
+        } else {
+            arguments.add("--input_file");
+        }
         arguments.add(settings.inputPath);
 
-        arguments.add("--output_tif");
+        if (input.isDirectory()) {
+            arguments.add("--output_dir");
+        } else {
+            arguments.add("--output_tif");
+        }
         arguments.add(settings.outputPath);
 
         arguments.add("--model");

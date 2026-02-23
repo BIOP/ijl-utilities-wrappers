@@ -33,8 +33,11 @@ public class CellposeDistributed implements Command {
     @Parameter
     LogService ls;
 
-    @Parameter
+    @Parameter(required = false)
     ImagePlus imp;
+
+    @Parameter(required = false, label = "Input File or Folder", description = "Path to a TIFF file or a folder of TIFFs. If empty, takes the image currently open in Fiji.")
+    File input_file_or_folder;
 
     @Parameter(label = "conda environment path", style = "directory", description = "Path to the conda environment containing cellpose, dask, and zarr.")
     File env_path = new File(default_conda_env_path);
@@ -126,34 +129,73 @@ public class CellposeDistributed implements Command {
             ls.info("Blocksize is 'auto'. Calculating optimal hardware-dependent blocksize...");
         }
 
-        File tempDir = new TempDirectory("cellpose_dist").getPath().toFile();
-        tempDir.mkdir();
-        ls.info("Temporary folder for this run: " + tempDir.getAbsolutePath());
-
-        File inputTif = new File(tempDir, "input.tif");
-        new FileSaver(imp).saveAsTiff(inputTif.getAbsolutePath());
-
-        File outputTif = (output_directory != null && output_directory.exists())
-                ? new File(output_directory, imp.getShortTitle() + "_cellpose.tif")
-                : new File(tempDir, "output.tif");
-
-        // Calibration-aware diameter: convert from units to pixels
-        double pixelWidth = imp.getCalibration().pixelWidth;
-        double pixelDepth = imp.getCalibration().pixelDepth;
-        double diameterInPixels = diameter;
-        if (diameter > 0) {
-            diameterInPixels = diameter / pixelWidth;
-            ls.info("Calibrated diameter: " + diameter + " " + imp.getCalibration().getUnit() + " -> " + String.format("%.2f", diameterInPixels) + " pixels");
-        }
-
+        File inputPath;
+        File outputPath;
+        double diameterInPixels;
         double anisotropy = 1.0;
-        if (imp.getNSlices() > 1) {
-            anisotropy = pixelDepth / pixelWidth;
-            if (Math.abs(anisotropy - 1.0) > 0.01) {
-                ls.info("Calculated anisotropy (Z/XY): " + String.format("%.3f", anisotropy));
+        String logDirectory;
+        String shortTitle;
+
+        if (input_file_or_folder != null && input_file_or_folder.exists()) {
+            inputPath = input_file_or_folder;
+            diameterInPixels = diameter; // Assumes pixel units when using path-based input
+            shortTitle = inputPath.getName();
+
+            if (output_directory != null && output_directory.exists()) {
+                if (inputPath.isDirectory()) {
+                    outputPath = output_directory;
+                } else {
+                    outputPath = new File(output_directory, inputPath.getName().replace(".tif", "_cellpose.tif"));
+                }
+                logDirectory = output_directory.getAbsolutePath();
             } else {
-                anisotropy = 1.0;
+                if (inputPath.isDirectory()) {
+                    ls.warn("Input is a folder but no output directory provided. Results will be saved in a temporary folder.");
+                    outputPath = new TempDirectory("cellpose_dist_out").getPath().toFile();
+                    outputPath.mkdir();
+                } else {
+                    outputPath = new File(inputPath.getAbsolutePath().replace(".tif", "_cellpose.tif"));
+                }
+                logDirectory = inputPath.isDirectory() ? outputPath.getAbsolutePath() : inputPath.getParent();
             }
+            ls.info("Running Cellpose Distributed on: " + inputPath.getAbsolutePath());
+        } else {
+            if (imp == null) {
+                ls.error("Error: No image open in Fiji and no input path provided.");
+                return;
+            }
+            shortTitle = imp.getShortTitle();
+            File tempDir = new TempDirectory("cellpose_dist").getPath().toFile();
+            tempDir.mkdir();
+            ls.info("Temporary folder for this run: " + tempDir.getAbsolutePath());
+
+            inputPath = new File(tempDir, "input.tif");
+            new FileSaver(imp).saveAsTiff(inputPath.getAbsolutePath());
+
+            if (output_directory != null && output_directory.exists()) {
+                outputPath = new File(output_directory, imp.getShortTitle() + "_cellpose.tif");
+            } else {
+                outputPath = new File(tempDir, "output.tif");
+            }
+
+            // Calibration-aware diameter
+            double pixelWidth = imp.getCalibration().pixelWidth;
+            double pixelDepth = imp.getCalibration().pixelDepth;
+            diameterInPixels = diameter;
+            if (diameter > 0) {
+                diameterInPixels = diameter / pixelWidth;
+                ls.info("Calibrated diameter: " + diameter + " " + imp.getCalibration().getUnit() + " -> " + String.format("%.2f", diameterInPixels) + " pixels");
+            }
+
+            if (imp.getNSlices() > 1) {
+                anisotropy = pixelDepth / pixelWidth;
+                if (Math.abs(anisotropy - 1.0) > 0.01) {
+                    ls.info("Calculated anisotropy (Z/XY): " + String.format("%.3f", anisotropy));
+                } else {
+                    anisotropy = 1.0;
+                }
+            }
+            logDirectory = output_directory != null ? output_directory.getAbsolutePath() : tempDir.getAbsolutePath();
         }
 
         // GUI channels are 1-based (1=Channel 1, 0=None).
@@ -168,8 +210,8 @@ public class CellposeDistributed implements Command {
 
         CellposeDistributedTaskSettings settings = new CellposeDistributedTaskSettings()
                 .setEnvPath(env_path.getAbsolutePath())
-                .setInputPath(inputTif.getAbsolutePath())
-                .setOutputPath(outputTif.getAbsolutePath())
+                .setInputPath(inputPath.getAbsolutePath())
+                .setOutputPath(outputPath.getAbsolutePath())
                 .setModel(model)
                 .setDiameter(diameterInPixels)
                 .setChannels(effectiveCh1, effectiveCh2)
@@ -190,7 +232,7 @@ public class CellposeDistributed implements Command {
                 .setMinSize(min_size)
                 .setMinIntensity(intensityString)
                 .setNWorkers(n_workers)
-                .setLogDirectory(output_directory != null ? output_directory.getAbsolutePath() : tempDir.getAbsolutePath())
+                .setLogDirectory(logDirectory)
                 .setAdditionalFlags(additional_flags);
 
         CellposeDistributedTask task = new CellposeDistributedTask();
@@ -198,16 +240,27 @@ public class CellposeDistributed implements Command {
 
         try {
             task.run();
-            cellpose_imp = IJ.openImage(outputTif.getAbsolutePath());
-            if (cellpose_imp != null) {
-                cellpose_imp.setTitle(imp.getShortTitle() + "-cellpose-dist");
-                cellpose_imp.setCalibration(imp.getCalibration());
-                cellpose_imp.show();
-                ls.info("Cellpose Distributed finished. Result opened: " + cellpose_imp.getTitle());
+            // If output is a folder, do not open as ImagePlus
+            if (!inputPath.isDirectory()) {
+                cellpose_imp = IJ.openImage(outputPath.getAbsolutePath());
+                if (cellpose_imp != null) {
+                    cellpose_imp.setTitle(shortTitle + "-cellpose-dist");
+                    if (imp != null) {
+                        cellpose_imp.setCalibration(imp.getCalibration());
+                    }
+                    cellpose_imp.show();
+                    ls.info("Cellpose Distributed finished. Result opened: " + cellpose_imp.getTitle());
+                } else {
+                    ls.error("Error: Could not open the output image at " + outputPath.getAbsolutePath());
+                }
             } else {
-                ls.error("Error: Could not open the output image at " + outputTif.getAbsolutePath());
+                ls.info("Cellpose Distributed finished in batch mode. Results saved in: " + outputPath.getAbsolutePath());
             }
         } catch (Exception e) {
+            ls.error("Cellpose Distributed failed: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
             ls.error("Cellpose Distributed failed: " + e.getMessage());
             e.printStackTrace();
         } finally {
