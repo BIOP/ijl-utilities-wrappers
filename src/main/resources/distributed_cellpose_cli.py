@@ -2658,137 +2658,137 @@ def main():
             else:
                 # Fallback: calculate statistics from sampled slices if needed (Original logic)
                 if args.min_intensity == "auto" or args.global_norm:
-                try:
-                    print(
-                        "Calculating robust image statistics (Threshold/Normalization)..."
-                    )
-                    sys.stdout.flush()
+                    try:
+                        print(
+                            "Calculating robust image statistics (Threshold/Normalization)..."
+                        )
+                        sys.stdout.flush()
 
-                    # Sample a few slices across the stack for more robust statistics.
-                    # We take 5 slices (10%, 30%, 50%, 70%, 90%) to catch signal in both halves.
-                    shape = input_zarr.shape
-                    ndim = input_zarr.ndim
-                    if ndim >= 3:
-                        z_indices = [
-                            int(shape[0] * r) for r in [0.1, 0.3, 0.5, 0.7, 0.9]
-                        ]
-                        samples = []
-                        for zi in z_indices:
-                            try:
-                                samples.append(
-                                    np.array(input_zarr[zi, ::8, ::8]).flatten()
-                                )
-                            except Exception:
-                                pass
-                        if samples:
-                            slice_sample = np.concatenate(samples)
+                        # Sample a few slices across the stack for more robust statistics.
+                        # We take 5 slices (10%, 30%, 50%, 70%, 90%) to catch signal in both halves.
+                        shape = input_zarr.shape
+                        ndim = input_zarr.ndim
+                        if ndim >= 3:
+                            z_indices = [
+                                int(shape[0] * r) for r in [0.1, 0.3, 0.5, 0.7, 0.9]
+                            ]
+                            samples = []
+                            for zi in z_indices:
+                                try:
+                                    samples.append(
+                                        np.array(input_zarr[zi, ::8, ::8]).flatten()
+                                    )
+                                except Exception:
+                                    pass
+                            if samples:
+                                slice_sample = np.concatenate(samples)
+                            else:
+                                slice_sample = np.array(input_zarr[::8, ::8])
                         else:
                             slice_sample = np.array(input_zarr[::8, ::8])
-                    else:
-                        slice_sample = np.array(input_zarr[::8, ::8])
 
-                    background_level = float(np.median(slice_sample))
-                    q75, q25 = np.percentile(slice_sample, [75, 25])
-                    iqr = q75 - q25
-                    robust_std = qiqr = (
-                        iqr / 1.349 if iqr > 0 else float(np.std(slice_sample))
-                    )
-                    noise_floor = background_level + max(robust_std * 3, 1.0)
-
-                    # Calculate Global Normalization Limits (p1, p99)
-                    if args.global_norm:
-                        p1, p99 = np.percentile(slice_sample, [1, 99])
-                        # If p1 == p99, use min/max of sample
-                        if p1 >= p99:
-                            p1, p99 = np.min(slice_sample), np.max(slice_sample)
-                        # Avoid div/0 and non-zero normalization range
-                        global_limits = (float(p1), float(max(p99, p1 + 1.0)))
-                        print(
-                            f"Global normalization limits (p1/p99): {global_limits[0]:.2f} - {global_limits[1]:.2f}"
+                        background_level = float(np.median(slice_sample))
+                        q75, q25 = np.percentile(slice_sample, [75, 25])
+                        iqr = q75 - q25
+                        robust_std = qiqr = (
+                            iqr / 1.349 if iqr > 0 else float(np.std(slice_sample))
                         )
+                        noise_floor = background_level + max(robust_std * 3, 1.0)
 
-                    # Resolve 'auto' threshold if requested
-                    if args.min_intensity == "auto":
-                        # Triangle algorithm: find the point on the 'slope' of the background
-                        # peak where it starts to level off into signal.
-                        def _triangle_threshold(data, bins=512):
-                            low = float(np.min(data))
-                            high = float(np.max(data))
-                            if low >= high:
-                                return low
-                            counts, edges = np.histogram(
-                                data, bins=bins, range=(low, high)
+                        # Calculate Global Normalization Limits (p1, p99)
+                        if args.global_norm:
+                            p1, p99 = np.percentile(slice_sample, [1, 99])
+                            # If p1 == p99, use min/max of sample
+                            if p1 >= p99:
+                                p1, p99 = np.min(slice_sample), np.max(slice_sample)
+                            # Avoid div/0 and non-zero normalization range
+                            global_limits = (float(p1), float(max(p99, p1 + 1.0)))
+                            print(
+                                f"Global normalization limits (p1/p99): {global_limits[0]:.2f} - {global_limits[1]:.2f}"
                             )
-                            centers = (edges[:-1] + edges[1:]) / 2
-                            counts = counts.astype(float)
-                            peak_idx = np.argmax(counts)
 
-                            # Determine if peak is left or right and where farthest bin is
-                            flipped = False
-                            if peak_idx < bins // 2:
-                                # Standard left-peak
-                                x_pts = np.arange(peak_idx, bins)
-                                y_pts = counts[peak_idx:]
-                                start_x, start_y = peak_idx, counts[peak_idx]
-                                end_x, end_y = bins - 1, counts[-1]
-                            else:
-                                # Right-peak fallback
-                                flipped = True
-                                counts = counts[::-1]
-                                peak_idx = bins - 1 - peak_idx
-                                x_pts = np.arange(peak_idx, bins)
-                                y_pts = counts[peak_idx:]
-                                start_x, start_y = peak_idx, counts[peak_idx]
-                                end_x, end_y = bins - 1, counts[-1]
+                        # Resolve 'auto' threshold if requested
+                        if args.min_intensity == "auto":
+                            # Triangle algorithm: find the point on the 'slope' of the background
+                            # peak where it starts to level off into signal.
+                            def _triangle_threshold(data, bins=512):
+                                low = float(np.min(data))
+                                high = float(np.max(data))
+                                if low >= high:
+                                    return low
+                                counts, edges = np.histogram(
+                                    data, bins=bins, range=(low, high)
+                                )
+                                centers = (edges[:-1] + edges[1:]) / 2
+                                counts = counts.astype(float)
+                                peak_idx = np.argmax(counts)
 
-                            # Distance to triangle line
-                            a = start_y - end_y
-                            b = end_x - start_x
-                            c = -a * start_x - b * start_y
-                            dist = np.abs(a * x_pts + b * y_pts + c)
-                            best_idx = peak_idx + np.argmax(dist)
-                            if flipped:
-                                best_idx = bins - 1 - best_idx
-                            return centers[best_idx]
+                                # Determine if peak is left or right and where farthest bin is
+                                flipped = False
+                                if peak_idx < bins // 2:
+                                    # Standard left-peak
+                                    x_pts = np.arange(peak_idx, bins)
+                                    y_pts = counts[peak_idx:]
+                                    start_x, start_y = peak_idx, counts[peak_idx]
+                                    end_x, end_y = bins - 1, counts[-1]
+                                else:
+                                    # Right-peak fallback
+                                    flipped = True
+                                    counts = counts[::-1]
+                                    peak_idx = bins - 1 - peak_idx
+                                    x_pts = np.arange(peak_idx, bins)
+                                    y_pts = counts[peak_idx:]
+                                    start_x, start_y = peak_idx, counts[peak_idx]
+                                    end_x, end_y = bins - 1, counts[-1]
 
-                        triangle_t = _triangle_threshold(slice_sample)
+                                # Distance to triangle line
+                                a = start_y - end_y
+                                b = end_x - start_x
+                                c = -a * start_x - b * start_y
+                                dist = np.abs(a * x_pts + b * y_pts + c)
+                                best_idx = peak_idx + np.argmax(dist)
+                                if flipped:
+                                    best_idx = bins - 1 - best_idx
+                                return centers[best_idx]
 
-                        # Otsu's method (Simplified Numpy/Native version)
-                        def _otsu_threshold(data, bins=256):
-                            counts, edges = np.histogram(data, bins=bins)
-                            centers = (edges[:-1] + edges[1:]) / 2
-                            p = counts / counts.sum()
-                            w = p.cumsum()
-                            mu = (centers * p).cumsum()
-                            mu_total = mu[-1]
-                            # Variance between classes
-                            idx = (w > 0) & (w < 1)
-                            sigma_b2 = np.zeros_like(w)
-                            sigma_b2[idx] = (mu_total * w[idx] - mu[idx]) ** 2 / (
-                                w[idx] * (1 - w[idx])
+                            triangle_t = _triangle_threshold(slice_sample)
+
+                            # Otsu's method (Simplified Numpy/Native version)
+                            def _otsu_threshold(data, bins=256):
+                                counts, edges = np.histogram(data, bins=bins)
+                                centers = (edges[:-1] + edges[1:]) / 2
+                                p = counts / counts.sum()
+                                w = p.cumsum()
+                                mu = (centers * p).cumsum()
+                                mu_total = mu[-1]
+                                # Variance between classes
+                                idx = (w > 0) & (w < 1)
+                                sigma_b2 = np.zeros_like(w)
+                                sigma_b2[idx] = (mu_total * w[idx] - mu[idx]) ** 2 / (
+                                    w[idx] * (1 - w[idx])
+                                )
+                                return centers[np.argmax(sigma_b2)]
+
+                            otsu_t = _otsu_threshold(slice_sample)
+
+                            # We use Triangle as it is more conservative for microscopy backgrounds,
+                            # but we cap it at a fraction of Otsu to avoid over-thresholding
+                            # if Otsu is very aggressive, or taking it if Triangle is too close to noise.
+                            conservative_otsu = otsu_t * 0.33 + background_level * 0.67
+                            args.min_intensity = max(
+                                noise_floor, triangle_t, conservative_otsu
                             )
-                            return centers[np.argmax(sigma_b2)]
 
-                        otsu_t = _otsu_threshold(slice_sample)
-
-                        # We use Triangle as it is more conservative for microscopy backgrounds,
-                        # but we cap it at a fraction of Otsu to avoid over-thresholding
-                        # if Otsu is very aggressive, or taking it if Triangle is too close to noise.
-                        conservative_otsu = otsu_t * 0.33 + background_level * 0.67
-                        args.min_intensity = max(
-                            noise_floor, triangle_t, conservative_otsu
-                        )
-
-                        print(
-                            f"Auto-calculated min_intensity threshold: {args.min_intensity:.2f} "
-                            f"(noise_floor: {noise_floor:.2f}, triangle: {triangle_t:.2f}, "
-                            f"otsu-lite: {conservative_otsu:.2f})"
-                        )
-                except Exception as e:
-                    print(f"Warning: could not auto-calculate stats: {e}")
-                    if args.min_intensity == "auto":
-                        args.min_intensity = None
-                    global_limits = None
+                            print(
+                                f"Auto-calculated min_intensity threshold: {args.min_intensity:.2f} "
+                                f"(noise_floor: {noise_floor:.2f}, triangle: {triangle_t:.2f}, "
+                                f"otsu-lite: {conservative_otsu:.2f})"
+                            )
+                    except Exception as e:
+                        print(f"Warning: could not auto-calculate stats: {e}")
+                        if args.min_intensity == "auto":
+                            args.min_intensity = None
+                        global_limits = None
 
             # 2. Generate a dilated foreground mask for distributed_eval.
             # Using a mask is much safer than patching workers' eval() because
@@ -2858,6 +2858,25 @@ def main():
             print(f"Warning: could not create Early Exit mask: {e}")
             args.min_intensity = None
             segmentation_mask = None
+
+    # Prepare final segmentation level and upscaling
+    # If using OME-Zarr, we can segment at a lower resolution level and upscale labels.
+    target_level = 0
+    if is_zarr:
+        # Heuristic: if diameter is large (>100px), segment at level 1 to save 4-8x time.
+        # This is strictly for label segmentation where precision is less critical than speed.
+        if args.diameter >= 100:
+            target_level = 1
+            print(
+                f"High-diameter optimization: segmenting at pyramid Level {target_level} and upscaling labels."
+            )
+            # Adjust spatial blocksize for lower resolution level
+            input_zarr = _get_pyramid_level(im, target_level) or im
+            # Blocksize needs to be adjusted for the lower resolution
+            # (already handles in _run_distributed_eval by mapping shapes, but we prefer
+            # to be explicit here)
+            blocksize = tuple(max(1, b // (2**target_level)) for b in blocksize)
+            print(f"Adjusted blocksize for Level {target_level}: {blocksize}")
 
     # Determine model_kwargs
     model_kwargs = (
@@ -3320,8 +3339,6 @@ def main():
     )
     sys.stdout.flush()
 
-    logger.info("Starting distributed segmentation...")
-
     # Prepare worker patch preload script
     preload_script = None
     try:
@@ -3472,6 +3489,16 @@ def dask_setup(worker):
         mask=segmentation_mask,
         global_limits=global_limits,
     )
+
+    # Upscale labels if segmented at lower resolution level
+    if target_level > 0:
+        print(f"Upscaling labels from Level {target_level} to Level 0...")
+        # out_zarr is typically a zarr array; wrap it in dask for upscaling
+        da_labels = da.from_array(out_zarr, chunks="auto")
+        # Upscale
+        out_zarr = _upscale_labels_to_level0(da_labels, target_level)
+        print("Upscaling complete.")
+        sys.stdout.flush()
 
     logger.debug(f"Stitched Zarr written to {write_zarr}")
 
