@@ -2137,16 +2137,32 @@ def main():
         sys.stdout.flush()
 
         # Check if the input is a Zarr directory
-        is_zarr = os.path.isdir(args.input_file) and (
+        # Heuristic: is a directory and either contains zarr metadata or ends in .zarr
+        is_zarr_dir = os.path.isdir(args.input_file) and (
             os.path.exists(os.path.join(args.input_file, ".zarray"))
             or os.path.exists(os.path.join(args.input_file, ".zgroup"))
+            or os.path.exists(os.path.join(args.input_file, "zarr.json"))
+            or args.input_file.lower().endswith(".zarr")
         )
 
-        if is_zarr:
+        if is_zarr_dir:
             print(f"Detected Zarr input: {args.input_file}")
-            im = zarr.open(args.input_file, mode="r")
+            try:
+                im = zarr.open(args.input_file, mode="r")
+                is_zarr = True
+            except Exception as e:
+                print(f"Failed to open as Zarr ({e}), falling back to TIFF if possible...")
+                is_zarr = False
         else:
+            is_zarr = False
+
+        if not is_zarr:
             print(f"Loading TIFF file: {args.input_file}")
+            # Ensure we don't try to open a directory with tifffile
+            if os.path.isdir(args.input_file):
+                raise ValueError(
+                    f"Path {args.input_file} is a directory but was not recognized as a valid Zarr volume."
+                )
             # Load TIFF lazily using aszarr=True to avoid memory pressure
             im = tifffile.imread(args.input_file, aszarr=True)
             # Wrap in a dask array for convenient manipulation if needed, or use directly
