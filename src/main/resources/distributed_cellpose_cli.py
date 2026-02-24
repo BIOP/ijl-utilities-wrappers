@@ -288,6 +288,85 @@ def _extract_calibration_metadata(
     return pixel_size, anisotropy
 
 
+def _upscale_labels_to_level0(da_labels, target_level: int) -> da.Array:
+    """Upscale labels to Level 0 resolution using nearest-neighbor (da.repeat)."""
+    if target_level <= 0:
+        return da_labels
+
+    scale_factor = 2**target_level
+    # Upscale spatially (last 2 or 3 dims)
+    ndim = da_labels.ndim
+    # Usually Z, Y, X (3D) or Y, X (2D)
+    for i in range(ndim - (2 if ndim >= 2 else 0), ndim):
+        da_labels = da_labels.repeat(scale_factor, axis=i)
+
+    return da_labels
+
+
+def _get_pyramid_level(z_root: Any, desired_level: int) -> Any:
+    """Safely get a lower-resolution Zarr array from a multiscale image."""
+    try:
+        # Check standard multiscale path: root/0, root/1, etc.
+        path = str(desired_level)
+        if path in z_root:
+            return z_root[path]
+        elif f"/{path}" in z_root:
+            return z_root[f"/{path}"]
+    except Exception:
+        pass
+    return None
+
+
+def _create_optimized_segmentation_mask(
+    z_root: Any,
+    min_intensity: Optional[Union[float, str]],
+    threshold_rel: float = 0.5,
+) -> Tuple[Optional[da.Array], Optional[float], Optional[float]]:
+    """
+    Generate a low-resolution binary mask for block exclusion and calculate image stats.
+    Targets Level+4 for stats and Level+3 for the mask to save significant I/O.
+    """
+    stats_level = 4
+    mask_level = 3
+
+    # Attempt to find low-res levels
+    z_stats = _get_pyramid_level(z_root, stats_level)
+    z_mask = _get_pyramid_level(z_root, mask_level)
+
+    # Fallback to level 0 if needed (e.g. singleton images)
+    if z_stats is None:
+        z_stats = z_root["0"] if "0" in z_root else z_root
+    if z_mask is None:
+        z_mask = z_root["0"] if "0" in z_root else z_root
+
+    # Get statistics (min/max/percentiles)
+    print(f"Calculating image statistics (level {stats_level})...")
+    da_stats = da.from_array(z_stats, chunks="auto")
+    v_min, v_max, p1, p99 = _get_array_stats(da_stats)
+
+    # Compute binary mask for empty-space early-exit
+    grid_mask = None
+    if min_intensity is not None and min_intensity != "None":
+        if min_intensity == "auto" or min_intensity == "Auto":
+            # Heuristic: 1% above p1
+            val = p1 + 0.01 * (p99 - p1)
+        else:
+            val = float(min_intensity)
+
+        print(f"Creating block-level exclusion mask (value > {val})...")
+        sys.stdout.flush()
+
+        # Step 1: Create binary mask at low resolution
+        da_mask_src = da.from_array(z_mask, chunks="auto")
+        bin_mask = da_mask_src > val
+
+        # Step 2: Project this mask onto Level 0 block grid
+        # This will be handled in _run_distributed_eval using the grid structure.
+        grid_mask = bin_mask
+
+    return grid_mask, v_min, v_max
+
+
 def get_optimal_n_workers(
     use_gpu: bool,
     requested_n_workers: Optional[int],
@@ -1306,7 +1385,38 @@ def dask_setup(worker):
 
         if mask is not None:
             kwargs["mask"] = mask
-            print(f"Applying segmentation mask (skipping blocks with no signal)...")
+            # Efficiency diagnostic: count expected active blocks
+            try:
+                # Project mask onto block grid
+                grid_mask = np.ones(
+                    tuple(
+                        math.ceil(input_zarr.shape[i] / blocksize[i])
+                        for i in range(len(blocksize))
+                    ),
+                    dtype=bool,
+                )
+                if hasattr(mask, "compute"):
+                    # Low-res dask mask
+                    from scipy import ndimage
+
+                    # Simple zoom/subsample logic to grid
+                    m_comp = mask.compute()
+                    factors = [
+                        grid_mask.shape[i] / m_comp.shape[i]
+                        for i in range(len(grid_mask.shape))
+                    ]
+                    grid_mask = ndimage.zoom(m_comp, factors, order=0)
+                else:
+                    # Regular numpy mask
+                    pass
+
+                active_count = np.sum(grid_mask)
+                total_count = math.prod(grid_mask.shape)
+                print(
+                    f"Applying segmentation mask: processing {active_count}/{total_count} blocks ({(100.0 * active_count / total_count):.1f}%)"
+                )
+            except Exception:
+                print(f"Applying segmentation mask (skipping blocks with no signal)...")
 
         # Add preprocessing_steps if multi-channel
         if preprocessing_steps:
@@ -2527,10 +2637,27 @@ def main():
     segmentation_mask = None
     global_limits = None
 
-    if (args.min_intensity is not None or args.global_norm) and input_zarr is not None:
+    if (
+        args.min_intensity is not None
+        or args.global_norm
+    ) and im is not None:
         try:
-            # 1. Calculate statistics from sampled slices if needed
-            if args.min_intensity == "auto" or args.global_norm:
+            # 1. Use pyramid-based statistics and mask for speed if input is OME-Zarr
+            if is_zarr:
+                print(
+                    "Building pyramidal mask/stats with Level+4 for statistics and Level+3 for exclusion..."
+                )
+                segmentation_mask, v_min, v_max = _create_optimized_segmentation_mask(
+                    im, args.min_intensity
+                )
+                if args.global_norm:
+                    global_limits = (v_min, v_max)
+                    print(
+                        f"Pyramidal global normalization limits: {global_limits[0]:.2f} - {global_limits[1]:.2f}"
+                    )
+            else:
+                # Fallback: calculate statistics from sampled slices if needed (Original logic)
+                if args.min_intensity == "auto" or args.global_norm:
                 try:
                     print(
                         "Calculating robust image statistics (Threshold/Normalization)..."
