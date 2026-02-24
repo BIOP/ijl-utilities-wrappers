@@ -189,6 +189,105 @@ if sys.platform == "win32":
         pass
 
 
+def _get_pixel_size_from_tiff(tiff_path) -> Tuple[Optional[float], Optional[float]]:
+    """Try to extract pixel resolution from TIFF metadata using tifffile."""
+    try:
+        with tifffile.TiffFile(tiff_path) as tif:
+            page = tif.pages[0]
+            # Handle standard TIFF resolution tags
+            resx = page.tags.get("XResolution")
+            resy = page.tags.get("YResolution")
+            unit = page.tags.get("ResolutionUnit")
+
+            if resx and resy:
+                vx = resx.value[1] / resx.value[0] if resx.value[0] != 0 else None
+                vy = resy.value[1] / resy.value[0] if resy.value[0] != 0 else None
+                # Check for unit (2=inch, 3=cm). Convert to um if known.
+                if unit and unit.value == 3:  # cm
+                    if vx:
+                        vx *= 10000
+                    if vy:
+                        vy *= 10000
+                elif unit and unit.value == 2:  # inch
+                    if vx:
+                        vx *= 25400
+                    if vy:
+                        vy *= 25400
+                return vx, vy
+
+            # Fallback: check ImageDescription for IJ metadata
+            desc = page.tags.get("ImageDescription")
+            if desc:
+                val = str(desc.value)
+                if "spacing=" in val:
+                    # Often means Z-spacing in ImageJ
+                    pass
+    except Exception:
+        pass
+    return None, None
+
+
+def _get_pixel_size_from_zattrs(zattrs: Dict) -> Tuple[Optional[float], ...]:
+    """Try to extract pixel resolution from OME-Zarr .zattrs."""
+    try:
+        multiscales = zattrs.get("multiscales", [])
+        if not multiscales:
+            return None, None, None
+
+        # Look for datasets/coordinateTransformations
+        for ms in multiscales:
+            datasets = ms.get("datasets", [])
+            for ds in datasets:
+                trans = ds.get("coordinateTransformations", [])
+                for t in trans:
+                    if t.get("type") == "scale":
+                        return tuple(t.get("scale"))
+    except Exception:
+        pass
+    return None, None, None
+
+
+def _extract_calibration_metadata(
+    input_file: str, z_root: Optional[Any] = None
+) -> Tuple[float, float]:
+    """
+    Attempt to automatically discover pixel size and anisotropy from file metadata.
+    Returns (pixel_size, anisotropy).
+    """
+    pixel_size = None
+    anisotropy = None
+
+    # 1. Try OME-Zarr metadata if available
+    if z_root is not None and hasattr(z_root, "attrs"):
+        scales = _get_pixel_size_from_zattrs(dict(z_root.attrs))
+        if scales and any(s is not None for s in scales):
+            # scales is usually (t, c, z, y, x) or (z, y, x)
+            if len(scales) >= 3:
+                # Last two are Y, X. The one before is Z.
+                px_z, px_y, px_x = scales[-3], scales[-2], scales[-1]
+                if px_y and px_x:
+                    pixel_size = (px_y + px_x) / 2.0
+                    anisotropy = px_z / pixel_size if px_z else 1.0
+                    print(
+                        f"Discovered OME-Zarr calibration: pixel_size={pixel_size:.4f}, anisotropy={anisotropy:.4f}"
+                    )
+
+    # 2. Try TIFF metadata fallback
+    if pixel_size is None and input_file.lower().endswith((".tif", ".tiff")):
+        vx, vy = _get_pixel_size_from_tiff(input_file)
+        if vx and vy:
+            pixel_size = (vx + vy) / 2.0
+            print(f"Discovered TIFF calibration: pixel_size={pixel_size:.4f}")
+
+    # Defaults if discovery failed
+    if pixel_size is None:
+        pixel_size = 30.0  # Cellpose default
+    if anisotropy is None:
+        anisotropy = 1.0
+
+    return pixel_size, anisotropy
+
+
 def get_optimal_n_workers(
     use_gpu: bool,
     requested_n_workers: Optional[int],
@@ -2170,6 +2269,21 @@ def main():
             )
 
         print(f"Input shape: {im.shape}, blocksize: {blocksize}")
+
+        # Metadata discovery: pixel size and anisotropy
+        discovered_px, discovered_anisotropy = _extract_calibration_metadata(
+            args.input_file, im
+        )
+        if args.diameter <= 0:
+            # Use detected pixel size if diameter not provided
+            args.diameter = (
+                discovered_px if discovered_px > 0 else 30.0
+            )  # fallback to 30um
+            print(f"Auto-selected diameter based on metadata: {args.diameter:.4f}")
+        if args.anisotropy <= 0:
+            args.anisotropy = discovered_anisotropy if discovered_anisotropy > 0 else 1.0
+            print(f"Auto-selected anisotropy based on metadata: {args.anisotropy:.4f}")
+        sys.stdout.flush()
 
         # Detect multi-channel input and prepare for preprocessing_steps approach.
         # Prefer explicit 4D layout (Z, C, Y, X) with c_axis=1, but also try to
