@@ -135,28 +135,39 @@ public class CellposeDistributed implements Command {
         double anisotropy = 1.0;
         String logDirectory;
         String shortTitle;
+        File tempDir = null;
 
         if (input_file_or_folder != null && input_file_or_folder.exists()) {
             inputPath = input_file_or_folder;
             diameterInPixels = diameter; // Assumes pixel units when using path-based input
             shortTitle = inputPath.getName();
+            boolean isZarr = inputPath.getName().toLowerCase().endsWith(".zarr") ||
+                            new File(inputPath, ".zarray").exists() ||
+                            new File(inputPath, ".zgroup").exists();
 
             if (output_directory != null && output_directory.exists()) {
-                if (inputPath.isDirectory()) {
+                if (inputPath.isDirectory() && !isZarr) {
                     outputPath = output_directory;
                 } else {
-                    outputPath = new File(output_directory, inputPath.getName().replace(".tif", "_cellpose.tif"));
+                    String outName = inputPath.getName().replace(".tif", "_cellpose.tif").replace(".zarr", "_cellpose.tif");
+                    outputPath = new File(output_directory, outName);
                 }
                 logDirectory = output_directory.getAbsolutePath();
             } else {
-                if (inputPath.isDirectory()) {
+                if (inputPath.isDirectory() && !isZarr) {
                     ls.warn("Input is a folder but no output directory provided. Results will be saved in a temporary folder.");
                     outputPath = new TempDirectory("cellpose_dist_out").getPath().toFile();
                     outputPath.mkdir();
                 } else {
-                    outputPath = new File(inputPath.getAbsolutePath().replace(".tif", "_cellpose.tif"));
+                    String fileName = inputPath.getAbsolutePath();
+                    String outName = fileName.replace(".tif", "_cellpose.tif").replace(".zarr", "_cellpose.tif");
+                    // Ensure we don't just append if extension wasn't there
+                    if (outName.equals(fileName)) {
+                        outName = fileName + "_cellpose.tif";
+                    }
+                    outputPath = new File(outName);
                 }
-                logDirectory = inputPath.isDirectory() ? outputPath.getAbsolutePath() : inputPath.getParent();
+                logDirectory = (inputPath.isDirectory() && !isZarr) ? outputPath.getAbsolutePath() : inputPath.getParent();
             }
             ls.info("Running Cellpose Distributed on: " + inputPath.getAbsolutePath());
         } else {
@@ -165,7 +176,7 @@ public class CellposeDistributed implements Command {
                 return;
             }
             shortTitle = imp.getShortTitle();
-            File tempDir = new TempDirectory("cellpose_dist").getPath().toFile();
+            tempDir = new TempDirectory("cellpose_dist").getPath().toFile();
             tempDir.mkdir();
             ls.info("Temporary folder for this run: " + tempDir.getAbsolutePath());
 
@@ -259,38 +270,29 @@ public class CellposeDistributed implements Command {
         } catch (Exception e) {
             ls.error("Cellpose Distributed failed: " + e.getMessage());
             e.printStackTrace();
-        }
-    }
-            ls.error("Cellpose Distributed failed: " + e.getMessage());
-            e.printStackTrace();
         } finally {
             // Cleanup: delete input file and other temporary artifacts
             try {
-                if (inputTif != null && inputTif.exists()) {
-                    inputTif.delete();
+                if (input_file_or_folder == null && inputPath != null && inputPath.exists()) {
+                    inputPath.delete();
                 }
-
-                // We keep the outputTif because it's the result the user wants to see.
-                // If they didn't specify an output_directory, it's in the tempDir.
-                // We should only delete the tempDir if it's empty or we are sure it's safe.
-                // For now, let's just make sure all other temp files are gone.
 
                 if (tempDir != null && tempDir.exists()) {
                     File[] files = tempDir.listFiles();
                     if (files != null) {
                         for (File f : files) {
                             // Don't delete the output if it's in the temp dir and we just opened it
-                            if (output_directory == null && f.getAbsolutePath().equals(outputTif.getAbsolutePath())) {
+                            if (output_directory == null && outputPath != null && f.getAbsolutePath().equals(outputPath.getAbsolutePath())) {
                                 continue;
                             }
-                            // Don't delete log files so the user can debug even after a successful run
+                            // Don't delete log files in case of failure
                             if (f.getName().endsWith(".log")) {
                                 continue;
                             }
                             f.delete();
                         }
                     }
-                    // Only delete tempDir if it's now empty
+                    // Try to delete tempDir, will only succeed if empty
                     tempDir.delete();
                 }
             } catch (Exception e) {

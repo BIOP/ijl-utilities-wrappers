@@ -21,14 +21,18 @@ public class CellposeDistributedTask {
         arguments.add(DistributedCellposeUtil.getScriptPath(settings.envPath));
 
         File input = new File(settings.inputPath);
-        if (input.isDirectory()) {
+        boolean isZarr = input.getName().toLowerCase().endsWith(".zarr") ||
+                        new File(input, ".zarray").exists() ||
+                        new File(input, ".zgroup").exists();
+
+        if (input.isDirectory() && !isZarr) {
             arguments.add("--input_dir");
         } else {
             arguments.add("--input_file");
         }
         arguments.add(settings.inputPath);
 
-        if (input.isDirectory()) {
+        if (input.isDirectory() && !isZarr) {
             arguments.add("--output_dir");
         } else {
             arguments.add("--output_tif");
