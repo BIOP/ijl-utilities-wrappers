@@ -2133,19 +2133,31 @@ def main():
     was_subsetted = False
 
     if args.input_file:
-        print(f"Opening TIFF file: {args.input_file}")
+        print(f"Opening input file: {args.input_file}")
         sys.stdout.flush()
-        # Load TIFF lazily using aszarr=True to avoid memory pressure
-        im = tifffile.imread(args.input_file, aszarr=True)
-        # Wrap in a dask array for convenient manipulation if needed, or use directly
-        if hasattr(im, "shape"):
-            print(
-                f"Loaded input {args.input_file} lazily as zarr-like object: {im.shape}"
-            )
+
+        # Check if the input is a Zarr directory
+        is_zarr = os.path.isdir(args.input_file) and (
+            os.path.exists(os.path.join(args.input_file, ".zarray"))
+            or os.path.exists(os.path.join(args.input_file, ".zgroup"))
+        )
+
+        if is_zarr:
+            print(f"Detected Zarr input: {args.input_file}")
+            im = zarr.open(args.input_file, mode="r")
         else:
-            # Fallback for unexpected formats
-            with tifffile.TiffFile(args.input_file) as tif:
-                im = tif.asarray()
+            print(f"Loading TIFF file: {args.input_file}")
+            # Load TIFF lazily using aszarr=True to avoid memory pressure
+            im = tifffile.imread(args.input_file, aszarr=True)
+            # Wrap in a dask array for convenient manipulation if needed, or use directly
+            if hasattr(im, "shape"):
+                print(
+                    f"Loaded input {args.input_file} lazily as zarr-like object: {im.shape}"
+                )
+            else:
+                # Fallback for unexpected formats
+                with tifffile.TiffFile(args.input_file) as tif:
+                    im = tif.asarray()
 
         # warn about input dtype but accept common integer/float types
         if im.dtype not in ("uint8", "uint16", "uint32", "float32", "float64"):
@@ -2160,28 +2172,28 @@ def main():
         # auto-detect a small channel axis in multi-dimensional inputs.
         c_axis_pos = None
         if im.ndim >= 4:
-            # For 4D (Z, C, Y, X) or 5D (T, Z, C, Y, X), channel is typically at axis -3
-            # but we can also check for the smallest dimension among the first ndim-2 axes.
+            # For 4D (Z, C, Y, X) or (C, Z, Y, X), etc.
+            # We look for the smallest dimension among the non-spatial axes.
             spatial_dims = 2
             possible_axes = list(range(im.ndim - spatial_dims))
-            # Heuristic: choose axis with size <= 4 if plural, or choose axis 1 for 4D
-            if im.ndim == 4:
+
+            # Heuristic: Find candidate axes with size <= 10
+            candidates = [i for i in possible_axes if im.shape[i] <= 10]
+            if candidates:
+                # If multiple candidates, prefer the first one (often Channel)
+                c_axis_pos = candidates[0]
+            elif im.ndim == 4:
+                # Fallback for 4D if no small axis found: assume classic axis 1
                 c_axis_pos = 1
-            else:
-                # 5D or more: find smallest candidate
-                candidates = [i for i in possible_axes if im.shape[i] <= 4]
-                if candidates:
-                    # Prefer the one closest to spatial dims but not spatial
-                    c_axis_pos = candidates[-1]
         elif im.ndim == 3:
-            # Heuristic: treat a small axis (<=4) as channel axis when the other
+            # Heuristic: treat a small axis (<=10) as channel axis when the other
             # axes are significantly larger (to avoid confusing thin spatial
             # dimensions with channels).
             sizes = im.shape
             candidates = [
                 i
                 for i, s in enumerate(sizes)
-                if s <= 4 and max(sizes[j] for j in range(len(sizes)) if j != i) > 10
+                if s <= 10 and max(sizes[j] for j in range(len(sizes)) if j != i) > 50
             ]
             if candidates:
                 c_axis_pos = candidates[0]
@@ -2200,119 +2212,128 @@ def main():
             )
             print(f"Auto-resolved blocksize based on hardware: {blocksize}")
 
-        if c_axis_pos is not None and im.shape[c_axis_pos] > 1:
-            # Multi-channel data: extract ONLY the channels required by the user.
-            num_channels_total = im.shape[c_axis_pos]
-
-            # Determine which 0-based indices are needed.
-            # args.chan and args.chan2 are 1-based (0 = grayscale or None).
-            needed_indices = []
-            c1_idx = (args.chan - 1) if args.chan > 0 else 0
-            needed_indices.append(c1_idx)
-
-            if args.chan2 > 0:
-                c2_idx = args.chan2 - 1
-                if c2_idx != c1_idx:
-                    needed_indices.append(c2_idx)
-
-            print(
-                f"Detected {num_channels_total} channels total at axis {c_axis_pos} (shape {im.shape})"
-            )
-            print(
-                f"Extracting required channels: {[idx + 1 for idx in needed_indices]}"
-            )
-            sys.stdout.flush()
-
-            # Extract spatial dimensions (remove channel axis)
-            spatial_shape = tuple(s for i, s in enumerate(im.shape) if i != c_axis_pos)
-
-            # Match blocksize rank to spatial_shape rank for Zarr chunks
-            # Extract only spatial block components by removing the channel axis index
-            zarr_chunks = tuple(b for i, b in enumerate(blocksize) if i != c_axis_pos)
-
-            # Final sanity check: if rank still mismatched, use last N
-            if len(zarr_chunks) != len(spatial_shape):
-                if len(zarr_chunks) > len(spatial_shape):
-                    zarr_chunks = zarr_chunks[-len(spatial_shape) :]
-                else:
-                    zarr_chunks = (max(spatial_shape),) * (
-                        len(spatial_shape) - len(zarr_chunks)
-                    ) + zarr_chunks
-
-            # Create path for the unified input Zarr
-            if args.input_zarr:
-                parent = os.path.dirname(args.input_zarr) or "."
-                os.makedirs(parent, exist_ok=True)
-            else:
-                tmpdir = tempfile.TemporaryDirectory(
-                    prefix="distributed_cellpose_tmp_", dir=args.temporary_directory
-                )
-                parent = tmpdir.name
-
-            for i, ch_idx in enumerate(needed_indices):
-                if ch_idx >= num_channels_total:
-                    print(
-                        f"Warning: requested channel {ch_idx + 1} exceeds image depth {num_channels_total}. Falling back to channel 1."
-                    )
-                    ch_idx = 0
-
-                # Create zarr for this channel
-                ch_path = os.path.join(parent, f"channel_{ch_idx}.zarr")
-
-                # Robustly extract channel data lazily using dask
-                print(f"  Channel {ch_idx + 1}: extracting to {ch_path}...")
-                sys.stdout.flush()
-
-                try:
-                    # Use robust slicing
-                    slc = [slice(None)] * im.ndim
-                    slc[c_axis_pos] = ch_idx
-                    ch_dask = da.from_array(im, chunks="auto")[tuple(slc)]
-
-                    ch_dask.rechunk(zarr_chunks).to_zarr(ch_path, overwrite=True)
-                    z_ch = zarr.open(ch_path, mode="r")
-                    channel_zarrs.append(z_ch)
-                    print(f"  Channel {ch_idx + 1}: success (shape={z_ch.shape})")
-                except Exception as e:
-                    print(
-                        f"  Channel {ch_idx + 1}: failed to extract lazily ({e}). Trying eager..."
-                    )
-                    slc_e = [slice(None)] * im.ndim
-                    slc_e[c_axis_pos] = ch_idx
-                    ch_data = im[tuple(slc_e)]
-
-                    z_ch = zarr.open(
-                        ch_path,
-                        mode="w",
-                        shape=spatial_shape,
-                        chunks=zarr_chunks,
-                        dtype=im.dtype,
-                    )
-                    z_ch[...] = ch_data
-                    channel_zarrs.append(z_ch)
-
-            # Use first requested channel as input_zarr
-            input_zarr = channel_zarrs[0]
-            # Ensure blocksize matches the rank of the spatial zarr
-            blocksize = zarr_chunks
-            c_axis_pos = None  # No longer has a channel axis in single-ch Zarr
-            was_subsetted = True
-            print(
-                f"Using input channel {needed_indices[0] + 1} as base, shape: {input_zarr.shape}, blocksize: {blocksize}"
-            )
-            sys.stdout.flush()
-        else:
-            # Single channel or 3D input: standard flow
-            # Match blocksize rank to image rank
+        # Decide whether we need to create/extract a new Zarr or use the current one
+        if is_zarr and c_axis_pos is None:
+            input_zarr = im
+            print(f"Using existing Zarr directly: {args.input_file}")
+            # Ensure blocksize matches image rank
             if len(blocksize) > im.ndim:
                 blocksize = blocksize[-im.ndim :]
             elif len(blocksize) < im.ndim:
                 blocksize = (max(im.shape),) * (im.ndim - len(blocksize)) + blocksize
+        else:
+            # Multi-channel or conversion required
+            if c_axis_pos is not None and im.shape[c_axis_pos] > 1:
+                # Multi-channel data: extract ONLY the channels required by the user.
+                num_channels_total = im.shape[c_axis_pos]
 
-            if args.input_zarr:
-                zpath = args.input_zarr
-                parent = os.path.dirname(zpath) or "."
-                os.makedirs(parent, exist_ok=True)
+                # Determine which 0-based indices are needed.
+                needed_indices = []
+                c1_idx = (args.chan - 1) if args.chan > 0 else 0
+                needed_indices.append(c1_idx)
+
+                if args.chan2 > 0:
+                    c2_idx = args.chan2 - 1
+                    if c2_idx != c1_idx:
+                        needed_indices.append(c2_idx)
+
+                print(
+                    f"Detected {num_channels_total} channels total at axis {c_axis_pos} (shape {im.shape})"
+                )
+                print(
+                    f"Extracting required channels: {[idx + 1 for idx in needed_indices]}"
+                )
+                sys.stdout.flush()
+
+                # Extract spatial dimensions (remove channel axis)
+                spatial_shape = tuple(
+                    s for i, s in enumerate(im.shape) if i != c_axis_pos
+                )
+
+                # Match blocksize rank to spatial_shape rank for Zarr chunks
+                zarr_chunks = tuple(
+                    b for i, b in enumerate(blocksize) if i != c_axis_pos
+                )
+
+                # Final sanity check: if rank still mismatched
+                if len(zarr_chunks) != len(spatial_shape):
+                    if len(zarr_chunks) > len(spatial_shape):
+                        zarr_chunks = zarr_chunks[-len(spatial_shape) :]
+                    else:
+                        zarr_chunks = (max(spatial_shape),) * (
+                            len(spatial_shape) - len(zarr_chunks)
+                        ) + zarr_chunks
+
+                # Create path for the unified input Zarr
+                if args.input_zarr:
+                    parent = os.path.dirname(args.input_zarr) or "."
+                    os.makedirs(parent, exist_ok=True)
+                else:
+                    tmpdir = tempfile.TemporaryDirectory(
+                        prefix="distributed_cellpose_tmp_", dir=args.temporary_directory
+                    )
+                    parent = tmpdir.name
+
+                for i, ch_idx in enumerate(needed_indices):
+                    if ch_idx >= num_channels_total:
+                        print(
+                            f"Warning: requested channel {ch_idx + 1} exceeds image depth {num_channels_total}. Falling back to ch 1."
+                        )
+                        ch_idx = 0
+
+                    ch_path = os.path.join(parent, f"channel_{ch_idx}.zarr")
+                    print(f"  Channel {ch_idx + 1}: extracting to {ch_path}...")
+                    sys.stdout.flush()
+
+                    try:
+                        slc = [slice(None)] * im.ndim
+                        slc[c_axis_pos] = ch_idx
+                        ch_dask = da.from_array(im, chunks="auto")[tuple(slc)]
+                        ch_dask.rechunk(zarr_chunks).to_zarr(ch_path, overwrite=True)
+                        z_ch = zarr.open(ch_path, mode="r")
+                        channel_zarrs.append(z_ch)
+                        print(f"  Channel {ch_idx + 1}: success (shape={z_ch.shape})")
+                    except Exception as e:
+                        print(f"  Channel {ch_idx + 1}: failed lazily ({e}). Eager...")
+                        slc_e = [slice(None)] * im.ndim
+                        slc_e[c_axis_pos] = ch_idx
+                        ch_data = im[tuple(slc_e)]
+                        z_ch = zarr.open(
+                            ch_path,
+                            mode="w",
+                            shape=spatial_shape,
+                            chunks=zarr_chunks,
+                            dtype=im.dtype,
+                        )
+                        z_ch[...] = ch_data
+                        channel_zarrs.append(z_ch)
+
+                input_zarr = channel_zarrs[0]
+                blocksize = zarr_chunks
+                c_axis_pos = None
+                was_subsetted = True
+                print(
+                    f"Using channel {needed_indices[0] + 1} as base, shape: {input_zarr.shape}, blocksize: {blocksize}"
+                )
+                sys.stdout.flush()
+            else:
+                # Single channel conversion (e.g. from Tiff)
+                if len(blocksize) > im.ndim:
+                    blocksize = blocksize[-im.ndim :]
+                elif len(blocksize) < im.ndim:
+                    blocksize = (max(im.shape),) * (
+                        im.ndim - len(blocksize)
+                    ) + blocksize
+
+                if args.input_zarr:
+                    zpath = args.input_zarr
+                    parent = os.path.dirname(zpath) or "."
+                    os.makedirs(parent, exist_ok=True)
+                else:
+                    tmpdir = tempfile.TemporaryDirectory(
+                        prefix="distributed_cellpose_tmp_", dir=args.temporary_directory
+                    )
+                    zpath = os.path.join(tmpdir.name, "input.zarr")
 
                 print(f"Writing input Zarr to {zpath} (dtype={im.dtype})...")
                 sys.stdout.flush()
@@ -2322,50 +2343,21 @@ def main():
                     )
                     input_zarr = zarr.open(zpath, mode="r")
                 except Exception as e:
-                    print(f"Lazy write failed ({e}), using eager fallback...")
-                    z = zarr.open(
+                    print(f"Lazy write failed ({e}), eager fallback...")
+                    z_ch = zarr.open(
                         zpath,
                         mode="w",
                         shape=im.shape,
                         chunks=blocksize,
                         dtype=im.dtype,
                     )
-                    z[...] = im
-                    input_zarr = z
-
+                    z_ch[...] = im
+                    input_zarr = z_ch
                 print(
                     f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
                 )
                 sys.stdout.flush()
-            else:
-                tmpdir = tempfile.TemporaryDirectory(
-                    prefix="distributed_cellpose_tmp_", dir=args.temporary_directory
-                )
-                zpath = os.path.join(tmpdir.name, "input.zarr")
 
-                print(f"Writing temporary input Zarr to {zpath}...")
-                sys.stdout.flush()
-                try:
-                    da.from_array(im, chunks="auto").rechunk(blocksize).to_zarr(
-                        zpath, overwrite=True
-                    )
-                    input_zarr = zarr.open(zpath, mode="r")
-                except Exception as e:
-                    print(f"Lazy write failed ({e}), using eager fallback...")
-                    z = zarr.open(
-                        zpath,
-                        mode="w",
-                        shape=im.shape,
-                        chunks=blocksize,
-                        dtype=im.dtype,
-                    )
-                    z[...] = im
-                    input_zarr = z
-                print(f"Created temporary input Zarr at {zpath} (dtype={im.dtype})")
-                print(
-                    f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
-                )
-                sys.stdout.flush()
     else:
         # Wrap folder of TIFFs (this uses tifffile.imread with aszarr=True)
         # allow a simple glob pattern
@@ -2389,6 +2381,28 @@ def main():
         tmpdir = None
 
     # Worker patching handles float slice coercion, no proxy needed
+
+    # Attempt to auto-extract anisotropy from Zarr metadata if not provided
+    if input_zarr is not None and args.anisotropy == 1.0:
+        try:
+            if hasattr(input_zarr, "attrs") and "pixel_size" in input_zarr.attrs:
+                ps = input_zarr.attrs["pixel_size"]
+                # Convert to floats and handle [C, Z, Y, X] or [Z, Y, X]
+                ps_vals = [float(v) for v in ps]
+                if len(ps_vals) == 4:
+                    vz, vx = ps_vals[1], ps_vals[3]
+                elif len(ps_vals) == 3:
+                    vz, vx = ps_vals[0], ps_vals[2]
+                else:
+                    vz, vx = 1.0, 1.0
+
+                if vz > 0 and vx > 0:
+                    args.anisotropy = vz / vx
+                    print(
+                        f"Found calibration in Zarr metadata. Setting anisotropy={args.anisotropy:.3f} (Z={vz}, XY={vx})"
+                    )
+        except Exception:
+            pass
 
     # Optimization: Early Exit for empty blocks (skip GPU for background blocks)
     # Also find global statistics for normalization if requested.
