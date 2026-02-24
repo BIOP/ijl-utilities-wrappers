@@ -754,101 +754,89 @@ def _patch_worker_all() -> None:
             # This is critical for Zarr 3.x compatibility when worker_patches.py is missing.
             applied = False
             try:
-                # 1. Patch zarr.open
-                _orig_open = zarr.open
-
-                def _o_compat(*a, **kw):
-                    if len(a) >= 2 and isinstance(a[1], str):
-                        return _orig_open(store=a[0], mode=a[1], *a[2:], **kw)
-                    return _orig_open(*a, **kw)
-
-                zarr.open = _o_compat
-                applied = True
-
-                # 2. Patch Array __getitem__ and __setitem__
-                # Handle both zarr.Array (v3 shorthand) and zarr.core.array.Array
                 def _coerce(sel, mode="expand"):
-                    if isinstance(sel, slice):
-                        if sel.start is None:
-                            start = 0
-                        else:
-                            val = float(sel.start)
-                            start = (
-                                int(round(val))
-                                if mode == "nearest"
-                                else int(math.floor(val))
-                            )
-                        if sel.stop is None:
-                            stop = None
-                        else:
-                            val = float(sel.stop)
-                            if mode == "nearest" and sel.start is not None:
-                                try:
-                                    length = val - float(sel.start)
-                                    stop = start + int(round(length))
-                                except Exception:
-                                    stop = int(round(val))
-                            else:
-                                stop = (
-                                    int(round(val))
-                                    if mode == "nearest"
-                                    else int(math.ceil(val))
-                                )
-                        step = sel.step
-                        if step is not None:
-                            try:
-                                step = int(float(step))
-                            except Exception:
-                                pass
-                        return slice(start, stop, step)
-                    elif isinstance(sel, (tuple, list)):
+                    if isinstance(sel, (list, tuple)):
                         return tuple(_coerce(s, mode) for s in sel)
-                    elif hasattr(sel, "astype"):
-                        return sel.astype(int)
-                    elif isinstance(
-                        sel, (numbers.Number, np.generic)
-                    ) and not isinstance(sel, int):
+                    if isinstance(sel, slice):
+                        start = (
+                            int(math.floor(float(sel.start)))
+                            if sel.start is not None
+                            else None
+                        )
+                        stop = (
+                            int(math.ceil(float(sel.stop)))
+                            if (sel.stop is not None and mode == "expand")
+                            else (
+                                int(math.floor(float(sel.stop)))
+                                if sel.stop is not None
+                                else None
+                            )
+                        )
+                        return slice(start, stop, sel.step)
+                    if hasattr(sel, "__int__") or isinstance(sel, (int, float, str)):
                         return int(float(sel))
                     return sel
 
-                _orig_get = _zca.Array.__getitem__
-                _orig_set = _zca.Array.__setitem__
-
-                def _getitem_w(self, selection):
-                    return _orig_get(self, _coerce(selection, mode="expand"))
-
-                def _setitem_w(self, selection, value):
-                    # Force slice length matching to prevent Zarr 3.x errors
+                # Find the Array class to patch - robust for Zarr 2 and Zarr 3
+                Array = getattr(zarr, "Array", None)
+                if Array is None:
+                    # Fallback for some Zarr 2 environments
+                    Array = getattr(_zca, "Array", None)
+                if Array is None:
+                    # Direct check on zarr.core if available
                     try:
-                        if isinstance(selection, tuple) and hasattr(value, "shape"):
-                            slices_count = sum(
-                                1 for s in selection if isinstance(s, slice)
-                            )
-                            if slices_count == len(value.shape):
-                                new_sel_list = []
-                                v_idx = 0
-                                for s in selection:
-                                    if isinstance(s, slice):
-                                        length = value.shape[v_idx]
-                                        start = (
-                                            int(math.floor(float(s.start)))
-                                            if s.start is not None
-                                            else 0
-                                        )
-                                        new_sel_list.append(
-                                            slice(start, start + length, s.step)
-                                        )
-                                        v_idx += 1
-                                    else:
-                                        new_sel_list.append(_coerce(s, mode="nearest"))
-                                return _orig_set(self, tuple(new_sel_list), value)
+                        import zarr.core
+
+                        Array = getattr(zarr.core, "Array", None)
                     except Exception:
                         pass
-                    return _orig_set(self, _coerce(selection, mode="nearest"), value)
 
-                _zca.Array.__getitem__ = _getitem_w
-                _zca.Array.__setitem__ = _setitem_w
-                applied = True
+                if Array is not None:
+                    _orig_get = Array.__getitem__
+                    _orig_set = Array.__setitem__
+
+                    def _getitem_w(self, selection):
+                        return _orig_get(self, _coerce(selection, mode="expand"))
+
+                    def _setitem_w(self, selection, value):
+                        # Force slice length matching to prevent Zarr 3.x errors
+                        try:
+                            if isinstance(selection, tuple) and hasattr(value, "shape"):
+                                slices_count = sum(
+                                    1 for s in selection if isinstance(s, slice)
+                                )
+                                if slices_count == len(value.shape):
+                                    new_sel_list = []
+                                    v_idx = 0
+                                    for s in selection:
+                                        if isinstance(s, slice):
+                                            length = value.shape[v_idx]
+                                            start = (
+                                                int(math.floor(float(s.start)))
+                                                if s.start is not None
+                                                else 0
+                                            )
+                                            new_sel_list.append(
+                                                slice(start, start + length, s.step)
+                                            )
+                                            v_idx += 1
+                                        else:
+                                            new_sel_list.append(
+                                                _coerce(s, mode="nearest")
+                                            )
+                                    return _orig_set(self, tuple(new_sel_list), value)
+                        except Exception:
+                            pass
+                        return _orig_set(
+                            self, _coerce(selection, mode="nearest"), value
+                        )
+
+                    Array.__getitem__ = _getitem_w
+                    Array.__setitem__ = _setitem_w
+                    applied = True
+                else:
+                    # Still apply zarr.open patch even if Array indexing patch failed
+                    applied = True
             except Exception:
                 pass
             return applied
