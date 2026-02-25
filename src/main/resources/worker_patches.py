@@ -324,21 +324,25 @@ def apply_zarr_patches():
     return applied_any
 
 
-def setup_worker(nthreads):
-    """Return a worker setup callable that enforces thread limits.
+def setup_worker(nthreads: int, min_intensity: Optional[float] = None) -> Any:
+    """Return a worker setup callable that enforces thread limits and
+    optionally skips network evaluation for empty blocks.
 
     Parameters
     ----------
     nthreads : int
         Number of threads to enforce in environment variables.
+    min_intensity : Optional[float], default None
+        If provided, intensity threshold for skipping evaluation.
 
     Returns
     -------
     callable
-        Function to be run on worker initialization.
+        Function to be run on dask worker initialization.
     """
 
     def dask_setup(worker):
+        import logging
         import os
         import sys
 
@@ -377,10 +381,68 @@ def setup_worker(nthreads):
         except Exception:
             pass
 
-        # Apply patches
+        # Apply general zarr patches
         try:
             apply_zarr_patches()
         except Exception as e:
             print(f"setup_worker: apply_zarr_patches failed: {e}")
+
+        # OPTIMIZATION: Early-exit Network skip for empty blocks
+        # Patch CellposeModel.eval to skip the network if mean intensity is too low
+        try:
+            from cellpose.models import CellposeModel
+
+            if not hasattr(CellposeModel.eval, "_patched_for_skip"):
+                _orig_eval = CellposeModel.eval
+
+                def _eval_with_skip(self, x, *args, **kwargs):
+                    # Check if the input block should be skipped based on intensity
+                    # We use max intensity as a safe 'empty' indicator
+                    try:
+                        # Extract max intensity. x can be multichannel (C, Z, Y, X) or (Z, Y, X)
+                        curr_max = np.max(x)
+                        thresh = min_intensity if min_intensity is not None else 0.0
+
+                        if curr_max <= thresh:
+                            logger = logging.getLogger("cellpose")
+                            logger.info(
+                                f"Skipping network run for block (max={curr_max:.2f} <= threshold={thresh:.2f})"
+                            )
+
+                            # We need to return (masks, flows, styles)
+                            # Shape of masks matches spatial resolution of x
+                            x_shape = x.shape
+                            # If multichannel (C, ...), spatial shape is x_shape[1:]
+                            # Wait: cellpose's eval x input for 2D is (Y, X) or (C, Y, X)
+                            # For 3D it is (Z, Y, X) or (C, Z, Y, X)
+                            # We assume the last 2 or 3 are spatial.
+                            # Usually ds.distributed_eval gives (Z, Y, X) or (C, Z, Y, X)
+                            spatial_shape = x_shape
+                            if len(x_shape) >= 4:
+                                spatial_shape = x_shape[
+                                    1:
+                                ]  # Strip C if present
+
+                            masks = np.zeros(spatial_shape, dtype=np.uint16)
+                            # Flows is usually [flows_rgb, prob_map, ...]
+                            # or just a tuple of arrays.
+                            # For 3D it's typically [flows_rgb, prob_map, cellprob_z, flows_x, flows_y]
+                            # but ds.distributed_eval expects the standard output.
+                            # We use zeros as flows.
+                            flows = [np.zeros_like(masks).astype(np.float32)] * 4
+                            styles = np.zeros(64, dtype=np.float32)
+
+                            return masks, flows, styles
+                    except Exception as e_skip:
+                        print(f"Warning: early intensity check failed ({e_skip})")
+
+                    return _orig_eval(self, x, *args, **kwargs)
+
+                # Tag and replace
+                _eval_with_skip._patched_for_skip = True
+                CellposeModel.eval = _eval_with_skip
+                # print("setup_worker: patched CellposeModel.eval for intensity-based skip")
+        except Exception as e_patch:
+            print(f"setup_worker: Failed to patch CellposeModel.eval: {e_patch}")
 
     return dask_setup

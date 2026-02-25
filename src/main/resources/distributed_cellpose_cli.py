@@ -1291,7 +1291,9 @@ def _run_distributed_eval(
 
             min_i_val = args.min_intensity if args.min_intensity is not None else "None"
             preload_content = (
-                wp_source + "\n\n" + f"dask_setup = setup_worker({thread_limit})\n"
+                wp_source
+                + "\n\n"
+                + f"dask_setup = setup_worker({thread_limit}, min_intensity={min_i_val})\n"
             )
         except Exception:
             # Last-resort fallback inline minimal script
