@@ -188,8 +188,11 @@ if sys.platform == "win32":
         pass
 
 
-def _get_pixel_size_from_tiff(tiff_path) -> Tuple[Optional[float], Optional[float]]:
+def _get_pixel_size_from_tiff(
+    tiff_path,
+) -> Tuple[Optional[float], Optional[float], Optional[float]]:
     """Try to extract pixel resolution from TIFF metadata using tifffile."""
+    vx, vy, vz = None, None, None
     try:
         with tifffile.TiffFile(tiff_path) as tif:
             page = tif.pages[0]
@@ -212,18 +215,31 @@ def _get_pixel_size_from_tiff(tiff_path) -> Tuple[Optional[float], Optional[floa
                         vx *= 25400
                     if vy:
                         vy *= 25400
-                return vx, vy
+
+            # Try to read ImageJ metadata (if present)
+            if hasattr(page, "imagej_metadata") and page.imagej_metadata:
+                ij_meta = page.imagej_metadata
+                if "spacing" in ij_meta:
+                    vz = ij_meta["spacing"]
+                    # Usually spacing is in the same unit as X/Y resolution
+                    # but ImageJ sometimes uses something else. We assume it's scaled correctly.
 
             # Fallback: check ImageDescription for IJ metadata
             desc = page.tags.get("ImageDescription")
             if desc:
                 val = str(desc.value)
                 if "spacing=" in val:
-                    # Often means Z-spacing in ImageJ
-                    pass
+                    try:
+                        pts = val.split("\n")
+                        for p in pts:
+                            p = p.strip()
+                            if p.startswith("spacing="):
+                                vz = float(p.split("=")[1])
+                    except Exception:
+                        pass
     except Exception:
         pass
-    return None, None
+    return vx, vy, vz
 
 
 def _get_pixel_size_from_zattrs(zattrs: Dict) -> Tuple[Optional[float], ...]:
@@ -256,35 +272,67 @@ def _extract_calibration_metadata(
     pixel_size = None
     anisotropy = None
 
-    # 1. Try OME-Zarr metadata if available
+    # 1. Try OME-Zarr metadata or "pixel_size" (written by image_to_zarr.py)
     if z_root is not None and hasattr(z_root, "attrs"):
-        scales = _get_pixel_size_from_zattrs(dict(z_root.attrs))
-        if scales and any(s is not None for s in scales):
-            # scales is usually (t, c, z, y, x) or (z, y, x)
-            if len(scales) >= 3:
-                # Last two are Y, X. The one before is Z.
-                px_z, px_y, px_x = scales[-3], scales[-2], scales[-1]
-                if px_y and px_x:
-                    pixel_size = (px_y + px_x) / 2.0
-                    anisotropy = px_z / pixel_size if px_z else 1.0
-                    print(
-                        f"Discovered OME-Zarr calibration: pixel_size={pixel_size:.4f}, anisotropy={anisotropy:.4f}"
-                    )
+        # Explicit check for "pixel_size" attribute used by image_to_zarr.py
+        if "pixel_size" in z_root.attrs:
+            ps = z_root.attrs["pixel_size"]
+            # Typically [C, Z, Y, X] or [Z, Y, X]
+            ps_vals = [float(v) for v in ps]
+            if len(ps_vals) == 4:
+                vz, vx = ps_vals[1], ps_vals[3]
+            elif len(ps_vals) == 3:
+                vz, vx = ps_vals[0], ps_vals[2]
+            else:
+                vz, vx = 1.0, 1.0
+
+            if vz > 0 and vx > 0:
+                pixel_size = vx
+                anisotropy = vz / vx
+                print(
+                    f"Discovered Zarr calibration (pixel_size): pixel_size={pixel_size:.4f}, anisotropy={anisotropy:.4f}"
+                )
+
+        if pixel_size is None:
+            scales = _get_pixel_size_from_zattrs(dict(z_root.attrs))
+            if scales and any(s is not None for s in scales):
+                # scales is usually (t, c, z, y, x) or (z, y, x)
+                if len(scales) >= 3:
+                    # Last two are Y, X. The one before is Z.
+                    px_z, px_y, px_x = scales[-3], scales[-2], scales[-1]
+                    if px_y and px_x:
+                        pixel_size = (px_y + px_x) / 2.0
+                        anisotropy = px_z / pixel_size if px_z else 1.0
+                        print(
+                            f"Discovered OME-Zarr calibration: pixel_size={pixel_size:.4f}, anisotropy={anisotropy:.4f}"
+                        )
 
     # 2. Try TIFF metadata fallback
     if pixel_size is None and input_file.lower().endswith((".tif", ".tiff")):
-        vx, vy = _get_pixel_size_from_tiff(input_file)
+        vx, vy, vz = _get_pixel_size_from_tiff(input_file)
         if vx and vy:
             pixel_size = (vx + vy) / 2.0
-            print(f"Discovered TIFF calibration: pixel_size={pixel_size:.4f}")
+            if vz:
+                anisotropy = vz / pixel_size
+                print(
+                    f"DEBUG: Discovered TIFF calibration: pixel_size={pixel_size:.4f}, anisotropy={anisotropy:.4f}"
+                )
+            else:
+                anisotropy = 1.0  # Default to isotropic if Z-spacing missing
+                print(
+                    f"DEBUG: Discovered TIFF calibration (XY): pixel_size={pixel_size:.4f}"
+                )
 
-    # Defaults if discovery failed
+    # Final defaults
     if pixel_size is None:
-        pixel_size = 30.0  # Cellpose default
+        print(
+            "DEBUG: Calibration discovery failed completely. Using defaults (30, 1.0)"
+        )
+        pixel_size = 30.0
     if anisotropy is None:
         anisotropy = 1.0
 
-    return pixel_size, anisotropy
+    return float(pixel_size), float(anisotropy)
 
 
 def _upscale_labels_to_level0(da_labels, target_level: int) -> da.Array:
@@ -326,7 +374,9 @@ def _get_array_stats(
         p1, p99 = da.percentile(da_array.flatten(), [1, 99]).compute()
         return float(v_min), float(v_max), float(p1), float(p99)
     except Exception as e:
-        print(f"Warning: could not calculate array stats with dask: {e}. Falling back...")
+        print(
+            f"Warning: could not calculate array stats with dask: {e}. Falling back..."
+        )
         # Fallback for small arrays or dask issues
         computed = da_array.compute()
         return (
@@ -2007,7 +2057,7 @@ def main():
         "--model", default="cyto", help="Cellpose pretrained model name or path"
     )
     parser.add_argument(
-        "--diameter", default=30, type=float, help="Diameter for evaluation"
+        "--diameter", default=None, type=float, help="Diameter for evaluation"
     )
     parser.add_argument(
         "--chan",
@@ -2049,7 +2099,7 @@ def main():
     )
     parser.add_argument(
         "--anisotropy",
-        default=1.0,
+        default=None,
         type=float,
         help="Anisotropy factor (Z pixel size / XY pixel size)",
     )
@@ -2367,7 +2417,15 @@ def main():
         if is_zarr_dir:
             print(f"Detected Zarr input: {args.input_file}")
             try:
-                im = zarr.open(args.input_file, mode="r")
+                # OME-Zarr detection: if it's a multiresolution pyramid, open the '0' level
+                if os.path.exists(os.path.join(args.input_file, "0", ".zarray")):
+                    print("  Opening Level 0 from OME-Zarr pyramid.")
+                    im = zarr.open(os.path.join(args.input_file, "0"), mode="r")
+                elif os.path.exists(os.path.join(args.input_file, "0", ".zgroup")):
+                    print("  Opening Level 0 from OME-Zarr pyramid group.")
+                    im = zarr.open(os.path.join(args.input_file, "0"), mode="r")
+                else:
+                    im = zarr.open(args.input_file, mode="r")
                 is_zarr = True
             except Exception as e:
                 print(
@@ -2408,17 +2466,36 @@ def main():
         discovered_px, discovered_anisotropy = _extract_calibration_metadata(
             args.input_file, im
         )
-        if args.diameter <= 0:
-            # Use detected pixel size if diameter not provided
-            args.diameter = (
-                discovered_px if discovered_px > 0 else 30.0
-            )  # fallback to 30um
-            print(f"Auto-selected diameter based on metadata: {args.diameter:.4f}")
-        if args.anisotropy <= 0:
+        if args.diameter is None or args.diameter <= 0:
+            # If diameter is missing or 0, we can't do much except use a default.
+            # Usually 30 pixels is the Cellpose default.
+            args.diameter = 30.0
+            print(f"DEBUG: No diameter provided. Using default 30.0 pixels.")
+        else:
+            # If we found a pixel size, assume the user-provided diameter is in the SAME units (um).
+            # We convert it to pixels for Cellpose.
+            if discovered_px and discovered_px > 0:
+                diameter_um = args.diameter
+                args.diameter = diameter_um / discovered_px
+                print(
+                    f"DEBUG: Scaled diameter from {diameter_um:.4f} um to {args.diameter:.4f} pixels (using pixel_size={discovered_px:.4f})"
+                )
+            else:
+                print(
+                    f"DEBUG: Using user-supplied diameter as pixels: {args.diameter:.4f} (no calibration found)"
+                )
+
+        if args.anisotropy is None or args.anisotropy <= 0:
             args.anisotropy = (
-                discovered_anisotropy if discovered_anisotropy > 0 else 1.0
+                discovered_anisotropy
+                if (discovered_anisotropy and discovered_anisotropy > 0)
+                else 1.0
             )
-            print(f"Auto-selected anisotropy based on metadata: {args.anisotropy:.4f}")
+            print(
+                f"DEBUG: Auto-selected anisotropy based on metadata: {args.anisotropy:.4f}"
+            )
+        else:
+            print(f"DEBUG: Using user-supplied anisotropy: {args.anisotropy:.4f}")
         sys.stdout.flush()
 
         # Detect multi-channel input and prepare for preprocessing_steps approach.
@@ -2535,7 +2612,31 @@ def main():
                         )
                         ch_idx = 0
 
-                    ch_path = os.path.join(parent, f"channel_{ch_idx}.zarr")
+                    if args.input_zarr:
+                        # Strip .zarr extension if it exists to make it cleaner
+                        if args.input_zarr.endswith(".zarr"):
+                            ch_path = args.input_zarr[:-5] + f"_ch{ch_idx}.zarr"
+                        else:
+                            ch_path = args.input_zarr + f"_ch{ch_idx}.zarr"
+                    else:
+                        ch_path = os.path.join(parent, f"channel_{ch_idx}.zarr")
+
+                    # Check for reuse
+                    if os.path.exists(ch_path) and (
+                        os.path.exists(os.path.join(ch_path, ".zarray"))
+                        or os.path.exists(os.path.join(ch_path, ".zgroup"))
+                    ):
+                        print(
+                            f"  Channel {ch_idx + 1}: reusing existing Zarr at {ch_path}"
+                        )
+                        sys.stdout.flush()
+                        try:
+                            z_ch = zarr.open(ch_path, mode="r")
+                            channel_zarrs.append(z_ch)
+                            continue
+                        except Exception as e:
+                            print(f"  Channel {ch_idx + 1}: could not reuse ({e})")
+
                     print(f"  Channel {ch_idx + 1}: extracting to {ch_path}...")
                     sys.stdout.flush()
 
@@ -2544,7 +2645,28 @@ def main():
                         slc[c_axis_pos] = ch_idx
                         ch_dask = da.from_array(im, chunks="auto")[tuple(slc)]
                         ch_dask.rechunk(zarr_chunks).to_zarr(ch_path, overwrite=True)
-                        z_ch = zarr.open(ch_path, mode="r")
+                        z_ch = zarr.open(ch_path, mode="a")
+
+                        # Inherit metadata from the parent Zarr/file if available
+                        if hasattr(im, "attrs"):
+                            try:
+                                for k, v in im.attrs.items():
+                                    z_ch.attrs[k] = v
+                            except Exception:
+                                pass
+                        # Special case: discovered calibration from TIFF etc
+                        if "pixel_size" not in z_ch.attrs and discovered_px:
+                            try:
+                                # Ensure we save a usable list format
+                                z_ch.attrs["pixel_size"] = [
+                                    1.0,
+                                    discovered_px * discovered_anisotropy,
+                                    discovered_px,
+                                    discovered_px,
+                                ]
+                            except Exception:
+                                pass
+
                         channel_zarrs.append(z_ch)
                         print(f"  Channel {ch_idx + 1}: success (shape={z_ch.shape})")
                     except Exception as e:
@@ -2583,34 +2705,108 @@ def main():
                     zpath = args.input_zarr
                     parent = os.path.dirname(zpath) or "."
                     os.makedirs(parent, exist_ok=True)
+                    # Check if Zarr already exists and reuse it
+                    if os.path.exists(zpath) and (
+                        os.path.exists(os.path.join(zpath, ".zarray"))
+                        or os.path.exists(os.path.join(zpath, ".zgroup"))
+                    ):
+                        print(f"Reusing existing input Zarr at {zpath}")
+                        sys.stdout.flush()
+                        try:
+                            input_zarr = zarr.open(zpath, mode="r")
+                            # We still need to notify success and set input_zarr
+                            print(
+                                f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
+                            )
+                            sys.stdout.flush()
+                            # We can skip the rest of the conversion logic
+                            skip_conversion = True
+                        except Exception as e:
+                            print(
+                                f"Could not reuse existing Zarr: {e}. Re-converting..."
+                            )
+                            skip_conversion = False
+                    else:
+                        skip_conversion = False
                 else:
                     tmpdir = tempfile.TemporaryDirectory(
                         prefix="distributed_cellpose_tmp_", dir=args.temporary_directory
                     )
                     zpath = os.path.join(tmpdir.name, "input.zarr")
+                    skip_conversion = False
 
-                print(f"Writing input Zarr to {zpath} (dtype={im.dtype})...")
-                sys.stdout.flush()
-                try:
-                    da.from_array(im, chunks="auto").rechunk(blocksize).to_zarr(
-                        zpath, overwrite=True
+                if not skip_conversion:
+                    print(f"Writing input Zarr to {zpath} (dtype={im.dtype})...")
+                    sys.stdout.flush()
+                    try:
+                        da.from_array(im, chunks="auto").rechunk(blocksize).to_zarr(
+                            zpath, overwrite=True
+                        )
+                        input_zarr = zarr.open(zpath, mode="a")
+
+                        # Inherit and save metadata for reuse
+                        if hasattr(im, "attrs"):
+                            try:
+                                for k, v in im.attrs.items():
+                                    input_zarr.attrs[k] = v
+                            except Exception:
+                                pass
+                        # If we discovered calibration (e.g. from TIFF)
+                        if (
+                            "pixel_size" not in input_zarr.attrs
+                            and discovered_px is not None
+                        ):
+                            try:
+                                # Note: im.ndim might be 3 (Z, Y, X)
+                                if im.ndim == 3:
+                                    input_zarr.attrs["pixel_size"] = [
+                                        discovered_px * discovered_anisotropy,
+                                        discovered_px,
+                                        discovered_px,
+                                    ]
+                                elif im.ndim == 4:
+                                    input_zarr.attrs["pixel_size"] = [
+                                        1.0,
+                                        discovered_px * discovered_anisotropy,
+                                        discovered_px,
+                                        discovered_px,
+                                    ]
+                            except Exception:
+                                pass
+
+                    except Exception as e:
+                        print(f"Lazy write failed ({e}), eager fallback...")
+                        z_ch = zarr.open(
+                            zpath,
+                            mode="w",
+                            shape=im.shape,
+                            chunks=blocksize,
+                            dtype=im.dtype,
+                        )
+                        z_ch[...] = im
+                        input_zarr = z_ch
+                        # Re-write metadata to eager input_zarr
+                        if discovered_px:
+                            try:
+                                if im.ndim == 3:
+                                    input_zarr.attrs["pixel_size"] = [
+                                        discovered_px * discovered_anisotropy,
+                                        discovered_px,
+                                        discovered_px,
+                                    ]
+                                elif im.ndim == 4:
+                                    input_zarr.attrs["pixel_size"] = [
+                                        1.0,
+                                        discovered_px * discovered_anisotropy,
+                                        discovered_px,
+                                        discovered_px,
+                                    ]
+                            except Exception:
+                                pass
+                    print(
+                        f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
                     )
-                    input_zarr = zarr.open(zpath, mode="r")
-                except Exception as e:
-                    print(f"Lazy write failed ({e}), eager fallback...")
-                    z_ch = zarr.open(
-                        zpath,
-                        mode="w",
-                        shape=im.shape,
-                        chunks=blocksize,
-                        dtype=im.dtype,
-                    )
-                    z_ch[...] = im
-                    input_zarr = z_ch
-                print(
-                    f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
-                )
-                sys.stdout.flush()
+                    sys.stdout.flush()
 
     else:
         # Wrap folder of TIFFs (this uses tifffile.imread with aszarr=True)
