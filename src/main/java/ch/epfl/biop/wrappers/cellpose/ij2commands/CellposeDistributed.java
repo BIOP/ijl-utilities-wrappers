@@ -108,6 +108,9 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "Show Dask Dashboard", description = "Opens the Dask distributed dashboard in your default web browser.")
     boolean show_dashboard = false;
 
+    @Parameter(label = "Reuse/Keep Intermediate Zarr", description = "If checked, the intermediate Zarr will be saved in the output directory for reuse in future runs.")
+    boolean reuse_zarr = true;
+
     @Parameter(required = false, label = "Save Results Directory", style = "directory", description = "Optional: Directory where the segmentation results (.tif and .zarr) will be saved. If empty, a temporary directory is used.")
     File output_directory;
 
@@ -219,10 +222,23 @@ public class CellposeDistributed implements Command {
 
         int effectiveBsize = bsize > 0 ? bsize : -1;
 
+        String inputZarrPath = null;
+        if (reuse_zarr && output_directory != null && output_directory.exists() && input_file_or_folder != null && input_file_or_folder.exists()) {
+            // If an output directory is provided, create a stable Zarr path in it for reuse.
+            // This works for TIFFs, ZIPs, or already existing Zarrs that need channel extraction.
+            String baseName = input_file_or_folder.getName();
+            int dotIdx = baseName.lastIndexOf('.');
+            if (dotIdx > 0) {
+                baseName = baseName.substring(0, dotIdx);
+            }
+            inputZarrPath = new File(output_directory, baseName + "_input.zarr").getAbsolutePath();
+        }
+
         CellposeDistributedTaskSettings settings = new CellposeDistributedTaskSettings()
                 .setEnvPath(env_path.getAbsolutePath())
                 .setInputPath(inputPath.getAbsolutePath())
                 .setOutputPath(outputPath.getAbsolutePath())
+                .setInputZarrPath(inputZarrPath)
                 .setModel(model)
                 .setDiameter(diameterInPixels)
                 .setChannels(effectiveCh1, effectiveCh2)

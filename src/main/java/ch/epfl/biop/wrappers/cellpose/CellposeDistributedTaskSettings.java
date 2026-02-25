@@ -29,6 +29,7 @@ public class CellposeDistributedTaskSettings {
     public int bsize = -1;
     public double tile_overlap = 0.1;
     public String logDirectory;
+    public String inputZarrPath;
     public String additional_flags = "";
 
     public CellposeDistributedTaskSettings setEnvPath(String envPath) {
@@ -159,6 +160,11 @@ public class CellposeDistributedTaskSettings {
 
     public CellposeDistributedTaskSettings setLogDirectory(String logDirectory) {
         this.logDirectory = logDirectory;
+        return this;
+    }
+
+    public CellposeDistributedTaskSettings setInputZarrPath(String inputZarrPath) {
+        this.inputZarrPath = inputZarrPath;
         return this;
     }
 }

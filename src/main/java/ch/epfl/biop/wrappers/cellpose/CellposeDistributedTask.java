@@ -98,6 +98,11 @@ public class CellposeDistributedTask {
             arguments.add(settings.logDirectory);
         }
 
+        if (settings.inputZarrPath != null) {
+            arguments.add("--input_zarr");
+            arguments.add(settings.inputZarrPath);
+        }
+
         arguments.add("--batch_size");
         arguments.add(String.valueOf(settings.batch_size));
 
