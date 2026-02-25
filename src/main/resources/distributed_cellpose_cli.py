@@ -17,7 +17,6 @@ import json
 import logging
 import math
 import multiprocessing
-import numbers
 import os
 import shutil
 import socket
@@ -315,6 +314,27 @@ def _get_pyramid_level(z_root: Any, desired_level: int) -> Any:
     except Exception:
         pass
     return None
+
+
+def _get_array_stats(
+    da_array: da.Array,
+) -> Tuple[float, float, float, float]:
+    """Calculate min, max, and percentiles (p1, p99) for a dask array."""
+    try:
+        # Compute min/max and p1/p99 using dask percentiles for speed
+        v_min, v_max = da.compute(da_array.min(), da_array.max())
+        p1, p99 = da.percentile(da_array.flatten(), [1, 99]).compute()
+        return float(v_min), float(v_max), float(p1), float(p99)
+    except Exception as e:
+        print(f"Warning: could not calculate array stats with dask: {e}. Falling back...")
+        # Fallback for small arrays or dask issues
+        computed = da_array.compute()
+        return (
+            float(np.min(computed)),
+            float(np.max(computed)),
+            float(np.percentile(computed, 1)),
+            float(np.percentile(computed, 99)),
+        )
 
 
 def _create_optimized_segmentation_mask(
@@ -912,6 +932,7 @@ def _patch_worker_all() -> None:
     and suppressing redundant cellpose logger setup to avoid permission
     errors on Windows.
     """
+    global zarr
     try:
         # Suppress cellpose's internal logger setup in workers to avoid
         # PermissionError when multiple workers try to open the same log file.
@@ -932,6 +953,7 @@ def _patch_worker_all() -> None:
             # This is critical for Zarr 3.x compatibility when worker_patches.py is missing.
             applied = False
             try:
+
                 def _coerce(sel, mode="expand"):
                     if isinstance(sel, (list, tuple)):
                         return tuple(_coerce(s, mode) for s in sel)
@@ -1416,7 +1438,7 @@ def dask_setup(worker):
                     f"Applying segmentation mask: processing {active_count}/{total_count} blocks ({(100.0 * active_count / total_count):.1f}%)"
                 )
             except Exception:
-                print(f"Applying segmentation mask (skipping blocks with no signal)...")
+                print("Applying segmentation mask (skipping blocks with no signal)...")
 
         # Add preprocessing_steps if multi-channel
         if preprocessing_steps:
@@ -2348,7 +2370,9 @@ def main():
                 im = zarr.open(args.input_file, mode="r")
                 is_zarr = True
             except Exception as e:
-                print(f"Failed to open as Zarr ({e}), falling back to TIFF if possible...")
+                print(
+                    f"Failed to open as Zarr ({e}), falling back to TIFF if possible..."
+                )
                 is_zarr = False
         else:
             is_zarr = False
@@ -2391,7 +2415,9 @@ def main():
             )  # fallback to 30um
             print(f"Auto-selected diameter based on metadata: {args.diameter:.4f}")
         if args.anisotropy <= 0:
-            args.anisotropy = discovered_anisotropy if discovered_anisotropy > 0 else 1.0
+            args.anisotropy = (
+                discovered_anisotropy if discovered_anisotropy > 0 else 1.0
+            )
             print(f"Auto-selected anisotropy based on metadata: {args.anisotropy:.4f}")
         sys.stdout.flush()
 
@@ -2637,10 +2663,7 @@ def main():
     segmentation_mask = None
     global_limits = None
 
-    if (
-        args.min_intensity is not None
-        or args.global_norm
-    ) and im is not None:
+    if (args.min_intensity is not None or args.global_norm) and im is not None:
         try:
             # 1. Use pyramid-based statistics and mask for speed if input is OME-Zarr
             if is_zarr:
@@ -2886,7 +2909,6 @@ def main():
     )
 
     # GUI and CLI now use 1-based indexing consistently (1=First, 2=Second, 0=None).
-    # GUI and CLI now use 1-based indexing consistently (1=First, 2=Second, 0=None).
     # However, if we subsetted the channels during extraction (was_subsetted),
     # the 'channels' indices must refer to the indices in the stack we created.
     if was_subsetted:
@@ -3009,29 +3031,6 @@ def main():
         ):
             eval_kwargs["z_axis"] = 0
             print("Cellpose 4.x detected: setting z_axis=0")
-        # For single channel 3D images (Z, Y, X), Cellpose handles it natively.
-        # But for Cellpose 4.x we can be explicit.
-        if (
-            cellpose_version
-            and cellpose_version.startswith("4")
-            and input_zarr.ndim == 3
-        ):
-            eval_kwargs["z_axis"] = 0
-            print("Cellpose 4.x detected: setting z_axis=0")
-
-    # Normalize diameter to integer to avoid float slice indices in zarr
-    try:
-        if "diameter" in eval_kwargs:
-            try:
-                eval_kwargs["diameter"] = int(math.ceil(float(eval_kwargs["diameter"])))
-                print(
-                    f"Normalized eval_kwargs['diameter'] to {eval_kwargs['diameter']}"
-                )
-                sys.stdout.flush()
-            except Exception:
-                pass
-    except Exception:
-        pass
 
     # Parse custom parameters from remaining unknown arguments
     # Can be boolean flags: ['--do_3D', '--verbose']
@@ -3239,8 +3238,8 @@ def main():
 
     # Final blocksize update in eval_kwargs if it changed
     if eval_kwargs.get("do_3D"):
-        # Normalizing diameter again just in case
-        eval_kwargs["diameter"] = int(math.ceil(float(args.diameter)))
+        # Blocksize is already resolved.
+        pass
 
     # Optimization: Auto-tune batch_size if parallel optimization is enabled and GPU is used
     if (
