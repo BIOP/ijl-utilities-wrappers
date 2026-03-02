@@ -18,6 +18,7 @@ import logging
 import math
 import multiprocessing
 import os
+import random
 import shutil
 import socket
 import subprocess
@@ -70,6 +71,10 @@ try:
     import distributed
     from dask.distributed import Client, LocalCluster, default_client
     from distributed import WorkerPlugin as _WP
+
+    # Use 'tasks' method for rechunk to avoid memory explosion on the scheduler
+    # when dealing with complex graphs or many small chunks.
+    dask.config.set({"array.rechunk.method": "tasks"})
 except ImportError:
     dask = None
     da = None
@@ -289,6 +294,23 @@ def _extract_calibration_metadata(
             if vz > 0 and vx > 0:
                 pixel_size = vx
                 anisotropy = vz / vx
+
+                # REFINED HEURISTIC: Handle common unit mismatches (mm vs um vs m)
+                # target roughly 0.05 to 5.0 um/pixel
+                if pixel_size < 0.1:
+                    # Is it Millimeters? (e.g. 0.0001 mm -> 0.1 um)
+                    if 0.01 <= (pixel_size * 1000.0) <= 20.0:
+                        print(
+                            f"DEBUG: Calibration {pixel_size:.8f} looks like Millimeters. Scaling to Micrometers (x1000)."
+                        )
+                        pixel_size *= 1000.0
+                    # Is it Meters? (e.g. 1e-7 m -> 0.1 um)
+                    elif 0.01 <= (pixel_size * 1e6) <= 20.0:
+                        print(
+                            f"DEBUG: Calibration {pixel_size:.8f} looks like Meters. Scaling to Micrometers (x1e6)."
+                        )
+                        pixel_size *= 1e6
+
                 print(
                     f"Discovered Zarr calibration (pixel_size): pixel_size={pixel_size:.4f}, anisotropy={anisotropy:.4f}"
                 )
@@ -351,34 +373,189 @@ def _upscale_labels_to_level0(da_labels, target_level: int) -> da.Array:
 
 
 def _get_pyramid_level(z_root: Any, desired_level: int) -> Any:
-    """Safely get a lower-resolution Zarr array from a multiscale image."""
+    """
+    Safely get a lower-resolution Zarr array from a multiscale image.
+    If the requested level is missing, search for the next closest (smaller) level available.
+    """
+    # 0. Check if z_root is actually a group/hierarchy and not a single Array or Dask array
+    if (
+        z_root is None
+        or hasattr(z_root, "compute")
+        or not (hasattr(z_root, "keys") or hasattr(z_root, "__contains__"))
+    ):
+        return None
+
     try:
-        # Check standard multiscale path: root/0, root/1, etc.
-        path = str(desired_level)
-        if path in z_root:
-            return z_root[path]
-        elif f"/{path}" in z_root:
-            return z_root[f"/{path}"]
+        # 1. Try exact level
+        for path in [str(desired_level), f"/{desired_level}"]:
+            if path in z_root:
+                return z_root[path]
+
+        # 2. Try to find the next available smaller level (larger index)
+        # Scan indices from desired_level+1 upwards (up to 10)
+        for i in range(desired_level + 1, 10):
+            for path in [str(i), f"/{i}"]:
+                if path in z_root:
+                    print(
+                        f"  Note: Requested Level {desired_level} missing, using Level {i} instead."
+                    )
+                    return z_root[path]
+
+        # 3. Try to find any available level above Level 0 but below desired (climb back down)
+        for i in range(desired_level - 1, 0, -1):
+            for path in [str(i), f"/{i}"]:
+                if path in z_root:
+                    print(
+                        f"  Note: Requested Level {desired_level} missing, using Level {i}."
+                    )
+                    return z_root[path]
+
     except Exception:
         pass
     return None
 
 
 def _get_array_stats(
-    da_array: da.Array,
+    da_array: Any,
+    c_axis: Optional[int] = None,
+    c_idx: int = 0,
 ) -> Tuple[float, float, float, float]:
-    """Calculate min, max, and percentiles (p1, p99) for a dask array."""
+    """Calculate min, max, and percentiles (p1, p99) for an array using efficient sampling."""
     try:
-        # Compute min/max and p1/p99 using dask percentiles for speed
-        v_min, v_max = da.compute(da_array.min(), da_array.max())
-        p1, p99 = da.percentile(da_array.flatten(), [1, 99]).compute()
-        return float(v_min), float(v_max), float(p1), float(p99)
+        # OPTIMIZATION: For huge networked Zarrs, avoid uniform strides which hit too many chunks.
+        # Instead, sample random 128x128 blocks if the array is large.
+
+        # The nbytes check is unreliable for Zarr arrays (it often returns 0).
+        size = getattr(da_array, "size", 0)
+        itemsize = getattr(getattr(da_array, "dtype", None), "itemsize", 2)
+        total_nbytes = size * itemsize
+
+        # 1GB threshold check for "huge" sampling
+        is_huge = total_nbytes > 1 * 1024**3
+
+        shape = da_array.shape
+        ndim = da_array.ndim
+
+        if is_huge:
+            print(
+                f"  Detected huge array ({total_nbytes / 1e9:.2f} GB). Using very sparse random block sampling..."
+            )
+            num_samples = 100
+            block_size = 128
+            samples = []
+
+            # Assuming spatial dims are the last two: (..., Y, X)
+            h, w = shape[-2], shape[-1]
+            import random
+
+            for _ in range(num_samples):
+                y = random.randint(0, max(0, h - block_size))
+                x = random.randint(0, max(0, w - block_size))
+
+                # Slice extraction
+                effective_h = min(h, block_size)
+                effective_w = min(w, block_size)
+
+                # Prepare the slice
+                slc = [slice(None)] * ndim
+
+                # Apply channel slicing if provided
+                if c_axis is not None and 0 <= c_axis < ndim:
+                    slc[c_axis] = c_idx
+
+                # Apply spatial slicing
+                slc[-2] = slice(y, y + effective_h)
+                slc[-1] = slice(x, x + effective_w)
+
+                # Pick random Z or other spatial dimensions
+                remaining_indices = [i for i in range(ndim - 2) if i != c_axis]
+                for idx in remaining_indices:
+                    slc[idx] = random.randint(0, shape[idx] - 1)
+
+                s = da_array[tuple(slc)]
+
+                if hasattr(s, "compute"):
+                    s = s.compute()
+                samples.append(np.asanyarray(s).flatten())
+
+            sample = np.concatenate(samples)
+        else:
+            # Original striding logic for smaller arrays or if nbytes unavailable
+            # First, filter to channel if provided
+            if c_axis is not None and 0 <= c_axis < ndim:
+                slc_c = [slice(None)] * ndim
+                slc_c[c_axis] = c_idx
+                da_array = da_array[tuple(slc_c)]
+                shape = da_array.shape
+                ndim = da_array.ndim
+
+            total_pixels = da_array.size
+            sample_ratio = max(1, int(total_pixels / 10_000_000))
+
+            if sample_ratio > 1:
+                print(f"  Sampling 1/{sample_ratio} pixels for statistics...")
+                if ndim == 3:
+                    z_stride = 2 if shape[0] > 10 else 1
+                    xy_stride = int(math.sqrt(sample_ratio / z_stride))
+                    sample = da_array[::z_stride, ::xy_stride, ::xy_stride]
+                elif ndim == 4:
+                    z_stride = 2 if shape[1] > 10 else 1
+                    xy_stride = int(math.sqrt(sample_ratio / z_stride))
+                    sample = da_array[:, ::z_stride, ::xy_stride, ::xy_stride]
+                else:
+                    sample = da_array.flatten()[::sample_ratio]
+
+                if hasattr(sample, "compute"):
+                    sample = sample.compute()
+            else:
+                sample = (
+                    da_array.compute() if hasattr(da_array, "compute") else da_array
+                )
+
+        # Ensure that if the input is a Zarr-like object (not Dask), and we calculate stats,
+        # we convert it to a local numpy array ONCE before calling stats.
+        sample = np.asanyarray(sample)
+
+        v_min = float(np.min(sample))
+        v_max = float(np.max(sample))
+        p1, p99 = np.percentile(sample, [1, 99])
+
+        return v_min, v_max, float(p1), float(p99)
     except Exception as e:
-        print(
-            f"Warning: could not calculate array stats with dask: {e}. Falling back..."
+        print(f"Warning: sampled stats failed ({e}). Falling back to simple compute...")
+        # Fallback for small arrays
+
+        # Apply channel slicing if provided
+        safe_da = da_array
+        if c_axis is not None and 0 <= c_axis < getattr(safe_da, "ndim", 0):
+            try:
+                slc_err = [slice(None)] * safe_da.ndim
+                slc_err[c_axis] = c_idx
+                safe_da = safe_da[tuple(slc_err)]
+            except Exception:
+                pass
+
+        # If it's a huge array and we are in the fallback, we MUST use a very sparse stride
+        # otherwise we'll definitely hit RAM limits (this is the last resort)
+        total_voxels = getattr(safe_da, "size", 0)
+        safety_stride = max(1, int(total_voxels / 10_000_000))
+        if safety_stride > 1:
+            print(
+                f"  Note: using safety stride {safety_stride} for fallback statistics."
+            )
+            # For dask/zarr, try to apply stride before computing
+            try:
+                if len(safe_da.shape) >= 2:
+                    slc_safe = [slice(None, None, safety_stride)] * safe_da.ndim
+                    safe_da = safe_da[tuple(slc_safe)]
+            except Exception:
+                pass
+
+        computed = (
+            np.asanyarray(safe_da.compute())
+            if hasattr(safe_da, "compute")
+            else np.asanyarray(safe_da)
         )
-        # Fallback for small arrays or dask issues
-        computed = da_array.compute()
         return (
             float(np.min(computed)),
             float(np.max(computed)),
@@ -391,7 +568,9 @@ def _create_optimized_segmentation_mask(
     z_root: Any,
     min_intensity: Optional[Union[float, str]],
     threshold_rel: float = 0.5,
-) -> Tuple[Optional[da.Array], Optional[float], Optional[float]]:
+    c_axis: Optional[int] = None,
+    c_idx: int = 0,
+) -> Tuple[Optional[np.ndarray], float, float, float]:
     """
     Generate a low-resolution binary mask for block exclusion and calculate image stats.
     Targets Level+4 for stats and Level+3 for the mask to save significant I/O.
@@ -403,38 +582,128 @@ def _create_optimized_segmentation_mask(
     z_stats = _get_pyramid_level(z_root, stats_level)
     z_mask = _get_pyramid_level(z_root, mask_level)
 
-    # Fallback to level 0 if needed (e.g. singleton images)
+    # If z_root is actually an array (already drilled down to '0'), we can't use it to find other levels.
+    # We should use the ACTUAL root of the Zarr group if it's available.
+    # NOTE: In OME-Zarr, the multiscale group is usually the parent of '0', '1', etc.
+    actual_root = z_root
+    if hasattr(z_root, "store") and hasattr(z_root, "path"):
+        try:
+            # If path ends in '/0', '/1', etc., move up one level
+            parts = z_root.path.split("/")
+            if parts[-1].isdigit():
+                parent_path = "/".join(parts[:-1])
+                actual_root = zarr.open_group(z_root.store, path=parent_path, mode="r")
+        except Exception:
+            pass
+
     if z_stats is None:
-        z_stats = z_root["0"] if "0" in z_root else z_root
+        z_stats = _get_pyramid_level(actual_root, stats_level)
     if z_mask is None:
-        z_mask = z_root["0"] if "0" in z_root else z_root
+        z_mask = _get_pyramid_level(actual_root, mask_level)
+
+    # Fallback to level 0 if still needed (e.g. singleton images)
+    if z_stats is None:
+        z_stats = (
+            z_root["0"]
+            if (hasattr(z_root, "__contains__") and "0" in z_root)
+            else z_root
+        )
+
+    # Track if z_mask is actually Level 0 to avoid full volume compute later
+    is_mask_level0 = False
+    if z_mask is None:
+        z_mask = (
+            z_root["0"]
+            if (hasattr(z_root, "__contains__") and "0" in z_root)
+            else z_root
+        )
+        is_mask_level0 = True
+
+    # Multi-channel slicing logic
+    # STOP EAGER SLICING for Zarr objects to avoid loading the whole channel into RAM
+    # We pass c_axis/c_idx to _get_array_stats instead.
+    if c_axis is not None:
+        print(f"  Channel context: index {c_idx} at axis {c_axis}")
 
     # Get statistics (min/max/percentiles)
     print(f"Calculating image statistics (level {stats_level})...")
-    da_stats = da.from_array(z_stats, chunks="auto")
-    v_min, v_max, p1, p99 = _get_array_stats(da_stats)
+    # Pass Zarr object directly to avoid dask auto-rechunking bottleneck on huge files
+    v_min, v_max, p1, p99 = _get_array_stats(z_stats, c_axis=c_axis, c_idx=c_idx)
 
     # Compute binary mask for empty-space early-exit
     grid_mask = None
+    val = 0.0
     if min_intensity is not None and min_intensity != "None":
         if min_intensity == "auto" or min_intensity == "Auto":
             # Heuristic: 1% above p1
             val = p1 + 0.01 * (p99 - p1)
         else:
-            val = float(min_intensity)
+            try:
+                val = float(min_intensity)
+            except (ValueError, TypeError):
+                val = 0.0
 
-        print(f"Creating block-level exclusion mask (value > {val})...")
+        print(f"Creating block-level exclusion mask (threshold={val:.2f})...")
         sys.stdout.flush()
 
         # Step 1: Create binary mask at low resolution
-        da_mask_src = da.from_array(z_mask, chunks="auto")
-        bin_mask = da_mask_src > val
+        size_mask = getattr(z_mask, "size", 0)
+        itemsize_mask = getattr(getattr(z_mask, "dtype", None), "itemsize", 2)
+        total_nbytes_mask = size_mask * itemsize_mask
 
-        # Step 2: Project this mask onto Level 0 block grid
-        # This will be handled in _run_distributed_eval using the grid structure.
+        # If Level 0 is used and it is huge (>1GB), we MUST use strided loading
+        if is_mask_level0 and total_nbytes_mask > 1 * 1024**3:
+            print(
+                f"  Note: Volume is huge ({total_nbytes_mask / 1e9:.2f} GB) and Level 0 is used for mask. Forcing strided load."
+            )
+
+            # Prepare the slice for strided load
+            slc_m = [slice(None)] * z_mask.ndim
+            if c_axis is not None and 0 <= c_axis < z_mask.ndim:
+                slc_m[c_axis] = c_idx
+
+            # Stride factor: 16 by default, 32 if > 50GB, 64 if > 200GB (roughly)
+            stride = 16
+            if total_nbytes_mask > 200 * 1024**3:
+                stride = 64
+            elif total_nbytes_mask > 50 * 1024**3:
+                stride = 32
+
+            print(f"  Using stride {stride} for mask calculation.")
+
+            # Apply stride to spatial dimensions (last 3 or 2)
+            spatial_start = max(0, z_mask.ndim - 3)
+            for i in range(spatial_start, z_mask.ndim):
+                if i != c_axis:
+                    slc_m[i] = slice(None, None, stride)
+
+            # Zarr slicing with step is efficient (doesn't load everything)
+            da_mask_src = da.from_array(z_mask[tuple(slc_m)], chunks="auto")
+        else:
+            # Standard path: wrap in dask and slice channel lazily
+            da_mask_src = da.from_array(z_mask, chunks="auto")
+            if c_axis is not None and 0 <= c_axis < z_mask.ndim:
+                slc_m = [slice(None)] * z_mask.ndim
+                slc_m[c_axis] = c_idx
+                da_mask_src = da_mask_src[tuple(slc_m)]
+
+        bin_mask = da_mask_src > val
         grid_mask = bin_mask
 
-    return grid_mask, v_min, v_max
+    # OPTIMIZATION: Compute the coarse mask now (it's small) to avoid lazy re-compute later.
+    if grid_mask is not None:
+        try:
+            print("  Computing coarse mask...")
+            sys.stdout.flush()
+            # If it's dask, compute it. If it's already a numpy array (e.g. from strided zarr slice), just take it.
+            if hasattr(grid_mask, "compute"):
+                grid_mask = grid_mask.compute()
+            grid_mask = np.asanyarray(grid_mask)
+        except Exception as e:
+            print(f"  Warning: coarse mask compute failed ({e})")
+            grid_mask = None
+
+    return grid_mask, v_min, v_max, val
 
 
 def get_optimal_n_workers(
@@ -613,7 +882,8 @@ def get_optimal_n_workers(
             # Full-res volume must fit several times for flow-stitching on GPU.
             # Use 40x for small cards, 10x for large cards.
             vram_vol_mult = 40.0 if total_memory_single_gpu < 5 * 1024**3 else 10.0
-            vram_postprocessing = (z * y * x) * 4 * vram_vol_mult
+            # VRAM usage is dominated by the RESCALED volume which Cellpose processes
+            vram_postprocessing = rescaled_voxels * 4 * vram_vol_mult
 
             # Total estimated VRAM per block. We assume inference and stitching
             # don't peak simultaneously, but we need the larger of the two.
@@ -840,7 +1110,12 @@ def get_auto_blocksize(
 
     # Calculate scale factor for plane rescaling
     model_diam = 30.0  # Standard cyto
-    scale = model_diam / (diameter if diameter > 0 else 30.0)
+
+    # SANITY CHECK: prevent absurdly small scale factors or huge min_dims from extreme diameters
+    # diameter=95000 leads to scale=0.0003, which makes side_vram_plane huge.
+    # We clamp the diameter used for blocksize logic to a reasonable range.
+    calc_diameter = max(1.0, min(diameter, 500.0)) if diameter > 0 else 30.0
+    scale = model_diam / calc_diameter
 
     if is_3d:
         # Determine Z-axis length (first spatial index)
@@ -878,7 +1153,7 @@ def get_auto_blocksize(
         # Match against total RAM volume too
         spatial_side = min(spatial_side, int(math.sqrt(target_voxels_ram)))
 
-    min_dim = int(round(3.0 * (diameter if diameter > 1 else 30.0)))
+    min_dim = int(round(3.0 * (calc_diameter if calc_diameter > 1 else 30.0)))
     spatial_side = max(min_dim, min(4096 if is_3d else 8192, spatial_side))
 
     # Hard cap for small cards to avoid fragmentation OOM
@@ -1289,25 +1564,42 @@ def _run_distributed_eval(
             with open(wp_path, "r") as _f:
                 wp_source = _f.read()
 
-            min_i_val = args.min_intensity if args.min_intensity is not None else "None"
+            # Resolve min_intensity value to a number if it was 'auto'
+            resolved_min_i = "None"
+            if args.min_intensity is not None and args.min_intensity != "None":
+                if (
+                    isinstance(args.min_intensity, str)
+                    and args.min_intensity.lower() == "auto"
+                ):
+                    # We need to use the calculated value from determine_grid_mask
+                    # If it was called, it should have updated a local variable or we can re-derive it.
+                    # Since global_norm/p1/p99 are calculated in main, we should pass it.
+                    if "auto_min_intensity_val" in globals():
+                        resolved_min_i = str(globals()["auto_min_intensity_val"])
+                    else:
+                        resolved_min_i = "None"
+                else:
+                    resolved_min_i = str(args.min_intensity)
+
             preload_content = (
                 wp_source
                 + "\n\n"
-                + f"dask_setup = setup_worker({thread_limit}, min_intensity={min_i_val})\n"
+                + f"dask_setup = setup_worker({thread_limit}, min_intensity={resolved_min_i})\n"
             )
         except Exception:
             # Last-resort fallback inline minimal script
-            min_i_val = args.min_intensity if args.min_intensity is not None else "None"
             preload_content = f"""
 import os
 
 def dask_setup(worker):
     nthreads = {thread_limit}
-    min_i = {min_i_val}
+    min_i = {resolved_min_i if "resolved_min_i" in locals() else "None"}
     os.environ['OMP_NUM_THREADS'] = str(nthreads)
     os.environ['MKL_NUM_THREADS'] = str(nthreads)
     os.environ['OPENBLAS_NUM_THREADS'] = str(nthreads)
     os.environ['NUMEXPR_NUM_THREADS'] = str(nthreads)
+    # Reduce fragmentation and improve stability for small GPUs
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     print(f"Worker {{getattr(worker, 'id', '<unknown>')}}: Thread limit enforced to {{nthreads}} threads")
     if min_i is not None:
         print(f"Worker {{getattr(worker, 'id', '<unknown>')}}: Skipping intensity check (inline fallback does not support it)")
@@ -2036,6 +2328,18 @@ def main():
     -------
     None
     """
+    # Standard Dask configuration for memory-safe execution on large volumes
+    if dask is not None:
+        dask.config.set(
+            {
+                "distributed.worker.memory.target": 0.85,
+                "distributed.worker.memory.spill": 0.90,
+                "distributed.worker.memory.pause": 0.95,
+                "distributed.worker.memory.terminate": 0.98,
+                "array.slicing.split_large_chunks": True,
+            }
+        )
+
     parser = argparse.ArgumentParser(description="Cellpose Distributed CLI helper")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--input_file", help="Single TIFF input file")
@@ -2416,19 +2720,53 @@ def main():
             or args.input_file.lower().endswith(".zarr")
         )
 
+        z_root = None
         if is_zarr_dir:
             print(f"Detected Zarr input: {args.input_file}")
             try:
-                # OME-Zarr detection: if it's a multiresolution pyramid, open the '0' level
-                if os.path.exists(os.path.join(args.input_file, "0", ".zarray")):
-                    print("  Opening Level 0 from OME-Zarr pyramid.")
-                    im = zarr.open(os.path.join(args.input_file, "0"), mode="r")
-                elif os.path.exists(os.path.join(args.input_file, "0", ".zgroup")):
-                    print("  Opening Level 0 from OME-Zarr pyramid group.")
-                    im = zarr.open(os.path.join(args.input_file, "0"), mode="r")
-                else:
-                    im = zarr.open(args.input_file, mode="r")
-                is_zarr = True
+                # Open using zarr API directly
+                im = zarr.open(args.input_file, mode="r")
+                z_root = im
+
+                # Robustly handle OME-Zarr levels or Groups that wrap an Array
+                # Check for OME-Zarr multiscales metadata first
+                if not hasattr(im, "dtype") and "multiscales" in im.attrs:
+                    try:
+                        # Extract the first multiscale dataset (Level 0)
+                        level0_path = im.attrs["multiscales"][0]["datasets"][0]["path"]
+                        print(
+                            f"  OME-Zarr detected. Opening Level 0 at '{level0_path}'."
+                        )
+                        im = im[level0_path]
+                    except Exception:
+                        pass
+
+                # If still a group, drill down into '0' levels (legacy OME-Zarr)
+                while not hasattr(im, "dtype") and hasattr(im, "__getitem__"):
+                    if "0" in im:
+                        im = im["0"]
+                    else:
+                        break
+
+                # Fallback: if it's still a group, try to find ANY array inside it
+                # (e.g. if channels are stored as separate arrays)
+                if not hasattr(im, "dtype") and hasattr(im, "keys"):
+                    child_arrays = [k for k in im.keys() if hasattr(im[k], "dtype")]
+                    if child_arrays:
+                        # If there are multiple arrays, and user expects 4 channels,
+                        # maybe they are separate arrays?
+                        if len(child_arrays) > 1:
+                            print(f"  Group contains multiple arrays: {child_arrays}")
+                            # If axis detection finds few channels in the first one,
+                            # but many arrays exist, maybe we should stack them?
+                            # For now, pick the first one but warn.
+                        im = im[child_arrays[0]]
+
+                is_zarr = hasattr(im, "dtype")
+                if not is_zarr:
+                    print(
+                        f"Warning: {args.input_file} is a Zarr group but no data array was found at the root or in level '0'."
+                    )
             except Exception as e:
                 print(
                     f"Failed to open as Zarr ({e}), falling back to TIFF if possible..."
@@ -2465,8 +2803,9 @@ def main():
         print(f"Input shape: {im.shape}, blocksize: {blocksize}")
 
         # Metadata discovery: pixel size and anisotropy
+        # Pass the root group (which contains .zattrs) if available, otherwise the array
         discovered_px, discovered_anisotropy = _extract_calibration_metadata(
-            args.input_file, im
+            args.input_file, z_root if z_root is not None else im
         )
         if args.diameter is None or args.diameter <= 0:
             # If diameter is missing or 0, we can't do much except use a default.
@@ -2482,6 +2821,19 @@ def main():
                 print(
                     f"DEBUG: Scaled diameter from {diameter_um:.4f} um to {args.diameter:.4f} pixels (using pixel_size={discovered_px:.4f})"
                 )
+
+                # SANITY CHECK: if diameter > 1000 pixels, it's almost certainly a unit error
+                # in the metadata (e.g. mm or meters instead of um).
+                if args.diameter > 1000:
+                    print(
+                        f"!!! WARNING: Diameter ({args.diameter:.1f} px) is extremely large."
+                    )
+                    print(
+                        f"!!! This usually means the file metadata units are wrong (e.g. millimeters vs micrometers)."
+                    )
+                    print(
+                        f"!!! Cellpose works best with diameters around 30 pixels. Performance will be very poor."
+                    )
             else:
                 print(
                     f"DEBUG: Using user-supplied diameter as pixels: {args.diameter:.4f} (no calibration found)"
@@ -2531,6 +2883,9 @@ def main():
             if candidates:
                 c_axis_pos = candidates[0]
 
+        # Store original channel axis before any virtual extraction / stacking changes it
+        c_axis_pos_orig = c_axis_pos
+
         # Resolve 'auto' blocksize using hardware-aware heuristic
         if blocksize == "auto":
             is_3d_mode = (im.ndim >= 3 and c_axis_pos is None) or (im.ndim >= 4)
@@ -2545,15 +2900,67 @@ def main():
             )
             print(f"Auto-resolved blocksize based on hardware: {blocksize}")
 
-        # Decide whether we need to create/extract a new Zarr or use the current one
-        if is_zarr and c_axis_pos is None:
-            input_zarr = im
+        # Decide whether we need to create/extract a new Zarr or use the current one.
+        # we only NEED to extract if:
+        # 1. Input is NOT Zarr (e.g. TIFF)
+        # 2. Input is Zarr but we need to combine/stack multiple channels that are not already stacked
+        # 3. Input is Zarr but chunks are extremely small (e.g. < 1MB)
+        # 4. Input is Zarr but we want to optimize rechunking for the specific blocksize
+
+        is_direct_compatible = False
+        if is_zarr:
+            # Universal Virtual Extraction: Any multi-channel Zarr can be virtually sliced
+            # and stacked using Dask, avoiding expensive disk writes.
+            is_direct_compatible = True
+
+        if is_direct_compatible:
             print(f"Using existing Zarr directly: {args.input_file}")
-            # Ensure blocksize matches image rank
-            if len(blocksize) > im.ndim:
-                blocksize = blocksize[-im.ndim :]
-            elif len(blocksize) < im.ndim:
-                blocksize = (max(im.shape),) * (im.ndim - len(blocksize)) + blocksize
+            if c_axis_pos is not None:
+                # Determine channel indices (0-based)
+                c1 = (args.chan - 1) if args.chan > 0 else 0
+                c2 = (args.chan2 - 1) if args.chan2 > 0 else -1
+
+                # Use Dask for lazy slicing/stacking
+                # Determine chunks to use for dask wrapper
+                chunks = getattr(im, "chunks", "auto")
+                im_da = da.from_array(im, chunks=chunks)
+
+                if c2 < 0:
+                    # Single channel virtual extraction
+                    slc = [slice(None)] * im.ndim
+                    slc[c_axis_pos] = c1
+                    input_zarr = im_da[tuple(slc)]
+                    print(
+                        f"  Virtual extraction: slicing channel index {c1} at axis {c_axis_pos}"
+                    )
+                    # After slicing, this dimension is gone, so c_axis_pos becomes None for the workers
+                    c_axis_pos = None
+                else:
+                    # DOUBLE channel virtual extraction: stack them virtually into a new index 0
+                    slc1 = [slice(None)] * im.ndim
+                    slc1[c_axis_pos] = c1
+                    slc2 = [slice(None)] * im.ndim
+                    slc2[c_axis_pos] = c2
+
+                    ch1 = im_da[tuple(slc1)]
+                    ch2 = im_da[tuple(slc2)]
+
+                    # Stack results in (channels, Z, Y, X) or (channels, Y, X)
+                    input_zarr = da.stack([ch1, ch2], axis=0)
+                    print(
+                        f"  Universal Virtual Extraction: stacked channels {c1 + 1}, {c2 + 1} virtually at axis 0"
+                    )
+                    c_axis_pos = 0  # Now it's at the front
+            else:
+                input_zarr = im
+
+            # Ensure blocksize matches the rank of the final input_zarr
+            if len(blocksize) > input_zarr.ndim:
+                blocksize = blocksize[-input_zarr.ndim :]
+            elif len(blocksize) < input_zarr.ndim:
+                # Pad blocksize with 1s or max dims as needed
+                diff = input_zarr.ndim - len(blocksize)
+                blocksize = (1,) * diff + blocksize
         else:
             # Multi-channel or conversion required
             if c_axis_pos is not None and im.shape[c_axis_pos] > 1:
@@ -2584,9 +2991,19 @@ def main():
                 )
 
                 # Match blocksize rank to spatial_shape rank for Zarr chunks
-                zarr_chunks = tuple(
-                    b for i, b in enumerate(blocksize) if i != c_axis_pos
-                )
+                # SANITY CHECK: Never use huge chunks for Zarr storage (causes OOM during rechunk)
+                # Keep max chunk size around 256MB per channel
+                zarr_chunks = []
+                for i, b in enumerate(blocksize):
+                    if i == c_axis_pos:
+                        continue
+                    # Cap spatial chunks to something manageable (e.g. 1024-2048) if block is huge
+                    dim_size = spatial_shape[len(zarr_chunks)]
+                    if b > 4096 and dim_size > 4096:
+                        zarr_chunks.append(1024)
+                    else:
+                        zarr_chunks.append(b)
+                zarr_chunks = tuple(zarr_chunks)
 
                 # Final sanity check: if rank still mismatched
                 if len(zarr_chunks) != len(spatial_shape):
@@ -2624,20 +3041,24 @@ def main():
                         ch_path = os.path.join(parent, f"channel_{ch_idx}.zarr")
 
                     # Check for reuse
-                    if os.path.exists(ch_path) and (
-                        os.path.exists(os.path.join(ch_path, ".zarray"))
-                        or os.path.exists(os.path.join(ch_path, ".zgroup"))
-                    ):
-                        print(
-                            f"  Channel {ch_idx + 1}: reusing existing Zarr at {ch_path}"
-                        )
-                        sys.stdout.flush()
+                    if os.path.exists(ch_path):
                         try:
                             z_ch = zarr.open(ch_path, mode="r")
-                            channel_zarrs.append(z_ch)
-                            continue
-                        except Exception as e:
-                            print(f"  Channel {ch_idx + 1}: could not reuse ({e})")
+                            # Check if it is an array and matching spatial shape
+                            if hasattr(z_ch, "shape") and z_ch.shape == spatial_shape:
+                                print(
+                                    f"  Channel {ch_idx + 1}: reusing existing Zarr at {ch_path}"
+                                )
+                                sys.stdout.flush()
+                                channel_zarrs.append(zarr.open(ch_path, mode="a"))
+                                continue
+                            else:
+                                print(
+                                    f"  Channel {ch_idx + 1}: existing Zarr shape/type mismatch. re-extracting..."
+                                )
+                        except Exception:
+                            # Not a valid Zarr or protected, proceed to extraction
+                            pass
 
                     print(f"  Channel {ch_idx + 1}: extracting to {ch_path}...")
                     sys.stdout.flush()
@@ -2646,6 +3067,17 @@ def main():
                         slc = [slice(None)] * im.ndim
                         slc[c_axis_pos] = ch_idx
                         ch_dask = da.from_array(im, chunks="auto")[tuple(slc)]
+
+                        # Clean up existing directory or file to avoid "An array exists in store" conflicts
+                        if os.path.exists(ch_path):
+                            try:
+                                if os.path.isdir(ch_path):
+                                    shutil.rmtree(ch_path)
+                                else:
+                                    os.remove(ch_path)
+                            except Exception:
+                                pass
+
                         ch_dask.rechunk(zarr_chunks).to_zarr(ch_path, overwrite=True)
                         z_ch = zarr.open(ch_path, mode="a")
 
@@ -2708,25 +3140,28 @@ def main():
                     parent = os.path.dirname(zpath) or "."
                     os.makedirs(parent, exist_ok=True)
                     # Check if Zarr already exists and reuse it
-                    if os.path.exists(zpath) and (
-                        os.path.exists(os.path.join(zpath, ".zarray"))
-                        or os.path.exists(os.path.join(zpath, ".zgroup"))
-                    ):
-                        print(f"Reusing existing input Zarr at {zpath}")
-                        sys.stdout.flush()
+                    if os.path.exists(zpath):
                         try:
-                            input_zarr = zarr.open(zpath, mode="r")
-                            # We still need to notify success and set input_zarr
-                            print(
-                                f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
-                            )
-                            sys.stdout.flush()
-                            # We can skip the rest of the conversion logic
-                            skip_conversion = True
-                        except Exception as e:
-                            print(
-                                f"Could not reuse existing Zarr: {e}. Re-converting..."
-                            )
+                            z_ch = zarr.open(zpath, mode="r")
+                            # Check if it is an array and matching shape
+                            if hasattr(z_ch, "shape") and z_ch.shape == im.shape:
+                                print(f"Reusing existing input Zarr at {zpath}")
+                                sys.stdout.flush()
+                                input_zarr = zarr.open(zpath, mode="r")
+                                # We still need to notify success and set input_zarr
+                                print(
+                                    f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
+                                )
+                                sys.stdout.flush()
+                                # We can skip the rest of the conversion logic
+                                skip_conversion = True
+                            else:
+                                print(
+                                    f"Existing Zarr at {zpath} shape/type mismatch. re-converting..."
+                                )
+                                skip_conversion = False
+                        except Exception:
+                            # Not a valid Zarr, proceed to write
                             skip_conversion = False
                     else:
                         skip_conversion = False
@@ -2741,6 +3176,16 @@ def main():
                     print(f"Writing input Zarr to {zpath} (dtype={im.dtype})...")
                     sys.stdout.flush()
                     try:
+                        # Clean up existing directory or file to avoid "An array exists in store" conflicts
+                        if os.path.exists(zpath):
+                            try:
+                                if os.path.isdir(zpath):
+                                    shutil.rmtree(zpath)
+                                else:
+                                    os.remove(zpath)
+                            except Exception:
+                                pass
+
                         da.from_array(im, chunks="auto").rechunk(blocksize).to_zarr(
                             zpath, overwrite=True
                         )
@@ -2868,9 +3313,21 @@ def main():
                 print(
                     "Building pyramidal mask/stats with Level+4 for statistics and Level+3 for exclusion..."
                 )
-                segmentation_mask, v_min, v_max = _create_optimized_segmentation_mask(
-                    im, args.min_intensity
+                segmentation_mask, v_min, v_max, resolved_min_i = (
+                    _create_optimized_segmentation_mask(
+                        z_root,
+                        args.min_intensity,
+                        c_axis=c_axis_pos_orig,
+                        c_idx=(args.chan - 1) if args.chan > 0 else 0,
+                    )
                 )
+
+                if args.min_intensity == "auto" or args.min_intensity == "Auto":
+                    print(
+                        f"Resolved 'auto' intensity threshold to: {resolved_min_i:.2f}"
+                    )
+                    args.min_intensity = resolved_min_i
+
                 if args.global_norm:
                     global_limits = (v_min, v_max)
                     print(
@@ -3011,50 +3468,55 @@ def main():
                             args.min_intensity = None
                         global_limits = None
 
-            # 2. Generate a dilated foreground mask for distributed_eval.
+            # 2. Generate or refine a foreground mask for distributed_eval.
             # Using a mask is much safer than patching workers' eval() because
             # we can dilate it to ensure neighboring overlapping blocks are preserved.
             if args.min_intensity is not None and args.min_intensity > 0:
                 print(
-                    f"Generating foreground mask (threshold={args.min_intensity:.2f})..."
+                    f"Finalizing foreground mask (threshold={args.min_intensity:.2f})..."
                 )
                 sys.stdout.flush()
 
-                # For reasonable image sizes (<500MP), we can hold the whole boolean mask in RAM.
-                # Thresholding directly at full-res avoids misalignment issues.
-                total_pixels = np.prod(input_zarr.shape)
-                if total_pixels < 500 * 1024 * 1024:
-                    print(
-                        "Image small enough (<500MP): generating full-resolution mask for precise block filtering."
-                    )
-                    segmentation_mask = np.array(input_zarr) > args.min_intensity
-                else:
-                    # For huge images, we generate a downsampled mask.
-                    # Cellpose distributed_eval can handle low-resolution masks by mapping shapes.
-                    ds_factor = 8
-                    print(
-                        f"Image too large ({total_pixels / 1e6:.1f}MP): generating downsampled mask (factor {ds_factor})."
-                    )
-                    slices = tuple(
-                        slice(None, None, ds_factor) for _ in input_zarr.shape
-                    )
-                    segmentation_mask = (
-                        np.array(input_zarr[slices]) > args.min_intensity
-                    )
+                # If we don't have a mask yet (e.g. not a Zarr or was missing pyramids), generate it.
+                if segmentation_mask is None:
+                    # For reasonable image sizes (<500MP), we can hold the whole boolean mask in RAM.
+                    # Thresholding directly at full-res avoids misalignment issues.
+                    total_pixels = np.prod(input_zarr.shape)
+                    if total_pixels < 500 * 1024 * 1024:
+                        print(
+                            "Image small enough (<500MP): generating full-resolution mask for precise block filtering."
+                        )
+                        segmentation_mask = np.array(input_zarr) > args.min_intensity
+                    else:
+                        # For huge images, we generate a downsampled mask.
+                        # Cellpose distributed_eval can handle low-resolution masks by mapping shapes.
+                        ds_factor = 8
+                        print(
+                            f"Image too large ({total_pixels / 1e6:.1f}MP): generating downsampled mask (factor {ds_factor})."
+                        )
+                        slices = tuple(
+                            slice(None, None, ds_factor) for _ in input_zarr.shape
+                        )
+                        segmentation_mask = (
+                            np.array(input_zarr[slices]) > args.min_intensity
+                        )
 
                 # Dilate mask to include cell tails and buffer at block boundaries.
                 # This ensures neighboring chunks are processed for robust stitching.
-                if ndimage is not None:
+                if segmentation_mask is not None and ndimage is not None:
                     try:
                         # Dilation should be ~0.75x diameter to catch overlapping cells.
                         eff_diam = args.diameter if args.diameter > 1 else 30.0
-                        if total_pixels < 500 * 1024 * 1024:
-                            # Full resolution mask
-                            num_iter = int(math.ceil(eff_diam * 0.75))
-                        else:
-                            # Low resolution mask (already downsampled by ds_factor=8)
-                            num_iter = int(math.ceil(eff_diam * 0.75 / 8))
 
+                        # Determine downsampling factor of the CURRENT segmentation_mask to scale iterations
+                        # If it was pyramidal Level 4, it's 16x. Level 3 is 8x. Fallback is 8x.
+                        mask_shape = segmentation_mask.shape
+                        full_shape = input_zarr.shape
+
+                        # Use spatial dimensions (last 2 or 3) to find scale
+                        dim_ratio = full_shape[-1] / mask_shape[-1]
+
+                        num_iter = int(math.ceil(eff_diam * 0.75 / dim_ratio))
                         # Ensure at least 2 pixels of dilation
                         num_iter = max(2, num_iter)
 
@@ -3064,15 +3526,17 @@ def main():
                             iterations=num_iter,
                         )
                         print(
-                            f"Dilated mask to protect boundaries (iterations={num_iter})"
+                            f"Dilated mask to protect boundaries (iterations={num_iter}, scale_factor={dim_ratio:.1f})"
                         )
                     except Exception as de:
                         print(f"Warning: dilation failed: {de}")
 
-                coverage = np.mean(segmentation_mask) * 100
-                print(
-                    f"Early Exit mask created. Will process approx {coverage:.1f}% of blocks."
-                )
+                if segmentation_mask is not None:
+                    # Explicitly compute mean from compiled numpy mask
+                    coverage = np.mean(segmentation_mask) * 100
+                    print(
+                        f"Early Exit mask created. Will process approx {coverage:.1f}% of blocks."
+                    )
                 sys.stdout.flush()
 
         except Exception as e:
@@ -3483,31 +3947,51 @@ def main():
 
                 # Multiplier for inference activations + overhead. 45.0 is a realistic for 8GB+ GPUs.
                 vram_plane_mult = 150.0 if gpu_mem < 5 * 1024**3 else 45.0
+
+                # NEW: Account for 3D Volume Overhead in VRAM!
+                # If we are in 3D mode, Cellpose keeps the rescaled volume in memory
+                # which significantly reduces the pool available for batch_size activations.
+                volume_vram_bytes = 0
+                if eval_kwargs.get("do_3D"):
+                    # Use a multiplier that accounts for flows (6x) + probs (1x) + input (1x)
+                    v_mult = 40.0 if gpu_mem < 5 * 1024**3 else 10.0
+                    rescaled_vol = (
+                        (bz * scale * anisotropy) * (by * scale) * (bx * scale)
+                    )
+                    volume_vram_bytes = rescaled_vol * 4 * v_mult
+
                 mem_per_plane = max_plane_pixels * 4 * vram_plane_mult
 
                 # Targeting usage (conservative for small GPUs)
                 ratio = 0.5 if gpu_mem < 5 * 1024**3 else 0.85
-                target_mem = min(gpu_mem * ratio, free_mem * 0.9)
+                target_mem = min(gpu_mem * ratio, free_mem * 0.9) - volume_vram_bytes
 
-                # Check how many planes fit
-                # We assume 1 worker here (optimal_n_workers is likely 1 per GPU)
-                if mem_per_plane > 0:
-                    max_batch = int(target_mem / mem_per_plane)
+            # Check how many planes fit
+            # We assume 1 worker here (optimal_n_workers is likely 1 per GPU)
+            if mem_per_plane > 0 and target_mem > 0:
+                max_batch = int(target_mem / mem_per_plane)
 
-                    # Global batch ceiling for 3D stability
-                    batch_cap = 128
+                # Global batch ceiling for 3D stability.
+                # 3D inference is much more VRAM-hungry than 2D due to volume stitching.
+                # We cap it much lower than 2D.
+                batch_cap = 8 if eval_kwargs.get("do_3D") else 128
 
-                    # Very conservative for small GPUs (< 5GB) to avoid post-processing OOM
-                    if gpu_mem < 5 * 1024**3:
-                        batch_cap = 8
+                # Very conservative for small GPUs (< 5GB)
+                if gpu_mem < 5 * 1024**3:
+                    batch_cap = 2 if eval_kwargs.get("do_3D") else 8
 
-                    new_batch = max(1, min(batch_cap, max_batch))
+                new_batch = max(1, min(batch_cap, max_batch))
 
-                    if new_batch > 1:
-                        print(
-                            f"Optimization ON: Increasing batch_size from 1 to {new_batch} to utilize VRAM (Estimated plane mem: {mem_per_plane / 1024**2:.1f} MB)"
-                        )
-                        eval_kwargs["batch_size"] = new_batch
+                if new_batch > 1:
+                    print(
+                        f"Optimization ON: Increasing batch_size from 1 to {new_batch} to utilize VRAM (Estimated plane mem: {mem_per_plane / 1024**2:.1f} MB, Volume overhead: {volume_vram_bytes / 1024**2:.1f} MB)"
+                    )
+                    eval_kwargs["batch_size"] = new_batch
+            else:
+                if eval_kwargs.get("do_3D") and target_mem <= 0:
+                    print(
+                        f"Optimization: 3D volume overhead ({volume_vram_bytes / 1024**2:.1f} MB) consumes all target VRAM. Keeping batch_size=1."
+                    )
         except Exception as e:
             print(f"Optimization warning: could not auto-tune batch_size: {e}")
 
@@ -3536,51 +4020,7 @@ def main():
     )
     sys.stdout.flush()
 
-    # Prepare worker patch preload script
-    preload_script = None
-    try:
-        # Preload content definition
-        preload_content = """
-import sys
-import os
-import logging
-
-def dask_setup(worker):
-    logger = logging.getLogger("distributed.worker")
-    logger.info("Worker preload script running...")
-
-    try:
-        import zarr
-        # Patch zarr.open for older compatibility
-        _orig_open = zarr.open
-        def _compat_open(*args, **kwargs):
-            if len(args) >= 2 and isinstance(args[1], str):
-                return _orig_open(store=args[0], mode=args[1], *args[2:], **kwargs)
-            return _orig_open(*args, **kwargs)
-        zarr.open = _compat_open
-        logger.info("Patched zarr.open in worker")
-    except Exception as e:
-        logger.warning(f"Failed to patch zarr: {e}")
-
-    try:
-        # Patch cellpose if available
-        import cellpose.contrib.distributed_segmentation
-        # Add any runtime patches here
-    except ImportError:
-        pass
-"""
-        preload_script = os.path.join(
-            args.temporary_directory,
-            f"zarr_patches_{os.getpid()}_{int(time.time() * 1000) % 100000}.py",
-        )
-        with open(preload_script, "w") as f:
-            f.write(preload_content)
-        print(f"Created worker preload script: {preload_script}")
-
-    except Exception as e:
-        print(f"Warning: Could not create worker preload script: {e}")
-        preload_script = None
-
+    # Prepare cluster configuration
     cluster_kwargs = {
         "n_workers": optimal_n_workers,
         "threads_per_worker": dask_threads,
@@ -3593,11 +4033,6 @@ def dask_setup(worker):
         if getattr(args, "open_dashboard", False)
         else None,
     }
-
-    # If we made a preload script, attach it
-    if preload_script:
-        cluster_kwargs["preload"] = [preload_script]
-        print("Configured dask to preload patches in all workers")
 
     # decide where to write the final output TIFF and stitched Zarr
     if args.output_tif:
