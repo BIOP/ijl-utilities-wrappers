@@ -593,6 +593,7 @@ def _create_optimized_segmentation_mask(
     threshold_rel: float = 0.5,
     c_axis: Optional[int] = None,
     c_idx: int = 0,
+    skip_if_huge: bool = False,
 ) -> Tuple[Optional[da.Array], float, float, float]:
     """
     Generate a low-resolution binary mask for block exclusion and calculate image stats.
@@ -617,6 +618,16 @@ def _create_optimized_segmentation_mask(
     # Attempt to find low-res levels
     z_stats = _get_pyramid_level(actual_root, stats_level)
     z_mask = _get_pyramid_level(actual_root, mask_level)
+
+    # If no pyramids are found and image is massive, skip mask to prevent minutes of I/O
+    if z_mask is None and skip_if_huge:
+        print(
+            "  Warning: No pyramid found for massive array (>100GB). Skipping spatial mask to save I/O."
+        )
+        # We still need stats. _get_array_stats is already sparse-optimized.
+        v_min, v_max, p1, p99 = _get_array_stats(z_root, c_axis=c_axis, c_idx=c_idx)
+        val = p1 + threshold_rel * (p99 - p1) if min_intensity in ("auto", "Auto") else 0.0
+        return None, v_min, v_max, val
 
     # Fallback to level 0 if still needed
     if z_stats is None:
@@ -3386,10 +3397,17 @@ def main():
     segmentation_mask = None
     global_limits = None
 
+    # Determine if mask generation is worth it based on file size if no pyramid is found.
+    # If file is > 100 GB and we're at Level 0, we should skip the mask to save time.
+    size_limit_for_mask = 100 * 1024**3  # 100 GB
+    image_size_bytes = getattr(im, "nbytes", 0) or (im.size * im.itemsize if hasattr(im, "size") else 0)
+
     if (args.min_intensity is not None or args.global_norm) and im is not None:
         try:
             # 1. Use pyramid-based statistics and mask for speed if input is OME-Zarr
             if is_zarr:
+                # Check if we should skip the mask due to extreme size and lack of pyramid
+                # We'll let _create_optimized_segmentation_mask decide if it actually finds a pyramid.
                 print(
                     "Building pyramidal mask/stats with Level+4 for statistics and Level+3 for exclusion..."
                 )
@@ -3399,6 +3417,7 @@ def main():
                         args.min_intensity,
                         c_axis=c_axis_pos_orig,
                         c_idx=(args.chan - 1) if args.chan > 0 else 0,
+                        skip_if_huge=(image_size_bytes > size_limit_for_mask),
                     )
                 )
 
