@@ -615,9 +615,17 @@ def _create_optimized_segmentation_mask(
         except Exception:
             pass
 
-    # Attempt to find low-res levels
-    z_stats = _get_pyramid_level(actual_root, stats_level)
-    z_mask = _get_pyramid_level(actual_root, mask_level)
+    # If the pyramid levels weren't found at the root, check if they are under 'c' (common in Zarr V3)
+    if z_stats is None or z_mask is None:
+        try:
+            if "c" in actual_root:
+                c_root = actual_root["c"]
+                if z_stats is None:
+                    z_stats = _get_pyramid_level(c_root, stats_level)
+                if z_mask is None:
+                    z_mask = _get_pyramid_level(c_root, mask_level)
+        except Exception:
+            pass
 
     # If no pyramids are found and image is massive, skip mask to prevent minutes of I/O
     if z_mask is None and skip_if_huge:
@@ -2813,6 +2821,20 @@ def main():
                                     "  Dask direct load failed, falling back to 'c' chunk subgroup..."
                                 )
                                 im = im["c"]
+                    except Exception:
+                        pass
+
+                # If we detected a Zarr V3 structure ('c' subfolder) but couldn't load it yet,
+                # make sure the actual_root is set correctly to the group containing the levels.
+                # In your case, the levels 0, 1, 2 are INSIDE the 'c' folder.
+                if not hasattr(im, "dtype") and hasattr(im, "keys") and "c" in im.keys():
+                    try:
+                        c_group = im["c"]
+                        # Check if '0' is in 'c'
+                        if "0" in c_group:
+                            print("  Found resolution levels inside 'c' directory.")
+                            z_root = c_group
+                            im = c_group["0"]
                     except Exception:
                         pass
 
