@@ -154,6 +154,20 @@ def _update_log_handlers():
         pass
 
 
+def _require_ndimage(func):
+    """Decorator to skip functions that require scipy.ndimage if it is missing."""
+
+    def wrapper(*args, **kwargs):
+        if ndimage is None:
+            print(
+                f"Warning: {func.__name__} requires scipy.ndimage (missing). Skipping."
+            )
+            return None
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
 def _set_worker_logging(log_file):
     """Callback for dask workers to redirect their output to a common file."""
     if log_file:
@@ -564,13 +578,22 @@ def _get_array_stats(
         )
 
 
+@_require_ndimage
+def _dilate_mask(mask: np.ndarray, iterations: int) -> np.ndarray:
+    """Dilate a binary mask using ndimage.binary_dilation."""
+    if iterations <= 0:
+        return mask
+    # For speed on large masks, use simple structure
+    return ndimage.binary_dilation(mask, iterations=iterations)
+
+
 def _create_optimized_segmentation_mask(
     z_root: Any,
     min_intensity: Optional[Union[float, str]],
     threshold_rel: float = 0.5,
     c_axis: Optional[int] = None,
     c_idx: int = 0,
-) -> Tuple[Optional[np.ndarray], float, float, float]:
+) -> Tuple[Optional[da.Array], float, float, float]:
     """
     Generate a low-resolution binary mask for block exclusion and calculate image stats.
     Targets Level+4 for stats and Level+3 for the mask to save significant I/O.
@@ -578,34 +601,28 @@ def _create_optimized_segmentation_mask(
     stats_level = 4
     mask_level = 3
 
-    # Attempt to find low-res levels
-    z_stats = _get_pyramid_level(z_root, stats_level)
-    z_mask = _get_pyramid_level(z_root, mask_level)
-
     # If z_root is actually an array (already drilled down to '0'), we can't use it to find other levels.
     # We should use the ACTUAL root of the Zarr group if it's available.
-    # NOTE: In OME-Zarr, the multiscale group is usually the parent of '0', '1', etc.
     actual_root = z_root
     if hasattr(z_root, "store") and hasattr(z_root, "path"):
         try:
             # If path ends in '/0', '/1', etc., move up one level
-            parts = z_root.path.split("/")
+            parts = z_root.path.strip("/").split("/")
             if parts[-1].isdigit():
                 parent_path = "/".join(parts[:-1])
                 actual_root = zarr.open_group(z_root.store, path=parent_path, mode="r")
         except Exception:
             pass
 
-    if z_stats is None:
-        z_stats = _get_pyramid_level(actual_root, stats_level)
-    if z_mask is None:
-        z_mask = _get_pyramid_level(actual_root, mask_level)
+    # Attempt to find low-res levels
+    z_stats = _get_pyramid_level(actual_root, stats_level)
+    z_mask = _get_pyramid_level(actual_root, mask_level)
 
-    # Fallback to level 0 if still needed (e.g. singleton images)
+    # Fallback to level 0 if still needed
     if z_stats is None:
         z_stats = (
-            z_root["0"]
-            if (hasattr(z_root, "__contains__") and "0" in z_root)
+            actual_root["0"]
+            if (hasattr(actual_root, "__contains__") and "0" in actual_root)
             else z_root
         )
 
@@ -613,11 +630,13 @@ def _create_optimized_segmentation_mask(
     is_mask_level0 = False
     if z_mask is None:
         z_mask = (
-            z_root["0"]
-            if (hasattr(z_root, "__contains__") and "0" in z_root)
+            actual_root["0"]
+            if (hasattr(actual_root, "__contains__") and "0" in actual_root)
             else z_root
         )
-        is_mask_level0 = True
+        # Check if the resolved z_mask is the same as the original Level 0 (huge one)
+        # We check path/shape as a proxy for 'is Level 0'
+        is_mask_level0 = getattr(z_mask, "size", 0) == getattr(z_root, "size", 0)
 
     # Multi-channel slicing logic
     # STOP EAGER SLICING for Zarr objects to avoid loading the whole channel into RAM
@@ -698,7 +717,11 @@ def _create_optimized_segmentation_mask(
             # If it's dask, compute it. If it's already a numpy array (e.g. from strided zarr slice), just take it.
             if hasattr(grid_mask, "compute"):
                 grid_mask = grid_mask.compute()
+
+            # Convert to numpy and then immediately back to Dask to "forget" the large Zarr source.
+            # This makes the Dask graph for 'segmentation_mask' contain just the data and no references to Level 0.
             grid_mask = np.asanyarray(grid_mask)
+            grid_mask = da.from_array(grid_mask, chunks=grid_mask.shape)
         except Exception as e:
             print(f"  Warning: coarse mask compute failed ({e})")
             grid_mask = None
@@ -2730,7 +2753,11 @@ def main():
 
                 # Robustly handle OME-Zarr levels or Groups that wrap an Array
                 # Check for OME-Zarr multiscales metadata first
-                if not hasattr(im, "dtype") and "multiscales" in im.attrs:
+                if (
+                    not hasattr(im, "dtype")
+                    and hasattr(im, "attrs")
+                    and "multiscales" in im.attrs
+                ):
                     try:
                         # Extract the first multiscale dataset (Level 0)
                         level0_path = im.attrs["multiscales"][0]["datasets"][0]["path"]
@@ -2743,26 +2770,72 @@ def main():
 
                 # If still a group, drill down into '0' levels (legacy OME-Zarr)
                 while not hasattr(im, "dtype") and hasattr(im, "__getitem__"):
-                    if "0" in im:
-                        im = im["0"]
-                    else:
+                    try:
+                        if "0" in im:
+                            im = im["0"]
+                        else:
+                            break
+                    except Exception:
                         break
+
+                # Handle Zarr V3 Array fallback (e.g. Zarr V2 engine interpreting a V3 chunk "c" dir as a Group)
+                if not hasattr(im, "dtype") and hasattr(im, "keys"):
+                    try:
+                        if "c" in im.keys():
+                            print(
+                                "  Detected Zarr V3 array structure (contains 'c' chunk directory)..."
+                            )
+                            # If Zarr couldn't parse it as an array (returns Group), pass it to Dask directly.
+                            # The user identified that `im["c"]` contains the raw chunk items.
+                            # We will try passing the full path natively to Dask, or fallback to the chunk data itself.
+                            # Dask or other loaders might accept the raw 'c' folder for reconstruction.
+                            try:
+                                import dask.array as da
+
+                                d_test = da.from_zarr(args.input_file)
+                                if hasattr(d_test, "shape"):
+                                    im = d_test
+                                    print(
+                                        "  Dask successfully loaded the Zarr V3 array directly."
+                                    )
+                            except Exception:
+                                print(
+                                    "  Dask direct load failed, falling back to 'c' chunk subgroup..."
+                                )
+                                im = im["c"]
+                    except Exception:
+                        pass
 
                 # Fallback: if it's still a group, try to find ANY array inside it
                 # (e.g. if channels are stored as separate arrays)
                 if not hasattr(im, "dtype") and hasattr(im, "keys"):
-                    child_arrays = [k for k in im.keys() if hasattr(im[k], "dtype")]
-                    if child_arrays:
-                        # If there are multiple arrays, and user expects 4 channels,
-                        # maybe they are separate arrays?
-                        if len(child_arrays) > 1:
-                            print(f"  Group contains multiple arrays: {child_arrays}")
-                            # If axis detection finds few channels in the first one,
-                            # but many arrays exist, maybe we should stack them?
-                            # For now, pick the first one but warn.
-                        im = im[child_arrays[0]]
+                    try:
+                        child_arrays = [k for k in im.keys() if hasattr(im[k], "dtype")]
+                        if child_arrays:
+                            if len(child_arrays) > 1:
+                                print(
+                                    f"  Group contains multiple arrays: {child_arrays}"
+                                )
+                            im = im[child_arrays[0]]
+                    except Exception:
+                        pass
 
-                is_zarr = hasattr(im, "dtype")
+                # Ultimate ultimate fallback: Try letting Dask sort out the root path
+                # (fixes zarr-python V3 vs V2 API incompatibilities)
+                if not hasattr(im, "dtype") and not hasattr(im, "shape"):
+                    try:
+                        import dask.array as da
+
+                        d_test = da.from_zarr(args.input_file)
+                        if hasattr(d_test, "shape"):
+                            im = d_test
+                            print(
+                                "  Dask mapped the root path to a valid array structure."
+                            )
+                    except Exception:
+                        pass
+
+                is_zarr = hasattr(im, "dtype") or hasattr(im, "shape")
                 if not is_zarr:
                     print(
                         f"Warning: {args.input_file} is a Zarr group but no data array was found at the root or in level '0'."
@@ -2923,7 +2996,10 @@ def main():
                 # Use Dask for lazy slicing/stacking
                 # Determine chunks to use for dask wrapper
                 chunks = getattr(im, "chunks", "auto")
-                im_da = da.from_array(im, chunks=chunks)
+                if hasattr(im, "compute"):
+                    im_da = im
+                else:
+                    im_da = da.from_array(im, chunks=chunks)
 
                 if c2 < 0:
                     # Single channel virtual extraction
@@ -3066,7 +3142,10 @@ def main():
                     try:
                         slc = [slice(None)] * im.ndim
                         slc[c_axis_pos] = ch_idx
-                        ch_dask = da.from_array(im, chunks="auto")[tuple(slc)]
+                        if hasattr(im, "compute"):
+                            ch_dask = im[tuple(slc)]
+                        else:
+                            ch_dask = da.from_array(im, chunks="auto")[tuple(slc)]
 
                         # Clean up existing directory or file to avoid "An array exists in store" conflicts
                         if os.path.exists(ch_path):
@@ -3186,9 +3265,12 @@ def main():
                             except Exception:
                                 pass
 
-                        da.from_array(im, chunks="auto").rechunk(blocksize).to_zarr(
-                            zpath, overwrite=True
-                        )
+                        if hasattr(im, "compute"):
+                            im_to_save = im
+                        else:
+                            im_to_save = da.from_array(im, chunks="auto")
+
+                        im_to_save.rechunk(blocksize).to_zarr(zpath, overwrite=True)
                         input_zarr = zarr.open(zpath, mode="a")
 
                         # Inherit and save metadata for reuse
@@ -3520,15 +3602,20 @@ def main():
                         # Ensure at least 2 pixels of dilation
                         num_iter = max(2, num_iter)
 
-                        segmentation_mask = ndimage.binary_dilation(
-                            segmentation_mask,
-                            structure=np.ones((3,) * segmentation_mask.ndim),
-                            iterations=num_iter,
-                        )
                         print(
-                            f"Dilated mask to protect boundaries (iterations={num_iter}, scale_factor={dim_ratio:.1f})"
+                            f"Dilating mask to protect boundaries (iterations={num_iter}, scale_factor={dim_ratio:.1f})"
                         )
+                        # We must compute the dask mask to dilate it
+                        if hasattr(segmentation_mask, "compute"):
+                            mask_np = segmentation_mask.compute()
+                        else:
+                            mask_np = np.asanyarray(segmentation_mask)
+
+                        mask_np = _dilate_mask(mask_np, iterations=num_iter)
+                        # Put back into dask for distributed_eval to handle mapping
+                        segmentation_mask = da.from_array(mask_np, chunks=mask_np.shape)
                     except Exception as de:
+                        print(f"Warning: mask dilation failed ({de})")
                         print(f"Warning: dilation failed: {de}")
 
                 if segmentation_mask is not None:
