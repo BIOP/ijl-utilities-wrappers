@@ -2790,14 +2790,13 @@ def main():
                             # We will try passing the full path natively to Dask, or fallback to the chunk data itself.
                             # Dask or other loaders might accept the raw 'c' folder for reconstruction.
                             try:
-                                import dask.array as da
-
-                                d_test = da.from_zarr(args.input_file)
-                                if hasattr(d_test, "shape"):
-                                    im = d_test
-                                    print(
-                                        "  Dask successfully loaded the Zarr V3 array directly."
-                                    )
+                                if da is not None:
+                                    d_test = da.from_zarr(args.input_file)
+                                    if hasattr(d_test, "shape"):
+                                        im = d_test
+                                        print(
+                                            "  Dask successfully loaded the Zarr V3 array directly."
+                                        )
                             except Exception:
                                 print(
                                     "  Dask direct load failed, falling back to 'c' chunk subgroup..."
@@ -2824,14 +2823,13 @@ def main():
                 # (fixes zarr-python V3 vs V2 API incompatibilities)
                 if not hasattr(im, "dtype") and not hasattr(im, "shape"):
                     try:
-                        import dask.array as da
-
-                        d_test = da.from_zarr(args.input_file)
-                        if hasattr(d_test, "shape"):
-                            im = d_test
-                            print(
-                                "  Dask mapped the root path to a valid array structure."
-                            )
+                        if da is not None:
+                            d_test = da.from_zarr(args.input_file)
+                            if hasattr(d_test, "shape"):
+                                im = d_test
+                                print(
+                                    "  Dask mapped the root path to a valid array structure."
+                                )
                     except Exception:
                         pass
 
