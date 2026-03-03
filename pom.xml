@@ -139,6 +139,7 @@
 		<releaseProfiles>sign,deploy-to-scijava</releaseProfiles>
 		<doclint>none</doclint>
 		<reflections.version>0.10.2</reflections.version>
+        <appose.version>0.10.0</appose.version>
 	</properties>
 
 	<dependencies>
@@ -205,12 +206,27 @@
 			<artifactId>scijava-ui-swing</artifactId>
 		</dependency>
 
+        <!-- ImgLib2 dependencies -->
+        <!--dependency>
+            <groupId>net.imglib2</groupId>
+            <artifactId>imglib2-appose</artifactId>
+            <version>${imglib2-appose.version}</version>
+        </dependency-->
+
+        <dependency>
+            <groupId>org.apposed</groupId>
+            <artifactId>appose</artifactId>
+            <version>${appose.version}</version>
+        </dependency>
+
 		<dependency>
 			<groupId>org.reflections</groupId>
 			<artifactId>reflections</artifactId>
 			<version>${reflections.version}</version>
 			<scope>test</scope>
 		</dependency>
+
+
 
 	</dependencies>
 </project>
