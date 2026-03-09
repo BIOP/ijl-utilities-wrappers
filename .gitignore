@@ -10,3 +10,4 @@
 travisify.tmp.bak
 pom.xml.releaseBackup
 __pycache__/
+.venv/
