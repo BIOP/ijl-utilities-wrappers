@@ -22,7 +22,8 @@ Environment Setup:
 ------------------
 Using Pixi (Recommended):
     pixi init
-    pixi add h5py bioio bioio-bioformats bioio-ome-tiff dask zarr numpy
+    pixi add h5py bioio dask zarr numpy
+    pixi add --pypi bioio-bioformats bioio-ome-tiff
 
 Using Conda:
     conda create -n image2zarr -c conda-forge h5py bioio bioio-bioformats bioio-ome-tiff dask zarr numpy
@@ -33,14 +34,22 @@ Using Pip:
 """
 
 import argparse
+import contextlib
+import gc
+import itertools
 import os
 import sys
 import time
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
 import zarr
+
+# Detect Zarr version to handle V3 vs V2 differences
+ZARR_V3 = zarr.__version__.startswith("3")
 
 try:
     import h5py
@@ -52,27 +61,472 @@ try:
 except ImportError:
     BioImage = None
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
 
-def check_dependencies() -> None:
-    """Check for required core dependencies and exit if missing."""
-    missing = []
-    try:
-        import zarr as _  # noqa: F401
-    except ImportError:
-        missing.append("zarr")
-    try:
-        import dask.array as _  # noqa: F401
-    except ImportError:
-        missing.append("dask")
-    try:
-        import numpy as _  # noqa: F401
-    except ImportError:
-        missing.append("numpy")
+try:
+    from dask.diagnostics import ProgressBar
+except ImportError:
+    ProgressBar = None
 
-    if missing:
-        print(f"Error: Missing core dependencies: {', '.join(missing)}")
-        print("Please install them using: pip install " + " ".join(missing))
-        sys.exit(1)
+try:
+    import psutil
+except ImportError:
+    psutil = None  # type: ignore[assignment]
+
+try:
+    from zarr.codecs import BloscCodec, BytesCodec, ShardingCodec
+except ImportError:
+    BloscCodec = BytesCodec = ShardingCodec = None  # type: ignore[assignment]
+
+
+def _auto_chunks(dtype: np.dtype, z_size: int = 0) -> Tuple[int, int, int, int]:
+    """Compute shard shape based on available system RAM.
+
+    Targets ~10% of free RAM per shard so multiple shards can be buffered
+    simultaneously without OOM. Always keeps C=1 (one channel per shard).
+
+    Parameters
+    ----------
+    dtype : np.dtype
+        Array dtype (used to compute bytes per element).
+    z_size : int
+        Full Z depth of the image. 0 means unknown/2D.
+
+    Returns
+    -------
+    Tuple[int, int, int, int]
+        Optimal (C, Z, Y, X) shard shape, all values are powers of 2.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> c, z, y, x = _auto_chunks(np.dtype("uint16"), z_size=64)
+    >>> c
+    1
+    """
+    if psutil is not None:
+        free_bytes: int = psutil.virtual_memory().available
+    else:
+        # Fall back to 8 GB when psutil is not installed.
+        free_bytes = 8 * 1024**3
+        print("  (psutil not found - assuming 8 GB free RAM for shard sizing)")
+
+    bytes_per_elem = np.dtype(dtype).itemsize
+    # Target: 10 % of free RAM per shard, hard-capped at 1 GB.
+    # Large shards keep the number of per-shard NAS metadata round-trips low.
+    target_bytes = min(free_bytes * 0.10, 1 * 1024**3)
+
+    is_2d = z_size <= 1
+    if is_2d:
+        z_chunk = 1
+    else:
+        # Largest divisor of z_size that is <= 64.
+        # This guarantees Dask can rechunk without misalignment warnings.
+        max_z = min(z_size, 64)
+        z_chunk = next(
+            (d for d in range(max_z, 0, -1) if z_size % d == 0),
+            max_z,
+        )
+
+    # XY tile: use floor(log2) to stay conservatively under the budget.
+    xy_budget = target_bytes / (z_chunk * bytes_per_elem)
+    xy_tile = int(2 ** int(np.log2(max(xy_budget**0.5, 1))))
+    xy_tile = max(256, min(xy_tile, 8192))  # clamp to [256, 8192]
+
+    print(
+        f"  Auto shard size: (1, {z_chunk}, {xy_tile}, {xy_tile}) "
+        f"≈ {z_chunk * xy_tile * xy_tile * bytes_per_elem / 1024**2:.0f} MB/shard "
+        f"[{free_bytes / 1024**3:.1f} GB free RAM]"
+    )
+    return (1, z_chunk, xy_tile, xy_tile)
+
+
+def _write_to_zarr_with_progress(
+    dask_arr: da.Array,
+    z_arr: Any,
+    desc: str = "Writing",
+) -> None:
+    """Write a dask array to a Zarr array using read-ahead + single write.
+
+    Strategy (optimised for a source and destination on the same NAS):
+
+    * ``_N_READERS`` background threads prefetch the next N shards from the
+      source simultaneously, keeping the inbound network link saturated.
+    * A **single** write thread flushes each block to the destination
+      sequentially after LZ4 bitshuffle compression.  LZ4 typically
+      reduces microscopy data by 5-50×, so write bytes are negligible.
+    * At most ``_N_READERS + 1`` shards are live in RAM at any time.
+
+    Uses `tqdm` for an ETA progress bar when available, falls back to
+    `dask.diagnostics.ProgressBar`, then silent compute.
+
+    Parameters
+    ----------
+    dask_arr : da.Array
+        Source array, already rechunked to the desired shard shape.
+    z_arr : Any
+        Open Zarr array to write into (created by `_open_shard_array`).
+    desc : str, optional
+        Label shown in the progress bar, by default ``"Writing"``.
+    """
+    ndim = dask_arr.ndim
+    chunks = dask_arr.chunks  # actual chunk sizes after rechunk
+
+    starts = [
+        [sum(chunks[ax][:i]) for i in range(len(chunks[ax]))] for ax in range(ndim)
+    ]
+    sizes = [list(chunks[ax]) for ax in range(ndim)]
+
+    shard_coords = list(itertools.product(*[range(len(s)) for s in starts]))
+    total_shards = len(shard_coords)
+
+    def _slc(coord):
+        return tuple(
+            slice(starts[ax][coord[ax]], starts[ax][coord[ax]] + sizes[ax][coord[ax]])
+            for ax in range(ndim)
+        )
+
+    if tqdm is not None:
+        pbar_ctx: Any = tqdm(
+            total=total_shards,
+            unit="shard",
+            desc=desc,
+            bar_format=(
+                "{l_bar}{bar}| {n_fmt}/{total_fmt} shards"
+                " [{elapsed}<{remaining}, {rate_fmt}]"
+            ),
+            dynamic_ncols=True,
+        )
+    elif ProgressBar is not None:
+        pbar_ctx = ProgressBar()
+    else:
+        pbar_ctx = contextlib.nullcontext()
+
+    # Sequential read in main thread + 1 background writer.
+    # Write traffic is negligible after LZ4; keeping reads sequential avoids
+    # h5py / BioIO thread-safety issues with concurrent access.
+    with pbar_ctx as pbar, ThreadPoolExecutor(max_workers=1) as write_exec:
+        write_future = None
+        for coord in shard_coords:
+            slc = _slc(coord)
+            block = dask_arr[slc].compute()
+            if write_future is not None:
+                write_future.result()
+                gc.collect()
+                if tqdm is not None and pbar is not None:
+                    pbar.update(1)
+            write_future = write_exec.submit(z_arr.__setitem__, slc, block)
+            del block
+        if write_future is not None:
+            write_future.result()
+            gc.collect()
+            if tqdm is not None and pbar is not None:
+                pbar.update(1)
+
+
+def _clamp_chunks(chunks: Tuple[int, ...], shape: Tuple[int, ...]) -> Tuple[int, ...]:
+    """Clamp each chunk dimension so it does not exceed the array shape.
+
+    Parameters
+    ----------
+    chunks : Tuple[int, ...]
+        Requested chunk sizes.
+    shape : Tuple[int, ...]
+        Actual array shape.
+
+    Returns
+    -------
+    Tuple[int, ...]
+        Chunk sizes guaranteed to fit within *shape*.
+    """
+    return tuple(min(c, s) for c, s in zip(chunks, shape))
+
+
+def _open_zarr_root(output_path: str) -> Any:
+    """Open a new writable Zarr group at *output_path*.
+
+    Parameters
+    ----------
+    output_path : str
+        Filesystem path for the root Zarr store.
+
+    Returns
+    -------
+    Any
+        Open :class:`zarr.Group` in write mode.
+    """
+    kwargs: Dict[str, Any] = {"mode": "w"}
+    if ZARR_V3:
+        kwargs["zarr_format"] = 3
+    return zarr.open_group(output_path, **kwargs)
+
+
+def _resolve_chunks(
+    arr: da.Array,
+    target_chunks: Optional[Tuple[int, ...]],
+) -> Tuple[da.Array, Tuple[int, ...]]:
+    """Rechunk *arr* and return the final chunk shape.
+
+    If *target_chunks* is given, clamp it to the array shape and use it.
+    Otherwise call :func:`_auto_chunks` to pick a RAM-aware shard size.
+
+    Parameters
+    ----------
+    arr : da.Array
+        Source Dask array (at least 4-D, CZYX order).
+    target_chunks : Optional[Tuple[int, ...]]
+        Explicit shard shape, or ``None`` for automatic sizing.
+
+    Returns
+    -------
+    Tuple[da.Array, Tuple[int, ...]]
+        ``(rechunked_arr, final_chunks)``
+    """
+    if target_chunks is not None:
+        chunks = _clamp_chunks(target_chunks, arr.shape)
+    else:
+        z_size = arr.shape[1] if arr.ndim >= 4 else 1
+        chunks = _clamp_chunks(_auto_chunks(arr.dtype, z_size=z_size), arr.shape)
+    return arr.rechunk(chunks), chunks
+
+
+def _open_shard_array(
+    out_dir: str,
+    shape: Tuple[int, ...],
+    chunks: Tuple[int, ...],
+    dtype: np.dtype,
+) -> Any:
+    """Create a Zarr array with V3 sharding and LZ4 bitshuffle compression.
+
+    The shard grid equals *chunks*.  Each inner chunk is ``(1, 1, 256, 256)``
+    so Cellpose workers load the smallest useful region without reading an
+    entire shard file.  Falls back to plain Zarr V2 chunks when
+    `zarr.codecs` is unavailable.
+
+    Parameters
+    ----------
+    out_dir : str
+        Directory path for the Zarr array (created if absent).
+    shape : Tuple[int, ...]
+        Full array shape ``(C, Z, Y, X)``.
+    chunks : Tuple[int, ...]
+        Shard (outer chunk) shape ``(C, Z, Y, X)``.
+    dtype : np.dtype
+        Array element type.
+
+    Returns
+    -------
+    Any
+        Open `zarr.Array` ready to receive data.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    kwargs: Dict[str, Any] = {
+        "mode": "w",
+        "shape": shape,
+        "chunks": chunks,
+        "dtype": dtype,
+    }
+    # ShardingCodec is available when zarr >= 3 and zarr.codecs was imported.
+    if ZARR_V3 and ShardingCodec is not None:
+        c, z, y, x = chunks
+        inner = (1, min(z, 1), min(y, 256), min(x, 256))
+        kwargs["codecs"] = [
+            ShardingCodec(
+                chunk_shape=inner,
+                codecs=[
+                    BytesCodec(),
+                    BloscCodec(cname="lz4", clevel=1, shuffle="bitshuffle"),
+                ],
+            )
+        ]
+        print(f"    shard={chunks}  inner={inner}  codec=lz4")
+    return zarr.open_array(out_dir, **kwargs)
+
+
+def _write_omengff_metadata(
+    root: Any,
+    datasets: List[Dict],
+    pz: float,
+    py: float,
+    px: float,
+) -> None:
+    """Write OME-NGFF v0.4 ``multiscales`` metadata to a Zarr group root.
+
+    Parameters
+    ----------
+    root : Any
+        Open `zarr.Group` at the OME-Zarr root.
+    datasets : List[Dict]
+        List of dataset dicts with ``path`` and
+        ``coordinateTransformations`` keys.
+    pz : float
+        Z pixel size in micrometres.
+    py : float
+        Y pixel size in micrometres.
+    px : float
+        X pixel size in micrometres.
+    """
+    new_attrs = {
+        "multiscales": [
+            {
+                "version": "0.4",
+                "datasets": datasets,
+                "axes": [
+                    {"name": "c", "type": "channel"},
+                    {"name": "z", "type": "space", "unit": "micrometer"},
+                    {"name": "y", "type": "space", "unit": "micrometer"},
+                    {"name": "x", "type": "space", "unit": "micrometer"},
+                ],
+                "type": "gaussian",
+            }
+        ],
+        "pixel_size": [1.0, pz, py, px],
+    }
+    if ZARR_V3 and hasattr(root, "update_attributes"):
+        # zarr v3: __setitem__ on attrs does not flush to zarr.json.
+        # update_attributes() is the correct persistent write API.
+        root.update_attributes(new_attrs)
+    else:
+        # zarr v2: direct assignment works fine.
+        root.attrs["multiscales"] = new_attrs["multiscales"]
+        root.attrs["pixel_size"] = new_attrs["pixel_size"]
+
+
+def _write_ims_shards(
+    h5_datasets: List[Any],
+    z_arr: Any,
+    shape: Tuple[int, ...],
+    chunks: Tuple[int, ...],
+    desc: str = "Writing",
+) -> None:
+    """Write IMS channel data to Zarr using pipelined h5py reads and writes.
+
+    Pipeline (eliminates NAS idle gaps):
+
+    1. A single **read thread** owns its own h5py file handle and reads
+       shard N+1 while the main thread submits the write for shard N.
+    2. A single **write thread** compresses (LZ4) and writes to Zarr.
+    3. The main thread just coordinates: get prefetch result → submit write
+       → submit next prefetch → repeat.
+
+    Because the read thread uses its own file handle (opened once, lazily,
+    inside the thread), concurrent access to the h5py file is safe.
+
+    Parameters
+    ----------
+    h5_datasets : List[Any]
+        One open h5py Dataset per channel, all with shape ``(Z, Y, X)``.
+    z_arr : Any
+        Open Zarr array to write into, shape ``(C, Z, Y, X)``.
+    shape : Tuple[int, ...]
+        Full ``(C, Z, Y, X)`` shape.
+    chunks : Tuple[int, ...]
+        Shard ``(C, Z, Y, X)`` shape.
+    desc : str, optional
+        Progress-bar label.
+    """
+    _, Z, Y, X = shape
+    _, z_ch, y_ch, x_ch = chunks
+
+    shard_coords = list(
+        itertools.product(
+            range(0, Z, z_ch),
+            range(0, Y, y_ch),
+            range(0, X, x_ch),
+        )
+    )
+    total = len(shard_coords)
+
+    # Extract file path and in-file dataset names so the read thread can
+    # open its own handle (h5py datasets are not concurrency-safe across
+    # threads opened from the same file object).
+    input_path: str = h5_datasets[0].file.filename
+    ds_names: List[str] = [ds.name for ds in h5_datasets]
+
+    # Thread-local file handle: opened once inside the read thread and
+    # reused for all shards — avoids per-shard open overhead.
+    _read_handle: List[Any] = [None]
+    _read_dsets: List[Any] = [None]
+
+    def _read_shard(z0: int, y0: int, x0: int) -> Tuple[np.ndarray, tuple]:
+        """Open (once) and read one shard from the thread-local handle."""
+        if _read_handle[0] is None:
+            _read_handle[0] = h5py.File(  # type: ignore[index]
+                input_path,
+                "r",
+                rdcc_nbytes=512 * 1024**2,
+                rdcc_nslots=100003,
+            )
+            _read_dsets[0] = [_read_handle[0][n] for n in ds_names]
+        z1 = min(z0 + z_ch, Z)
+        y1 = min(y0 + y_ch, Y)
+        x1 = min(x0 + x_ch, X)
+        block = np.stack([ds[z0:z1, y0:y1, x0:x1] for ds in _read_dsets[0]])
+        slc = (slice(None), slice(z0, z1), slice(y0, y1), slice(x0, x1))
+        return block, slc
+
+    if tqdm is not None:
+        pbar_ctx: Any = tqdm(
+            total=total,
+            unit="shard",
+            desc=desc,
+            bar_format=(
+                "{l_bar}{bar}| {n_fmt}/{total_fmt} shards"
+                " [{elapsed}<{remaining}, {rate_fmt}]"
+            ),
+            dynamic_ncols=True,
+        )
+    elif ProgressBar is not None:
+        pbar_ctx = ProgressBar()
+    else:
+        pbar_ctx = contextlib.nullcontext()
+
+    with (
+        pbar_ctx as pbar,
+        ThreadPoolExecutor(max_workers=1) as read_exec,
+        ThreadPoolExecutor(max_workers=1) as write_exec,
+    ):
+        # Seed the pipeline: start reading shard 0 immediately.
+        head = 0
+        read_future = read_exec.submit(_read_shard, *shard_coords[head])
+        head += 1
+
+        write_future = None
+        for _ in shard_coords:
+            # Collect the prefetched block (usually already done).
+            block, slc = read_future.result()
+
+            # Immediately kick off the next read so the NAS stays busy.
+            if head < total:
+                read_future = read_exec.submit(_read_shard, *shard_coords[head])
+                head += 1
+
+            # Wait for the previous write (near-instant after LZ4).
+            if write_future is not None:
+                write_future.result()
+                gc.collect()
+                if tqdm is not None and pbar is not None:
+                    pbar.update(1)
+
+            write_future = write_exec.submit(z_arr.__setitem__, slc, block)
+            del block
+
+        # Drain the final write.
+        if write_future is not None:
+            write_future.result()
+            gc.collect()
+            if tqdm is not None and pbar is not None:
+                pbar.update(1)
+
+        # Close the read thread's file handle.
+        if _read_handle[0] is not None:
+            try:
+                _read_handle[0].close()
+            except Exception:
+                pass
 
 
 def get_ims_metadata(
@@ -149,12 +603,18 @@ def convert_ims_to_zarr(
     try:
         print(f"Opening Imaris file with h5py: {input_path}")
         start_time = time.time()
-        f = h5py.File(input_path, "r")
+        # Large chunk cache reduces SMB round-trips: HDF5 sub-chunks are
+        # fetched in bigger batches rather than one request per chunk.
+        f = h5py.File(
+            input_path,
+            "r",
+            rdcc_nbytes=512 * 1024**2,  # 512 MB cache
+            rdcc_nslots=100003,  # prime keeps cache hash efficient
+        )
         t_idx = timepoint - 1
         t_key = f"TimePoint {t_idx}"
 
-        # Setup root group
-        root = zarr.open_group(output_path, mode="w")
+        root = _open_zarr_root(output_path)
 
         # Find all resolution levels
         res_keys = sorted(
@@ -172,6 +632,7 @@ def convert_ims_to_zarr(
         for res_level, res_key in enumerate(res_keys):
             res_group = f[f"/DataSet/{res_key}"]
             if t_key not in res_group:
+                print(f"  Skipping {res_key}, {t_key} not found.")
                 continue
 
             # Find all channel keys for this timepoint
@@ -181,82 +642,59 @@ def convert_ims_to_zarr(
             )
 
             if not c_keys:
+                print(f"  Skipping {res_key}, no channels found.")
                 continue
 
-            # Extract all channels as a list of dask arrays
-            channel_arrays = []
-            shape_zyx = None
+            # Collect raw h5py datasets (one per channel).
+            h5_datasets = [res_group[t_key][c_key]["Data"] for c_key in c_keys]
+            sample_ds = h5_datasets[0]
+            czyx_shape = (len(h5_datasets), *sample_ds.shape)
 
-            for c_key in c_keys:
-                ds = res_group[t_key][c_key]["Data"]
-                if shape_zyx is None:
-                    shape_zyx = ds.shape
-                channel_arrays.append(da.from_array(ds, chunks=ds.chunks))
+            # Use a tiny dummy dask array just to resolve the chunk size.
+            dummy = da.empty(czyx_shape, dtype=sample_ds.dtype)
+            _, final_chunks = _resolve_chunks(dummy, target_chunks)
 
-            # Stack into (C, Z, Y, X)
-            combined = da.stack(channel_arrays, axis=0)
-
-            # Apply rechunking if target_chunks provided
-            if target_chunks:
-                level_chunks = tuple(
-                    min(c, s) for c, s in zip(target_chunks, combined.shape)
-                )
-                combined = combined.rechunk(level_chunks)
-
-            sub_path = str(res_level)
-            print(
-                f"  Writing Level {res_level}: shape {combined.shape},"
-                f" chunks {combined.chunksize}..."
+            print(f"  Level {res_level}: shape={czyx_shape}")
+            z_arr = _open_shard_array(
+                os.path.join(output_path, str(res_level)),
+                czyx_shape,
+                final_chunks,
+                sample_ds.dtype,
             )
-            combined.to_zarr(output_path, component=sub_path, overwrite=True)
+            _write_ims_shards(
+                h5_datasets,
+                z_arr,
+                czyx_shape,
+                final_chunks,
+                desc=f"Level {res_level}",
+            )
 
-            # Metadata for OME-Zarr multiscales
+            # Metadata tracking for level compatibility
             if res_level == 0:
-                shape0 = shape_zyx
-                # Capture base resolution metadata
+                shape0 = czyx_shape[1:]  # ZYX
                 anisotropy_base, pixel_sizes_base = get_ims_metadata(f, shape0)
                 if pixel_sizes_base:
                     pz, py, px = pixel_sizes_base
 
-            # Calculate relative scale for this level
             scale = [
                 1.0,
-                pz * (shape0[0] / shape_zyx[0]),
-                py * (shape0[1] / shape_zyx[1]),
-                px * (shape0[2] / shape_zyx[2]),
+                pz * (shape0[0] / czyx_shape[1]),
+                py * (shape0[1] / czyx_shape[2]),
+                px * (shape0[2] / czyx_shape[3]),
             ]
-
             datasets.append(
                 {
-                    "path": sub_path,
+                    "path": str(res_level),
                     "coordinateTransformations": [{"type": "scale", "scale": scale}],
                 }
             )
 
-        # Finalize multiscales metadata in .zattrs
-        root.attrs["multiscales"] = [
-            {
-                "version": "0.4",
-                "datasets": datasets,
-                "axes": [
-                    {"name": "c", "type": "channel"},
-                    {"name": "z", "type": "space", "unit": "micrometer"},
-                    {"name": "y", "type": "space", "unit": "micrometer"},
-                    {"name": "x", "type": "space", "unit": "micrometer"},
-                ],
-                "type": "gaussian",
-            }
-        ]
+        _write_omengff_metadata(root, datasets, pz, py, px)
 
-        if "pixel_sizes_base" in locals() and pixel_sizes_base:
-            root.attrs["pixel_size"] = [1.0, *pixel_sizes_base]
-
-        print(f"Conversion completed in {time.time() - start_time:.2f}s.")
+        print(f"Conversion done in {time.time() - start_time:.1f}s")
         return True
     except Exception as e:
         print(f"Imaris conversion failed: {e}")
-        import traceback
-
         traceback.print_exc()
         return False
 
@@ -322,7 +760,8 @@ def convert_bioio_to_zarr(
         while d_sliced.ndim < 4:
             d_sliced = d_sliced[np.newaxis, ...]
 
-        root = zarr.open_group(output_path, mode="w")
+        root = _open_zarr_root(output_path)
+
         datasets = []
         pz, py, px = 1.0, 1.0, 1.0
         try:
@@ -340,6 +779,7 @@ def convert_bioio_to_zarr(
                 num_levels = max(1, min(6, num_levels))
 
         for level in range(num_levels):
+            # Scale data (very basic downsampling)
             if level == 0:
                 level_data = d_sliced
             else:
@@ -350,105 +790,105 @@ def convert_bioio_to_zarr(
                     trim_excess=True,
                 ).astype(d_sliced.dtype)
 
-            if target_chunks:
-                level_chunks = tuple(
-                    min(c, s) for c, s in zip(target_chunks, level_data.shape)
-                )
-                level_data = level_data.rechunk(level_chunks)
+            print(f"  Writing Level {level}...")
 
-            sub_path = str(level)
-            print(f"  Writing Level {level}: shape {level_data.shape}...")
-            level_data.to_zarr(output_path, component=sub_path, overwrite=True)
+            level_data, level_chunks = _resolve_chunks(level_data, target_chunks)
 
+            print(f"  Level {level}: shape={level_data.shape}")
+            z_arr = _open_shard_array(
+                os.path.join(output_path, str(level)),
+                level_data.shape,
+                level_chunks,
+                level_data.dtype,
+            )
+            _write_to_zarr_with_progress(level_data, z_arr, desc=f"Level {level}")
+
+            # Metadata tracking
             scale = [1.0, pz, py * (2**level), px * (2**level)]
             datasets.append(
                 {
-                    "path": sub_path,
+                    "path": str(level),
                     "coordinateTransformations": [{"type": "scale", "scale": scale}],
                 }
             )
 
-        root.attrs["multiscales"] = [
-            {
-                "version": "0.4",
-                "datasets": datasets,
-                "axes": [
-                    {"name": "c", "type": "channel"},
-                    {"name": "z", "type": "space", "unit": "micrometer"},
-                    {"name": "y", "type": "space", "unit": "micrometer"},
-                    {"name": "x", "type": "space", "unit": "micrometer"},
-                ],
-                "type": "gaussian",
-            }
-        ]
-        root.attrs["pixel_size"] = [1.0, pz, py, px]
+        _write_omengff_metadata(root, datasets, pz, py, px)
 
-        print(f"Conversion completed in {time.time() - start_time:.2f}s.")
+        print(f"Conversion done in {time.time() - start_time:.1f}s")
         return True
     except Exception as e:
         print(f"BioIO conversion failed: {e}")
-        import traceback
-
         traceback.print_exc()
         return False
 
 
 def main() -> None:
     """Parse arguments and initiate image to OME-Zarr conversion."""
-    check_dependencies()
-
     parser = argparse.ArgumentParser(description="Multi-Channel OME-Zarr Converter")
-    parser.add_argument("input", help="Input image file")
-    parser.add_argument("output", help="Output .zarr directory")
+    parser.add_argument("--input", "-i", required=True, help="Input image file")
+    parser.add_argument("--output", "-o", help="Output .zarr directory (optional)")
     parser.add_argument("--timepoint", type=int, default=1, help="Timepoint (1-based)")
-    parser.add_argument("--chunks", default="1,64,512,512", help="Chunks (C,Z,Y,X)")
+    parser.add_argument(
+        "--chunks",
+        default="auto",
+        help=(
+            "Shard size as C,Z,Y,X (e.g. 1,60,2048,2048) or 'auto' to"
+            " size from available RAM (default)."
+        ),
+    )
     parser.add_argument("--pyramid", action="store_true", default=True)
     parser.add_argument("--no-pyramid", dest="pyramid", action="store_false")
 
     args = parser.parse_args()
 
+    # Handle optional output path
+    if not args.output:
+        base_dir = os.path.dirname(os.path.abspath(args.input))
+        base_name = os.path.splitext(os.path.basename(args.input))[0]
+        args.output = os.path.join(base_dir, f"{base_name}.zarr")
+    else:
+        # If output is an existing directory but does not end with .zarr,
+        # we append the input basename to it.
+        if os.path.isdir(args.output) and not args.output.lower().endswith(".zarr"):
+            base_name = os.path.splitext(os.path.basename(args.input))[0]
+            args.output = os.path.join(args.output, f"{base_name}.zarr")
+        elif not args.output.lower().endswith(".zarr"):
+            # Ensure it ends with .zarr if it's a new path
+            args.output += ".zarr"
+
     target_chunks = None
-    if args.chunks:
+    if args.chunks and args.chunks.lower() != "auto":
         try:
             target_chunks = tuple(int(x) for x in args.chunks.split(","))
         except ValueError:
             print(f"Error parsing chunks: {args.chunks}")
             sys.exit(1)
 
-    if not args.output.endswith(".zarr"):
-        args.output += ".zarr"
-
-    if os.path.exists(args.output) and (
-        os.path.exists(os.path.join(args.output, ".zarray"))
-        or os.path.exists(os.path.join(args.output, ".zgroup"))
+    if os.path.exists(args.output) and any(
+        os.path.exists(os.path.join(args.output, m))
+        for m in (".zgroup", ".zarray", "zarr.json")
     ):
         print(f"Skipping: Zarr already exists at {args.output}")
         sys.exit(0)
 
     ext = os.path.splitext(args.input.rstrip("/"))[1].lower()
 
-    if ext == ".ims":
-        if convert_ims_to_zarr(
-            args.input,
-            args.output,
-            args.timepoint,
-            target_chunks,
-            args.pyramid,
-        ):
-            return
+    ok = False
+    if ext == ".ims" and h5py is not None:
+        ok = convert_ims_to_zarr(
+            args.input, args.output, args.timepoint, target_chunks, args.pyramid
+        )
 
-    if BioImage:
-        if not convert_bioio_to_zarr(
-            args.input,
-            args.output,
-            args.timepoint,
-            target_chunks,
-            args.pyramid,
-        ):
+    if not ok:
+        if BioImage is None:
+            print("Error: bioio is required for non-IMS files.")
+            print("Install with: pip install bioio bioio-bioformats")
             sys.exit(1)
-    else:
-        print("Error: For non-IMS files, BioIO is required.")
-        sys.exit(1)
+        ok = convert_bioio_to_zarr(
+            args.input, args.output, args.timepoint, target_chunks, args.pyramid
+        )
+
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":
