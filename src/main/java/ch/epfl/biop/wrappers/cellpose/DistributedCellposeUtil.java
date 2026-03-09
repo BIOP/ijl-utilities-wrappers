@@ -19,6 +19,11 @@ public class DistributedCellposeUtil {
         return envDirPath + File.separator + getScriptName();
     }
 
+    /** Names of all helper resources that must be co-located with the main script. */
+    private static final String[] HELPER_SCRIPTS = {
+        "worker_patches.py"
+    };
+
     public static boolean ensureScriptIsCopied(String envDirPath) {
         File f = new File(getScriptPath(envDirPath));
         // We always copy to ensure we have the latest version from the JAR
@@ -39,6 +44,21 @@ public class DistributedCellposeUtil {
             e.printStackTrace();
             return false;
         }
+
+        // Copy helper scripts that the main script depends on at runtime
+        for (String helper : HELPER_SCRIPTS) {
+            try {
+                InputStream helperStream = DistributedCellposeUtil.class.getResourceAsStream("/" + helper);
+                if (helperStream != null) {
+                    Path helperDest = Paths.get(envDirPath, helper);
+                    Files.copy(helperStream, helperDest, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (Exception e) {
+                // Non-fatal: log but continue; the main script has an inline fallback
+                System.err.println("Warning: could not copy helper script " + helper + ": " + e.getMessage());
+            }
+        }
+
         return f.exists();
     }
 }
