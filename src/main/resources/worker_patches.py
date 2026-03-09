@@ -8,6 +8,7 @@ routine for Dask.
 import math
 import numbers
 import sys
+from typing import Any, Optional
 
 # Standard library or third-party imports (optional/guarded)
 try:
@@ -176,6 +177,32 @@ def apply_zarr_patches():
     """
     applied_any = False
 
+    # 0. Patch signal.signal to silently ignore ValueError in non-main threads.
+    #
+    # dask_jobqueue calls signal.signal(SIGINT, ...) at module-import level.
+    # When cellpose.contrib.distributed_segmentation is deserialized inside a
+    # Dask worker's tornado I/O thread, Python raises:
+    #   ValueError: signal only works in main thread of the main interpreter
+    # Patching signal.signal to swallow that error prevents the worker crash.
+    try:
+        import signal as _signal
+        import threading as _threading
+
+        if not getattr(_signal.signal, "_thread_safe_patched", False):
+            _orig_signal = _signal.signal
+
+            def _signal_safe(signalnum, handler):
+                if _threading.current_thread() is not _threading.main_thread():
+                    # silently ignore: can't install signal handlers in sub-threads
+                    return None
+                return _orig_signal(signalnum, handler)
+
+            _signal_safe._thread_safe_patched = True
+            _signal.signal = _signal_safe
+            applied_any = True
+    except Exception:
+        pass
+
     # 1. Patch zarr.open (positional mode argument)
     if zarr:
         try:
@@ -199,16 +226,23 @@ def apply_zarr_patches():
             print(f"apply_zarr_patches: failed to patch zarr.open: {e}")
 
     # 2. Patch Array.__getitem__ (coerce floats)
-    if zarr and zarr.core:
+    ZarrArray = None
+    if zarr:
+        if hasattr(zarr, "core") and hasattr(zarr.core, "Array"):
+            ZarrArray = zarr.core.Array
+        elif hasattr(zarr, "Array"):
+            ZarrArray = zarr.Array
+
+    if ZarrArray is not None:
         try:
-            _orig_get = zarr.core.Array.__getitem__
+            _orig_get = ZarrArray.__getitem__
 
             def _getitem_compat(self, selection):
                 new_sel = _coerce_selection_recursive(selection, mode="nearest")
                 # Optional: debug logging could be added here if needed
                 return _orig_get(self, new_sel)
 
-            zarr.core.Array.__getitem__ = _getitem_compat
+            ZarrArray.__getitem__ = _getitem_compat
             # print("apply_zarr_patches: patched Array.__getitem__")
             # sys.stdout.flush()
             applied_any = True
@@ -217,7 +251,7 @@ def apply_zarr_patches():
 
         # Patch Array.__setitem__ (coerce floats strict for writing)
         try:
-            _orig_set = zarr.core.Array.__setitem__
+            _orig_set = ZarrArray.__setitem__
 
             def _setitem_compat(self, selection, value):
                 # CRITICAL FIX for blocks issue:
@@ -275,7 +309,7 @@ def apply_zarr_patches():
                 new_sel = _coerce_selection_recursive(selection, mode="nearest")
                 return _orig_set(self, new_sel, value)
 
-            zarr.core.Array.__setitem__ = _setitem_compat
+            ZarrArray.__setitem__ = _setitem_compat
             # print("apply_zarr_patches: patched Array.__setitem__")
             applied_any = True
         except Exception as e:
@@ -400,7 +434,9 @@ def setup_worker(nthreads: int, min_intensity: Optional[float] = None) -> Any:
                     # We use max intensity as a safe 'empty' indicator
                     try:
                         # Extract max intensity. x can be multichannel (C, Z, Y, X) or (Z, Y, X)
-                        curr_max = np.max(x)
+                        curr_max_val = np.max(np.asanyarray(x))
+                        # Ensure it's a native float to avoid string formatting issues
+                        curr_max = float(curr_max_val)
                         thresh = min_intensity if min_intensity is not None else 0.0
 
                         if curr_max <= thresh:
@@ -419,9 +455,7 @@ def setup_worker(nthreads: int, min_intensity: Optional[float] = None) -> Any:
                             # Usually ds.distributed_eval gives (Z, Y, X) or (C, Z, Y, X)
                             spatial_shape = x_shape
                             if len(x_shape) >= 4:
-                                spatial_shape = x_shape[
-                                    1:
-                                ]  # Strip C if present
+                                spatial_shape = x_shape[1:]  # Strip C if present
 
                             masks = np.zeros(spatial_shape, dtype=np.uint16)
                             # Flows is usually [flows_rgb, prob_map, ...]
