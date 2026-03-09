@@ -281,91 +281,232 @@ def _get_pixel_size_from_zattrs(zattrs: Dict) -> Tuple[Optional[float], ...]:
     return None, None, None
 
 
+def _read_zarr_root_attrs(input_file: str, z_root: Optional[Any] = None) -> Dict:
+    """Read root-level attributes from a Zarr store as a plain dict.
+
+    Tries multiple strategies to work around zarr v2/v3 API differences:
+    1. zarr Python API  (``dict(z_root.attrs)``)
+    2. Read ``zarr.json``  directly (zarr v3 — attributes are under the
+       ``"attributes"`` key of that JSON file)
+    3. Read ``.zattrs`` directly (zarr v2)
+
+    Returns an empty dict if all approaches fail.
+    """
+    attrs: Dict = {}
+
+    # --- Strategy 1a: zarr v3 Group.metadata.attributes (most reliable) ---
+    if z_root is not None and hasattr(z_root, "metadata"):
+        try:
+            meta_attrs = z_root.metadata.attributes
+            if isinstance(meta_attrs, dict) and meta_attrs:
+                print(
+                    f"  DEBUG: Read metadata via group.metadata.attributes: {list(meta_attrs.keys())}"
+                )
+                return dict(meta_attrs)
+        except Exception:
+            pass
+
+    # --- Strategy 1b: zarr API (dict coercion) ---
+    if z_root is not None and hasattr(z_root, "attrs"):
+        try:
+            raw = z_root.attrs
+            if hasattr(raw, "asdict"):
+                attrs = dict(raw.asdict())
+            elif hasattr(raw, "to_dict"):
+                attrs = dict(raw.to_dict())
+            else:
+                attrs = dict(raw)
+        except Exception as e:
+            print(f"  DEBUG: zarr attrs API conversion failed: {e}")
+        if attrs:
+            return attrs
+
+    # --- Strategy 2: zarr.json (zarr v3) ---
+    if os.path.isdir(input_file):
+        zarr_json_path = os.path.join(input_file, "zarr.json")
+        if os.path.exists(zarr_json_path):
+            try:
+                with open(zarr_json_path, "r", encoding="utf-8") as fh:
+                    raw_json = json.load(fh)
+                # In zarr v3, user attributes live under the "attributes" key
+                candidate = raw_json.get("attributes", {})
+                if candidate:
+                    print(
+                        f"  DEBUG: Read metadata from zarr.json: {list(candidate.keys())}"
+                    )
+                    return candidate
+                # Some writers put them directly at the top level
+                # (strip known zarr-internal keys before returning the rest)
+                _zarr_internal = {
+                    "zarr_format",
+                    "node_type",
+                    "fill_value",
+                    "chunk_grid",
+                    "chunk_key_encoding",
+                    "codecs",
+                    "dimension_names",
+                    "data_type",
+                    "shape",
+                    "attributes",
+                }
+                candidate = {
+                    k: v for k, v in raw_json.items() if k not in _zarr_internal
+                }
+                if candidate:
+                    print(
+                        f"  DEBUG: Read metadata from zarr.json top-level: {list(candidate.keys())}"
+                    )
+                    return candidate
+            except Exception as e:
+                print(f"  DEBUG: zarr.json read failed: {e}")
+
+        # --- Strategy 3: .zattrs (zarr v2) ---
+        zattrs_path = os.path.join(input_file, ".zattrs")
+        if os.path.exists(zattrs_path):
+            try:
+                with open(zattrs_path, "r", encoding="utf-8") as fh:
+                    attrs = json.load(fh)
+                if attrs:
+                    print(f"  DEBUG: Read metadata from .zattrs: {list(attrs.keys())}")
+                    return attrs
+            except Exception as e:
+                print(f"  DEBUG: .zattrs read failed: {e}")
+
+    # --- Strategy 4: read coordinateTransformations from level-0 zarr.json ---
+    # Fallback for zarrs written before the update_attributes fix: the scale
+    # is embedded in the level-0 array metadata (coordinateTransformations).
+    if not attrs and os.path.isdir(input_file):
+        for level_name in ("0", "1"):
+            level_json = os.path.join(input_file, level_name, "zarr.json")
+            if os.path.exists(level_json):
+                try:
+                    with open(level_json, "r", encoding="utf-8") as fh:
+                        lj = json.load(fh)
+                    # Check level attributes first
+                    level_attrs = lj.get("attributes", {})
+                    if level_attrs.get("multiscales") or level_attrs.get("pixel_size"):
+                        print(
+                            f"  DEBUG: Found calibration in level-{level_name} attributes"
+                        )
+                        return level_attrs
+                    # Also check coordinateTransformations inside attributes
+                    # written by image_to_zarr.py into the dataset list
+                    ms = level_attrs.get("multiscales", [])
+                    if ms:
+                        return level_attrs
+                except Exception:
+                    pass
+
+    return attrs
+
+
+def _apply_unit_heuristic(pixel_size: float) -> float:
+    """Rescale *pixel_size* to micrometers when it looks like mm or meters."""
+    if pixel_size <= 0:
+        return pixel_size
+    if pixel_size < 0.1:
+        if 0.01 <= pixel_size * 1000.0 <= 20.0:
+            print(
+                f"  DEBUG: Calibration {pixel_size:.8f} looks like mm → scaling ×1000 to µm."
+            )
+            return pixel_size * 1000.0
+        if 0.01 <= pixel_size * 1e6 <= 20.0:
+            print(
+                f"  DEBUG: Calibration {pixel_size:.8f} looks like meters → scaling ×1e6 to µm."
+            )
+            return pixel_size * 1e6
+    return pixel_size
+
+
 def _extract_calibration_metadata(
     input_file: str, z_root: Optional[Any] = None
 ) -> Tuple[float, float]:
-    """
-    Attempt to automatically discover pixel size and anisotropy from file metadata.
-    Returns (pixel_size, anisotropy).
+    """Attempt to automatically discover pixel size and anisotropy from metadata.
+
+    Checks, in order:
+    1. ``pixel_size`` attribute written by *image_to_zarr.py* (custom key).
+    2. OME-NGFF ``multiscales → coordinateTransformations → scale``.
+    3. TIFF resolution tags (fallback for TIFF inputs).
+
+    Returns ``(pixel_size_µm, anisotropy)``.
     """
     pixel_size = None
     anisotropy = None
 
-    # 1. Try OME-Zarr metadata or "pixel_size" (written by image_to_zarr.py)
-    if z_root is not None and hasattr(z_root, "attrs"):
-        # Explicit check for "pixel_size" attribute used by image_to_zarr.py
-        if "pixel_size" in z_root.attrs:
-            ps = z_root.attrs["pixel_size"]
-            # Typically [C, Z, Y, X] or [Z, Y, X]
-            ps_vals = [float(v) for v in ps]
-            if len(ps_vals) == 4:
-                vz, vx = ps_vals[1], ps_vals[3]
-            elif len(ps_vals) == 3:
-                vz, vx = ps_vals[0], ps_vals[2]
-            else:
-                vz, vx = 1.0, 1.0
+    # -- Robustly read attrs from the zarr root (handles zarr v2 and v3) --
+    attrs: Dict = _read_zarr_root_attrs(input_file, z_root)
 
-            if vz > 0 and vx > 0:
-                pixel_size = vx
-                anisotropy = vz / vx
+    if attrs:
+        # 1. Custom "pixel_size" key written by image_to_zarr.py: [C, Z, Y, X]
+        if "pixel_size" in attrs:
+            try:
+                ps_vals = [float(v) for v in attrs["pixel_size"]]
+                if len(ps_vals) == 4:
+                    vz, vx = ps_vals[1], ps_vals[3]
+                elif len(ps_vals) == 3:
+                    vz, vx = ps_vals[0], ps_vals[2]
+                elif len(ps_vals) >= 2:
+                    vz, vx = ps_vals[0], ps_vals[-1]
+                else:
+                    vz, vx = 1.0, 1.0
 
-                # REFINED HEURISTIC: Handle common unit mismatches (mm vs um vs m)
-                # target roughly 0.05 to 5.0 um/pixel
-                if pixel_size < 0.1:
-                    # Is it Millimeters? (e.g. 0.0001 mm -> 0.1 um)
-                    if 0.01 <= (pixel_size * 1000.0) <= 20.0:
-                        print(
-                            f"DEBUG: Calibration {pixel_size:.8f} looks like Millimeters. Scaling to Micrometers (x1000)."
-                        )
-                        pixel_size *= 1000.0
-                    # Is it Meters? (e.g. 1e-7 m -> 0.1 um)
-                    elif 0.01 <= (pixel_size * 1e6) <= 20.0:
-                        print(
-                            f"DEBUG: Calibration {pixel_size:.8f} looks like Meters. Scaling to Micrometers (x1e6)."
-                        )
-                        pixel_size *= 1e6
+                if vx > 0:
+                    pixel_size = _apply_unit_heuristic(vx)
+                    anisotropy = (vz / vx) if (vz > 0) else 1.0
+                    print(
+                        f"  Calibration (pixel_size key): px={pixel_size:.4f} µm, anisotropy={anisotropy:.4f}"
+                    )
+            except Exception as e:
+                print(f"  DEBUG: pixel_size key parsing failed: {e}")
 
-                print(
-                    f"Discovered Zarr calibration (pixel_size): pixel_size={pixel_size:.4f}, anisotropy={anisotropy:.4f}"
-                )
-
+        # 2. OME-NGFF multiscales coordinateTransformations
         if pixel_size is None:
-            scales = _get_pixel_size_from_zattrs(dict(z_root.attrs))
+            scales = _get_pixel_size_from_zattrs(attrs)
             if scales and any(s is not None for s in scales):
-                # scales is usually (t, c, z, y, x) or (z, y, x)
-                if len(scales) >= 3:
-                    # Last two are Y, X. The one before is Z.
-                    px_z, px_y, px_x = scales[-3], scales[-2], scales[-1]
-                    if px_y and px_x:
-                        pixel_size = (px_y + px_x) / 2.0
-                        anisotropy = px_z / pixel_size if px_z else 1.0
+                # scales may be (c, z, y, x), (z, y, x), (t, c, z, y, x) …
+                # Last element is always X, second-to-last Y, third-to-last Z
+                non_none = [s for s in scales if s is not None]
+                if len(non_none) >= 3:
+                    px_z = float(non_none[-3])
+                    px_y = float(non_none[-2])
+                    px_x = float(non_none[-1])
+                    if px_y > 0 and px_x > 0:
+                        raw_px = (px_y + px_x) / 2.0
+                        pixel_size = _apply_unit_heuristic(raw_px)
+                        anisotropy = (px_z / raw_px) if (px_z > 0) else 1.0
                         print(
-                            f"Discovered OME-Zarr calibration: pixel_size={pixel_size:.4f}, anisotropy={anisotropy:.4f}"
+                            f"  Calibration (multiscales): px={pixel_size:.4f} µm, anisotropy={anisotropy:.4f}"
                         )
+                elif len(non_none) == 2:
+                    px_y, px_x = float(non_none[0]), float(non_none[1])
+                    if px_y > 0 and px_x > 0:
+                        pixel_size = _apply_unit_heuristic((px_y + px_x) / 2.0)
+                        anisotropy = 1.0
+                        print(f"  Calibration (multiscales 2D): px={pixel_size:.4f} µm")
 
-    # 2. Try TIFF metadata fallback
+    # 3. TIFF metadata fallback
     if pixel_size is None and input_file.lower().endswith((".tif", ".tiff")):
-        vx, vy, vz = _get_pixel_size_from_tiff(input_file)
-        if vx and vy:
-            pixel_size = (vx + vy) / 2.0
-            if vz:
-                anisotropy = vz / pixel_size
+        try:
+            vx, vy, vz = _get_pixel_size_from_tiff(input_file)
+            if vx and vy:
+                raw_px = (vx + vy) / 2.0
+                pixel_size = _apply_unit_heuristic(raw_px)
+                anisotropy = (vz / raw_px) if vz else 1.0
                 print(
-                    f"DEBUG: Discovered TIFF calibration: pixel_size={pixel_size:.4f}, anisotropy={anisotropy:.4f}"
+                    f"  Calibration (TIFF): px={pixel_size:.4f} µm, anisotropy={anisotropy:.4f}"
                 )
-            else:
-                anisotropy = 1.0  # Default to isotropic if Z-spacing missing
-                print(
-                    f"DEBUG: Discovered TIFF calibration (XY): pixel_size={pixel_size:.4f}"
-                )
+        except Exception as e:
+            print(f"  DEBUG: TIFF calibration read failed: {e}")
 
     # Final defaults
-    if pixel_size is None:
+    if not attrs and z_root is None:
+        print("  DEBUG: No metadata source available.")
+    if pixel_size is None or pixel_size <= 0.0:
         print(
-            "DEBUG: Calibration discovery failed completely. Using defaults (30, 1.0)"
+            "  DEBUG: Calibration not found in metadata. Assuming pixel_size=1.0 (diameter treated as pixels)."
         )
-        pixel_size = 30.0
-    if anisotropy is None:
+        pixel_size = 1.0
+    if anisotropy is None or anisotropy <= 0.0:
         anisotropy = 1.0
 
     return float(pixel_size), float(anisotropy)
@@ -602,6 +743,9 @@ def _create_optimized_segmentation_mask(
     stats_level = 4
     mask_level = 3
 
+    z_stats = None
+    z_mask = None
+
     # If z_root is actually an array (already drilled down to '0'), we can't use it to find other levels.
     # We should use the ACTUAL root of the Zarr group if it's available.
     actual_root = z_root
@@ -615,11 +759,29 @@ def _create_optimized_segmentation_mask(
         except Exception:
             pass
 
+    # Try standard root locations first
+    try:
+        z_stats = _get_pyramid_level(actual_root, stats_level)
+        z_mask = _get_pyramid_level(actual_root, mask_level)
+    except Exception:
+        pass
+
     # If the pyramid levels weren't found at the root, check if they are under 'c' (common in Zarr V3)
     if z_stats is None or z_mask is None:
         try:
             if "c" in actual_root:
                 c_root = actual_root["c"]
+                # The user's Zarr has indices under 'c', e.g., 'c/0', 'c/1'.
+                # We need to pick the correct channel index if it exists.
+                use_c_idx = str(c_idx) if c_axis is not None else "0"
+                if use_c_idx in c_root:
+                    target_root = c_root[use_c_idx]
+                    if z_stats is None:
+                        z_stats = _get_pyramid_level(target_root, stats_level)
+                    if z_mask is None:
+                        z_mask = _get_pyramid_level(target_root, mask_level)
+
+                # Fallback to 'c' root directly if the indices weren't found
                 if z_stats is None:
                     z_stats = _get_pyramid_level(c_root, stats_level)
                 if z_mask is None:
@@ -634,7 +796,11 @@ def _create_optimized_segmentation_mask(
         )
         # We still need stats. _get_array_stats is already sparse-optimized.
         v_min, v_max, p1, p99 = _get_array_stats(z_root, c_axis=c_axis, c_idx=c_idx)
-        val = p1 + threshold_rel * (p99 - p1) if min_intensity in ("auto", "Auto") else 0.0
+        val = (
+            p1 + threshold_rel * (p99 - p1)
+            if min_intensity in ("auto", "Auto")
+            else 0.0
+        )
         return None, v_min, v_max, val
 
     # Fallback to level 0 if still needed
@@ -660,6 +826,9 @@ def _create_optimized_segmentation_mask(
     # Multi-channel slicing logic
     # STOP EAGER SLICING for Zarr objects to avoid loading the whole channel into RAM
     # We pass c_axis/c_idx to _get_array_stats instead.
+    if c_axis is None and getattr(z_mask, "ndim", 0) == 4:
+        c_axis = 0
+
     if c_axis is not None:
         print(f"  Channel context: index {c_idx} at axis {c_axis}")
 
@@ -737,10 +906,10 @@ def _create_optimized_segmentation_mask(
             if hasattr(grid_mask, "compute"):
                 grid_mask = grid_mask.compute()
 
-            # Convert to numpy and then immediately back to Dask to "forget" the large Zarr source.
-            # This makes the Dask graph for 'segmentation_mask' contain just the data and no references to Level 0.
+            # Convert to numpy and DO NOT convert back to dask.
+            # cellpose's get_block_crops does sequential `np.any(mask[crop])`.
+            # If mask is a Dask array, this triggers hundreds of blocking sync jobs.
             grid_mask = np.asanyarray(grid_mask)
-            grid_mask = da.from_array(grid_mask, chunks=grid_mask.shape)
         except Exception as e:
             print(f"  Warning: coarse mask compute failed ({e})")
             grid_mask = None
@@ -859,6 +1028,8 @@ def get_optimal_n_workers(
         return max(0, n_workers), 1, 1
 
     # GPU mode
+    gpu_props = None
+    total_memory_single_gpu = 0
     try:
         if torch is None or not torch.cuda.is_available():
             return max(0, min(eff_requested_workers, total_cpus, max_workers_ram)), 1, 1
@@ -1096,10 +1267,11 @@ def get_auto_blocksize(
     shape: Tuple[int, ...],
     is_3d: bool,
     use_gpu: bool,
-    multiplier: float = 0,
-    c_axis: int = None,
+    multiplier: float = 0.0,
+    c_axis: Optional[int] = None,
     diameter: float = 30.0,
     anisotropy: float = 1.0,
+    model_type: str = "cyto3",
 ) -> Tuple[int, ...]:
     """Calculate an optimistically large blocksize based on available hardware.
 
@@ -1150,13 +1322,13 @@ def get_auto_blocksize(
     # Resolve spatial indexes to correctly identify Z vs XY
     spatial_indices = [i for i in range(len(shape)) if i != c_axis]
 
-    # Calculate scale factor for plane rescaling
-    model_diam = 30.0  # Standard cyto
+    # Calculate scale factor for plane rescaling based on internal model diameters
+    model_diam = 17.0 if "nuclei" in str(model_type).lower() else 30.0
 
     # SANITY CHECK: prevent absurdly small scale factors or huge min_dims from extreme diameters
     # diameter=95000 leads to scale=0.0003, which makes side_vram_plane huge.
     # We clamp the diameter used for blocksize logic to a reasonable range.
-    calc_diameter = max(1.0, min(diameter, 500.0)) if diameter > 0 else 30.0
+    calc_diameter = max(1.0, min(diameter, 500.0)) if diameter > 0 else model_diam
     scale = model_diam / calc_diameter
 
     if is_3d:
@@ -1256,8 +1428,26 @@ def _apply_zarr_open_compat(
         _orig_zarr_open = z_module.open
 
         def _zarr_open_compat(*args, **kwargs):
+            # zarr-python v3 renamed 'store' to 'url'. Handle both positional
+            # and keyword 'store'/'url' transparently.
             if len(args) >= 2 and isinstance(args[1], str):
-                return _orig_zarr_open(store=args[0], mode=args[1], *args[2:], **kwargs)
+                # Positional mode argument: zarr.open(path, 'r') style
+                path, mode = args[0], args[1]
+                try:
+                    return _orig_zarr_open(url=path, mode=mode, **kwargs)
+                except TypeError:
+                    try:
+                        return _orig_zarr_open(store=path, mode=mode, **kwargs)
+                    except Exception:
+                        pass
+            # Keyword 'store' → remap to 'url' for zarr v3
+            if "store" in kwargs and "url" not in kwargs:
+                new_kwargs = dict(kwargs)
+                new_kwargs["url"] = new_kwargs.pop("store")
+                try:
+                    return _orig_zarr_open(*args, **new_kwargs)
+                except TypeError:
+                    pass
             return _orig_zarr_open(*args, **kwargs)
 
         z_module.open = _zarr_open_compat
@@ -1291,6 +1481,30 @@ def _apply_zarr_open_compat(
         return False
 
 
+# Module-level signal.signal thread-safety patch.
+# Applied here (main process) and repeated in workers via _patch_worker_all /
+# preload preamble.  Keeping it at module level means any thread that imports
+# this module also benefits immediately.
+_SIGNAL_PATCH_SOURCE = """
+try:
+    import signal as _sig, threading as _thr
+    if not getattr(_sig.signal, '_thread_safe_patched', False):
+        _orig_sig = _sig.signal
+        def _sig_safe(n, h):
+            if _thr.current_thread() is not _thr.main_thread():
+                return None
+            return _orig_sig(n, h)
+        _sig_safe._thread_safe_patched = True
+        _sig.signal = _sig_safe
+except Exception:
+    pass
+"""
+try:
+    exec(_SIGNAL_PATCH_SOURCE)  # apply in main process immediately
+except Exception:
+    pass
+
+
 def _patch_worker_all() -> None:
     """Apply worker-side compatibility patches inside each Dask worker.
 
@@ -1300,6 +1514,15 @@ def _patch_worker_all() -> None:
     errors on Windows.
     """
     global zarr
+    # Always apply the signal.signal thread-safety patch first, inline.
+    # This is critical: dask_jobqueue calls signal.signal() at module-import
+    # level; if imported inside a Dask worker's tornado I/O thread (non-main
+    # thread) it raises ValueError.  Patching here ensures it is covered
+    # regardless of whether worker_patches.py on disk is up to date.
+    try:
+        exec(_SIGNAL_PATCH_SOURCE)
+    except Exception:
+        pass
     try:
         # Suppress cellpose's internal logger setup in workers to avoid
         # PermissionError when multiple workers try to open the same log file.
@@ -1534,6 +1757,144 @@ def _run_distributed_in_subprocess(
             print(f"Warning: Could not copy worker patch log: {e}")
 
 
+# --- TOP-LEVEL PREPROCESSING FUNCTIONS ---
+def _apply_manual_preprocessing_core(
+    img: Any,
+    gauss: float = 0.0,
+    median: int = 0,
+    global_norm: bool = False,
+    global_limits: Optional[Tuple[float, float]] = None,
+    anisotropy: float = 1.0,
+) -> Any:
+    """Apply manual preprocessing filters (guassian, median) and intensity normalization.
+
+    Works on:
+    ---------
+    2D, 3D
+
+    Parameters
+    ----------
+    img : Any
+        The input Numpy/Dask image chunk.
+    gauss : float, default=0.0
+        The Gaussian blur sigma to apply. Skips if <= 0.
+    median : int, default=0
+        The Median filter radius to apply. Skips if <= 0.
+    global_norm : bool, default=False
+        Whether to normalize intensity to 8-bit scale across the global bounds.
+    global_limits : Optional[Tuple[float, float]], default=None
+        The corresponding (min, max) limits for the global normalization.
+    anisotropy : float, default=1.0
+        Anisotropy factor for Z vs XY resolution (z_pixel_size / xy_pixel_size).
+
+    Returns
+    -------
+    Any
+        The preprocessed image array as float32.
+    """
+    if img is None:
+        return None
+    res = np.asanyarray(img)
+    if gauss > 0 and ndimage is not None:
+        s_xy = gauss
+        s_z = gauss / anisotropy if anisotropy > 0 else 1.0
+        if res.ndim == 3:
+            res = ndimage.gaussian_filter(res, sigma=(s_z, s_xy, s_xy))
+        else:
+            res = ndimage.gaussian_filter(res, sigma=s_xy)
+
+    if median > 0 and ndimage is not None:
+        m_xy = median
+        m_z = max(1, int(round(median / anisotropy)))
+        if res.ndim == 3:
+            res = ndimage.median_filter(res, size=(m_z, m_xy, m_xy))
+        else:
+            res = ndimage.median_filter(res, size=m_xy)
+
+    if global_norm and global_limits is not None:
+        low, high = global_limits
+        res = res.astype(np.float32)
+        res = np.clip(res, low, high)
+        res = (res - low) / (high - low) * 255.0  # Cellpose likes 0-255 scale
+        res = res.astype(np.float32)
+
+    return res
+
+
+def pre_all_step(image: Any, crop: Optional[Any] = None, **kwargs: Any) -> Any:
+    """Wrap general preprocessing to map via cellpose distributed_eval algorithm.
+
+    Works on:
+    ---------
+    2D, 3D
+
+    Parameters
+    ----------
+    image : Any
+        The input standard image chunk.
+    crop : Optional[Any], default=None
+        The bounding box for the block provided by `cellpose` (not effectively used).
+    **kwargs : Any
+        Arguments unpacked internally for `_apply_manual_preprocessing_core`.
+
+    Returns
+    -------
+    Any
+        Preprocessed image block.
+    """
+    return _apply_manual_preprocessing_core(image, **kwargs)
+
+
+def stack_channels_step(
+    image: Any,
+    crop: Optional[Any] = None,
+    other_channels: Optional[List[Any]] = None,
+    preprocessing_kwargs: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """Stack additional channels onto the base channel.
+
+    Each channel is preprocessed redundantly just prior to stacking.
+
+    Works on:
+    ---------
+    2D, 3D
+
+    Parameters
+    ----------
+    image : Any
+        Base image chunk.
+    crop : Optional[Any], default=None
+        Spatial slice supplied by Cellpose for block localization.
+    other_channels : Optional[List[Any]], default=None
+        List of zarr-based additional arrays representing other channels.
+    preprocessing_kwargs : Optional[Dict[str, Any]], default=None
+        Keyword constraints strictly aligned with internal processing filters.
+
+    Returns
+    -------
+    Any
+        Numpy array appropriately stacked with all channels across axis 0 (2D) or 1 (3D).
+    """
+    preprocessing_kwargs = preprocessing_kwargs or {}
+    # 'image' has already been preprocessed if 'pre_all_step' ran earlier.
+    # However we re-apply for OTHER channels below.
+    channels_to_stack = [image]
+
+    if other_channels:
+        for ch_zarr in other_channels:
+            if crop:
+                ch_img = ch_zarr[crop]
+            else:
+                ch_img = ch_zarr[:]
+            ch_res = _apply_manual_preprocessing_core(ch_img, **preprocessing_kwargs)
+            channels_to_stack.append(ch_res)
+
+    if image.ndim == 3:
+        return np.stack(channels_to_stack, axis=1)
+    else:
+        return np.stack(channels_to_stack, axis=0)
+
+
 def _run_distributed_eval(
     ds: Any,
     input_zarr: Any,
@@ -1624,7 +1985,9 @@ def _run_distributed_eval(
                     resolved_min_i = str(args.min_intensity)
 
             preload_content = (
-                wp_source
+                _SIGNAL_PATCH_SOURCE  # patch signal.signal at module import time
+                + "\n"
+                + wp_source
                 + "\n\n"
                 + f"dask_setup = setup_worker({thread_limit}, min_intensity={resolved_min_i})\n"
             )
@@ -1667,37 +2030,16 @@ def dask_setup(worker):
         # Create preprocessing_steps if we have multiple channels or Gaussian/Median/Norm blur
         preprocessing_steps = []
 
-        # Define common preprocessing logic once to ensure it's applied correctly to all channels
-        def apply_manual_preprocessing(img):
-            if img is None:
-                return None
-            res = img
-            if args.gauss > 0 and ndimage is not None:
-                s_xy = args.gauss
-                s_z = args.gauss / args.anisotropy if args.anisotropy > 0 else 1.0
-                if res.ndim == 3:
-                    res = ndimage.gaussian_filter(res, sigma=(s_z, s_xy, s_xy))
-                else:
-                    res = ndimage.gaussian_filter(res, sigma=s_xy)
-
-            if args.median > 0 and ndimage is not None:
-                m_xy = args.median
-                m_z = max(1, int(round(args.median / args.anisotropy)))
-                if res.ndim == 3:
-                    res = ndimage.median_filter(res, size=(m_z, m_xy, m_xy))
-                else:
-                    res = ndimage.median_filter(res, size=m_xy)
-
-            if args.global_norm and global_limits is not None:
-                low, high = global_limits
-                res = res.astype(np.float32)
-                res = np.clip(res, low, high)
-                res = (res - low) / (high - low) * 255.0  # Cellpose likes 0-255 scale
-                res = res.astype(np.float32)
-
-            return res
-
+        # Define common preprocessing logic via top-level pure functions to avoid closing over main variables
         # 1. Add general preprocessing (Blur, Median, Norm)
+        prep_args = {
+            "gauss": args.gauss,
+            "median": args.median,
+            "global_norm": args.global_norm,
+            "global_limits": global_limits,
+            "anisotropy": args.anisotropy,
+        }
+
         if args.gauss > 0 or args.median > 0 or args.global_norm:
             if args.gauss > 0:
                 print(f"Applying Gaussian blur (sigma={args.gauss:.2f})")
@@ -1710,37 +2052,17 @@ def dask_setup(worker):
                 # Ensure Cellpose doesn't do its own normalization if we just did it globally
                 eval_kwargs["normalize"] = False
 
-            def pre_all(image, crop):
-                return apply_manual_preprocessing(image)
-
-            preprocessing_steps.append((pre_all, {}))
+            preprocessing_steps.append((pre_all_step, prep_args))
 
         # 2. Add Multi-channel stacking (with preprocessing applied to each channel)
         if channel_zarrs and len(channel_zarrs) > 1:
-
-            def stack_channels(image, crop):
-                """Stack additional channels onto the base channel.
-                Following cellpose documentation pattern for multi-channel segmentation.
-                Each channel is preprocessed before stacking.
-                """
-                # image has already been preprocessed by 'pre_all' if it exists.
-                # However, Cellpose's distributed_eval architecture for preprocessing_steps
-                # is slightly different for multi-channels. We must ensure we apply our
-                # manual preprocessing to ALL channels here.
-                channels_to_stack = [apply_manual_preprocessing(image)]
-                for ch_idx in range(1, len(channel_zarrs)):
-                    ch_img = apply_manual_preprocessing(channel_zarrs[ch_idx][crop])
-                    channels_to_stack.append(ch_img)
-
-                # Determine where to insert the channel axis.
-                # If image is 3D (Z, Y, X), we want (Z, C, Y, X) -> axis 1
-                if image.ndim == 3:
-                    return np.stack(channels_to_stack, axis=1)
-                else:
-                    # For 2D model, cellpose expects (C, Y, X)
-                    return np.stack(channels_to_stack, axis=0)
-
-            preprocessing_steps.append((stack_channels, {}))
+            stack_args = {
+                "other_channels": getattr(
+                    args, "_resolved_channel_zarrs", channel_zarrs[1:]
+                ),
+                "preprocessing_kwargs": prep_args,
+            }
+            preprocessing_steps.append((stack_channels_step, stack_args))
             print(f"Added preprocessing_steps to stack {len(channel_zarrs)} channels")
             sys.stdout.flush()
 
@@ -1873,6 +2195,87 @@ def dask_setup(worker):
             )
             sys.stdout.flush()
 
+        # Rechunk input_zarr to exactly blocksize before submitting to distributed_eval.
+        # Goal: ensure the dask array passed to distributed_eval has a clean,
+        # minimal task graph (exactly num_blocks tasks), not the millions of
+        # native zarr-chunk read tasks that would be embedded by a plain
+        # da.from_zarr() call.
+        #
+        # da.rechunk() does NOT help here: it restructures blocks but still
+        # preserves every original native-chunk task in the graph.  When
+        # distributed_eval builds map_blocks on top, Dask graph optimisation
+        # and serialisation hang for minutes on 1.9M+ tasks before any GPU
+        # work starts.
+        #
+        # The correct fix: re-open the zarr store with da.from_zarr(...,
+        # chunks=blocksize) so that each task is a single zarr read covering
+        # one full block.  zarr handles internal native-chunk aggregation
+        # transparently and efficiently at read time.
+        if da is not None and blocksize is not None:
+            try:
+                native_chunks = getattr(input_zarr, "chunks", None)
+                needs_clean = native_chunks is None or any(
+                    len(c) > 1 or c[0] != b for c, b in zip(native_chunks, blocksize)
+                )
+                if needs_clean:
+                    _created_clean = False
+
+                    # ── Strategy 1: re-open OME-Zarr level-0 with blocksize chunks ──
+                    # Produces a clean graph: 1 task per spatial block.
+                    try:
+                        _ch_idx = (args.chan - 1) if getattr(args, "chan", 0) > 0 else 0
+                        _zarr_path = getattr(args, "input_file", None)
+                        if _zarr_path and os.path.exists(_zarr_path):
+                            _clean = da.from_zarr(
+                                _zarr_path,
+                                component="0",
+                                chunks=(1,) + tuple(blocksize),
+                            )
+                            if _clean.ndim == 4:
+                                _clean = _clean[_ch_idx]
+                            if _clean.shape == input_zarr.shape:
+                                input_zarr = _clean
+                                _created_clean = True
+                                print(
+                                    f"Re-opened OME-Zarr with blocksize {blocksize} chunks "
+                                    f"(clean single-level task graph)"
+                                )
+                    except Exception:
+                        pass
+
+                    # ── Strategy 2: re-open 3-D converted zarr ──
+                    if not _created_clean:
+                        try:
+                            _zarr_path = getattr(args, "input_zarr", None)
+                            if _zarr_path and os.path.exists(_zarr_path):
+                                _clean = da.from_zarr(
+                                    _zarr_path, chunks=tuple(blocksize)
+                                )
+                                if _clean.shape == input_zarr.shape:
+                                    input_zarr = _clean
+                                    _created_clean = True
+                                    print(
+                                        f"Re-opened converted zarr with blocksize {blocksize} "
+                                        f"chunks (clean single-level task graph)"
+                                    )
+                        except Exception:
+                            pass
+
+                    # ── Strategy 3: fall back to dask rechunk ──
+                    if not _created_clean:
+                        print(
+                            f"Rechunking input to blocksize {blocksize} "
+                            f"(zarr re-open unavailable; graph may be large)..."
+                        )
+                        sys.stdout.flush()
+                        input_zarr = input_zarr.rechunk(blocksize)
+
+            except Exception as _rce:
+                print(
+                    f"Warning: clean graph setup failed ({_rce}), proceeding with native chunks"
+                )
+            sys.stdout.flush()
+
         print("Starting distributed_eval - cluster initialization may take a minute...")
         sys.stdout.flush()
 
@@ -1934,6 +2337,14 @@ def dask_setup(worker):
                         created = None
 
             if created is not None:
+                # Explicitly scale the cluster to ensure workers are provisioned
+                try:
+                    target_n = cluster_kwargs_local.get("n_workers", 1)
+                    created.scale(target_n)
+                    print(f"Scaling cluster to {target_n} workers...")
+                except Exception as scale_err:
+                    print(f"Warning: could not scale cluster: {scale_err}")
+
                 client = Client(created)
                 # Check for bokeh (dashboard dependency) / diagnostics
                 try:
@@ -1974,9 +2385,11 @@ def dask_setup(worker):
                         if "/status" not in dashboard:
                             dashboard = dashboard.rstrip("/") + "/status"
 
+                        # PREFERENCE: Focus on 'status' page for users
+                        dashboard_focused = dashboard
                         dashboard_alt = dashboard.replace("127.0.0.1", "localhost")
 
-                        print(f"\nDask dashboard: {dashboard}")
+                        print(f"\nDask Dashboard: {dashboard}")
                         print(f"Alternative URL: {dashboard_alt}\n")
                         sys.stdout.flush()
 
@@ -1985,6 +2398,9 @@ def dask_setup(worker):
                             if webbrowser is not None and getattr(
                                 args, "open_dashboard", False
                             ):
+                                # Point browser to the status page
+                                open_url = dashboard_focused
+
                                 # Wait for the dashboard port to actually open.
                                 # This prevents 'Connection Refused' if the browser is too fast.
                                 print("Waiting for dashboard to stabilize...")
@@ -2003,8 +2419,8 @@ def dask_setup(worker):
                                 except Exception:
                                     time.sleep(2)
 
-                                print(f"Opening dashboard in browser: {dashboard}")
-                                webbrowser.open(dashboard)
+                                print(f"Opening dashboard in browser: {open_url}")
+                                webbrowser.open(open_url)
                         except Exception as browser_err:
                             print(f"Warning: Could not open browser: {browser_err}")
                 except Exception as dash_err:
@@ -2066,8 +2482,17 @@ def dask_setup(worker):
                 # Optional preprocessing_steps support
                 if preprocessing_steps and "preprocessing_steps" in sig.parameters:
                     kwargs["preprocessing_steps"] = preprocessing_steps
+                    steps_desc = []
+                    if len(channel_zarrs) > 1:
+                        steps_desc.append(f"stack {len(channel_zarrs)} channels")
+                    if args.global_norm:
+                        steps_desc.append("global_norm")
+                    if args.gauss > 0:
+                        steps_desc.append(f"gauss={args.gauss}")
+                    if args.median > 0:
+                        steps_desc.append(f"median={args.median}")
                     print(
-                        f"Passing preprocessing_steps to distributed_eval to stack {len(channel_zarrs)} channels"
+                        f"Passing preprocessing_steps to distributed_eval ({', '.join(steps_desc) or 'no-op'})"
                     )
                 elif preprocessing_steps:
                     # If not supported, we might have a problem if it's multi-channel,
@@ -2198,9 +2623,18 @@ def dask_setup(worker):
             created = None
 
         # Final fallback: let cellpose create its own cluster
+        import pathlib
+
+        _orig_mkdir = pathlib.Path.mkdir
+
+        def _exist_ok_mkdir(self, mode=0o777, parents=False, exist_ok=False):
+            return _orig_mkdir(self, mode=mode, parents=parents, exist_ok=True)
+
         try:
+            pathlib.Path.mkdir = _exist_ok_mkdir
             result = ds.distributed_eval(input_zarr, **kwargs)
         finally:
+            pathlib.Path.mkdir = _orig_mkdir
             if preload_file and os.path.exists(preload_file):
                 try:
                     os.unlink(preload_file)
@@ -2768,6 +3202,8 @@ def main():
             try:
                 # Open using zarr API directly
                 im = zarr.open(args.input_file, mode="r")
+                # Keep z_root pointing to the root Zarr group so metadata attrs
+                # (pixel_size, multiscales) remain accessible throughout.
                 z_root = im
 
                 # Robustly handle OME-Zarr levels or Groups that wrap an Array
@@ -2779,6 +3215,7 @@ def main():
                 ):
                     try:
                         # Extract the first multiscale dataset (Level 0)
+                        # We use '0' if it exists, as it is standard and usually at im['0'] or similar
                         level0_path = im.attrs["multiscales"][0]["datasets"][0]["path"]
                         print(
                             f"  OME-Zarr detected. Opening Level 0 at '{level0_path}'."
@@ -2787,7 +3224,7 @@ def main():
                     except Exception:
                         pass
 
-                # If still a group, drill down into '0' levels (legacy OME-Zarr)
+                # If still a group, drill down into level 0
                 while not hasattr(im, "dtype") and hasattr(im, "__getitem__"):
                     try:
                         if "0" in im:
@@ -2797,68 +3234,171 @@ def main():
                     except Exception:
                         break
 
+                # NOTE: z_root is intentionally NOT reassigned here — it keeps
+                # pointing to the root Zarr group that contains the metadata attrs.
+
                 # Handle Zarr V3 Array fallback (e.g. Zarr V2 engine interpreting a V3 chunk "c" dir as a Group)
                 if not hasattr(im, "dtype") and hasattr(im, "keys"):
                     try:
-                        if "c" in im.keys():
+                        if "c" in im.keys() and not any(k.isdigit() for k in im.keys()):
                             print(
                                 "  Detected Zarr V3 array structure (contains 'c' chunk directory)..."
                             )
                             # If Zarr couldn't parse it as an array (returns Group), pass it to Dask directly.
-                            # The user identified that `im["c"]` contains the raw chunk items.
-                            # We will try passing the full path natively to Dask, or fallback to the chunk data itself.
-                            # Dask or other loaders might accept the raw 'c' folder for reconstruction.
                             try:
                                 if da is not None:
                                     d_test = da.from_zarr(args.input_file)
-                                    if hasattr(d_test, "shape"):
+                                    if (
+                                        hasattr(d_test, "shape")
+                                        and len(d_test.shape) > 0
+                                    ):
                                         im = d_test
                                         print(
                                             "  Dask successfully loaded the Zarr V3 array directly."
                                         )
                             except Exception:
-                                print(
-                                    "  Dask direct load failed, falling back to 'c' chunk subgroup..."
-                                )
-                                im = im["c"]
+                                pass
                     except Exception:
                         pass
 
-                # If we detected a Zarr V3 structure ('c' subfolder) but couldn't load it yet,
-                # make sure the actual_root is set correctly to the group containing the levels.
-                # In your case, the levels 0, 1, 2 are INSIDE the 'c' folder.
-                if not hasattr(im, "dtype") and hasattr(im, "keys") and "c" in im.keys():
+                        # Ensure we have a valid array/dask object for 'im'
+                if not hasattr(im, "shape"):
                     try:
-                        c_group = im["c"]
-                        # Check if '0' is in 'c'
-                        if "0" in c_group:
-                            print("  Found resolution levels inside 'c' directory.")
-                            z_root = c_group
-                            im = c_group["0"]
+                        im = da.from_zarr(args.input_file)
                     except Exception:
                         pass
 
-                # Fallback: if it's still a group, try to find ANY array inside it
-                # (e.g. if channels are stored as separate arrays)
-                if not hasattr(im, "dtype") and hasattr(im, "keys"):
+                # Extract the 4D array from Zarr group if the user points to a folder
+                # im should now be a 4D array (C, Z, Y, X) or similar.
+                # If dask fails to read from V2/V3 group directly:
+                if hasattr(im, "shape"):
+                    pass
+                else:
+                    raise ValueError(f"Could not load an array from {args.input_file}")
+
+                if hasattr(im, "dtype"):  # It's a zarr array
+                    im_da = da.from_zarr(im)
+                else:  # It's already a dask array from from_zarr above
+                    im_da = im
+
+                # Determine axis for channel if not CZYX
+                c_axis_pos = 0  # Default for OME-Zarr (C, Z, Y, X)
+
+                if len(im_da.shape) == 3:  # (Z, Y, X)
+                    print(f"  Detected single-channel spatial volume: {im_da.shape}")
+                    input_zarr = im_da
+                    c_axis_pos = None
+                elif len(im_da.shape) == 4:  # (C, Z, Y, X)
+                    print(f"  Detected multi-channel OME-Zarr: {im_da.shape}")
+                    # Extract only the needed channels virtually
+                    needed_indices = []
+                    c1_idx = (args.chan - 1) if args.chan > 0 else 0
+                    needed_indices.append(c1_idx)
+
+                    if args.chan2 > 0:
+                        c2_idx = args.chan2 - 1
+                        if c2_idx != c1_idx:
+                            needed_indices.append(c2_idx)
+
+                    if len(needed_indices) == 1:
+                        input_zarr = im_da[needed_indices[0]]
+                        c_axis_pos = None
+                    else:
+                        input_zarr = da.stack(
+                            [im_da[idx] for idx in needed_indices], axis=0
+                        )
+                        c_axis_pos = 0
+                else:
+                    input_zarr = im_da
+
+                is_zarr = True
+                im = input_zarr
+                # Do NOT hardcode blocksize here — let the hardware-aware auto-calculation
+                # below resolve it with the correct is_3d_mode=True flag.
+                # Previously this was (1, 512, 512) which caused 479k+ blocks and Dask
+                # scheduler stalls when do_3D=True (z=1 → is_3d_mode=False in estimation).
+                was_subsetted = True
+                print(
+                    f"Using OME-Zarr directly, shape: {input_zarr.shape}, blocksize: {blocksize} (will be resolved)"
+                )
+                sys.stdout.flush()
+
+                # CRITICAL: Since we've already prepared the input_zarr and handled channel extraction,
+                # we need to skip the redundant conversion block that follows.
+                # We do this by jumping over the next 'if not is_zarr' logic and any tiff preparation.
+                # The script will continue with the 'input_zarr' we just defined.
+
+            except Exception as e:
+                print(f"Error handling OME-Zarr: {e}")
+                sys.stdout.flush()
+                # Fall through to generic handler if needed
+                is_zarr = False
+        else:
+            is_zarr = False
+
+        if not is_zarr:
+            # If we're here, the specialized OME-Zarr path failed or was skipped.
+            # We try a more generic Zarr opening attempt.
+            try:
+                # Open using zarr API directly
+                im_gen = zarr.open(args.input_file, mode="r")
+                z_root = im_gen
+
+                # Robustly handle OME-Zarr levels or Groups that wrap an Array
+                # Check for OME-Zarr multiscales metadata first
+                if (
+                    not hasattr(im_gen, "dtype")
+                    and hasattr(im_gen, "attrs")
+                    and "multiscales" in im_gen.attrs
+                ):
                     try:
-                        child_arrays = [k for k in im.keys() if hasattr(im[k], "dtype")]
-                        if child_arrays:
-                            if len(child_arrays) > 1:
+                        # Extract the first multiscale dataset (Level 0)
+                        # We use '0' if it exists, as it is standard and usually at im['0'] or similar
+                        level0_path = im_gen.attrs["multiscales"][0]["datasets"][0][
+                            "path"
+                        ]
+                        print(
+                            f"  OME-Zarr detected. Opening Level 0 at '{level0_path}'."
+                        )
+                        im_gen = im_gen[level0_path]
+                    except Exception:
+                        pass
+
+                # If still a group, drill down into level 0
+                while not hasattr(im_gen, "dtype") and hasattr(im_gen, "__getitem__"):
+                    try:
+                        if "0" in im_gen:
+                            im_gen = im_gen["0"]
+                        elif hasattr(im_gen, "keys"):
+                            child_arrays = [
+                                k for k in im_gen.keys() if hasattr(im_gen[k], "shape")
+                            ]
+                            if len(child_arrays) == 1:
+                                im_gen = im_gen[child_arrays[0]]
+                            elif len(child_arrays) > 1:
                                 print(
                                     f"  Group contains multiple arrays: {child_arrays}"
                                 )
-                            im = im[child_arrays[0]]
+                                im_gen = im_gen[child_arrays[0]]
+                        else:
+                            break
                     except Exception:
-                        pass
+                        break
 
-                # Ultimate ultimate fallback: Try letting Dask sort out the root path
-                # (fixes zarr-python V3 vs V2 API incompatibilities)
-                if not hasattr(im, "dtype") and not hasattr(im, "shape"):
+                # If we've reached an array or a dask-read of it, we're good.
+                # Keep z_root pointing to the original root for metadata access.
+                im = im_gen
+
+                # Handle Zarr V3 Array fallback (e.g. Zarr V2 engine interpreting a V3 chunk "c" dir as a Group)
+                if not hasattr(im, "dtype") and hasattr(im, "keys"):
                     try:
                         if da is not None:
                             d_test = da.from_zarr(args.input_file)
-                            if hasattr(d_test, "shape"):
+                            if (
+                                hasattr(d_test, "shape")
+                                and len(d_test.shape) > 0
+                                and all(s > 0 for s in d_test.shape)
+                            ):
                                 im = d_test
                                 print(
                                     "  Dask mapped the root path to a valid array structure."
@@ -2876,8 +3416,6 @@ def main():
                     f"Failed to open as Zarr ({e}), falling back to TIFF if possible..."
                 )
                 is_zarr = False
-        else:
-            is_zarr = False
 
         if not is_zarr:
             print(f"Loading TIFF file: {args.input_file}")
@@ -2915,7 +3453,7 @@ def main():
             # If diameter is missing or 0, we can't do much except use a default.
             # Usually 30 pixels is the Cellpose default.
             args.diameter = 30.0
-            print(f"DEBUG: No diameter provided. Using default 30.0 pixels.")
+            print("DEBUG: No diameter provided. Using default 30.0 pixels.")
         else:
             # If we found a pixel size, assume the user-provided diameter is in the SAME units (um).
             # We convert it to pixels for Cellpose.
@@ -2933,10 +3471,10 @@ def main():
                         f"!!! WARNING: Diameter ({args.diameter:.1f} px) is extremely large."
                     )
                     print(
-                        f"!!! This usually means the file metadata units are wrong (e.g. millimeters vs micrometers)."
+                        "!!! This usually means the file metadata units are wrong (e.g. millimeters vs micrometers)."
                     )
                     print(
-                        f"!!! Cellpose works best with diameters around 30 pixels. Performance will be very poor."
+                        "!!! Cellpose works best with diameters around 30 pixels. Performance will be very poor."
                     )
             else:
                 print(
@@ -3001,6 +3539,7 @@ def main():
                 c_axis=c_axis_pos,
                 diameter=args.diameter,
                 anisotropy=args.anisotropy,
+                model_type=args.model,
             )
             print(f"Auto-resolved blocksize based on hardware: {blocksize}")
 
@@ -3229,6 +3768,8 @@ def main():
                         channel_zarrs.append(z_ch)
 
                 input_zarr = channel_zarrs[0]
+                is_zarr = True
+                z_root = input_zarr
                 blocksize = zarr_chunks
                 c_axis_pos = None
                 was_subsetted = True
@@ -3258,6 +3799,8 @@ def main():
                                 print(f"Reusing existing input Zarr at {zpath}")
                                 sys.stdout.flush()
                                 input_zarr = zarr.open(zpath, mode="r")
+                                is_zarr = True
+                                z_root = input_zarr
                                 # We still need to notify success and set input_zarr
                                 print(
                                     f"Input zarr shape: {input_zarr.shape}, chunks: {input_zarr.chunks}"
@@ -3303,6 +3846,8 @@ def main():
 
                         im_to_save.rechunk(blocksize).to_zarr(zpath, overwrite=True)
                         input_zarr = zarr.open(zpath, mode="a")
+                        is_zarr = True
+                        z_root = input_zarr
 
                         # Inherit and save metadata for reuse
                         if hasattr(im, "attrs"):
@@ -3345,6 +3890,8 @@ def main():
                         )
                         z_ch[...] = im
                         input_zarr = z_ch
+                        is_zarr = True
+                        z_root = input_zarr
                         # Re-write metadata to eager input_zarr
                         if discovered_px:
                             try:
@@ -3386,6 +3933,7 @@ def main():
                 c_axis=None,
                 diameter=args.diameter,
                 anisotropy=args.anisotropy,
+                model_type=args.model,
             )
             print(f"Auto-resolved blocksize based on hardware: {blocksize}")
         tmpdir = None
@@ -3422,7 +3970,9 @@ def main():
     # Determine if mask generation is worth it based on file size if no pyramid is found.
     # If file is > 100 GB and we're at Level 0, we should skip the mask to save time.
     size_limit_for_mask = 100 * 1024**3  # 100 GB
-    image_size_bytes = getattr(im, "nbytes", 0) or (im.size * im.itemsize if hasattr(im, "size") else 0)
+    image_size_bytes = getattr(im, "nbytes", 0) or (
+        im.size * im.itemsize if hasattr(im, "size") else 0
+    )
 
     if (args.min_intensity is not None or args.global_norm) and im is not None:
         try:
@@ -3658,8 +4208,13 @@ def main():
                         print(f"Warning: dilation failed: {de}")
 
                 if segmentation_mask is not None:
-                    # Explicitly compute mean from compiled numpy mask
-                    coverage = np.mean(segmentation_mask) * 100
+                    # Compute mean and then format
+                    cov_val = np.mean(segmentation_mask)
+                    if hasattr(cov_val, "compute"):
+                        cov_val = float(cov_val.compute())
+                    else:
+                        cov_val = float(cov_val)
+                    coverage = cov_val * 100
                     print(
                         f"Early Exit mask created. Will process approx {coverage:.1f}% of blocks."
                     )
@@ -3933,6 +4488,7 @@ def main():
             c_axis=None,
             diameter=args.diameter,
             anisotropy=args.anisotropy,
+            model_type=args.model,
         )
         current_block = list(blocksize)
         print(f"Auto-blocksize final safety resolution: {blocksize}")
