@@ -1,0 +1,30 @@
+[workspace]
+name = "my-appose-worker"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "linux-64", "win-64"]
+
+[dependencies]
+python = "==3.11"
+numpy = "*"
+scipy = "*"
+pip = "*"
+
+# ---- Per-platform TensorFlow variants ----
+
+[target.win-64.pypi-dependencies]
+tensorflow = "==2.15.0"
+
+[target.linux-64.pypi-dependencies]
+tensorflow = "==2.15.0"
+
+[target.osx-64.pypi-dependencies]
+tensorflow = "*"            # latest CPU TF for Intel Mac
+
+[target.osx-arm64.pypi-dependencies]
+tensorflow-macos = "*"      # Apple Silicon TF
+tensorflow-metal = "*"      # Metal GPU plugin
+
+# ---- Environments ----
+
+[environments]
+default = { solve-group = "default" }
