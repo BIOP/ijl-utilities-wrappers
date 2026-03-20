@@ -26,6 +26,8 @@ import java.util.function.Supplier;
  */
 public class ApposeElastixTask implements ElastixTask {
 
+    public static int MAX_TASK_ATTEMPTS = 4;
+
     @Override
     public void run(ElastixTaskSettings settings) throws Exception {
 
@@ -63,16 +65,41 @@ public class ApposeElastixTask implements ElastixTask {
         inputs.put("initial_transform_file", initialTransformFile);
         inputs.put("n_threads", nThreads);
 
-        final Service.Task task = python.task(getScript(), inputs);
-        if (settings.verbose) {
-            task.listen(evt -> System.out.println("[itk-elastix] " + evt.message));
-        }
-        task.start();
-        task.waitFor();
+        // Because of https://github.com/apposed/appose/issues/15 in windows
 
-        if (task.status != Service.TaskStatus.COMPLETE) {
-            throw new RuntimeException("itk-elastix registration failed: " + task.error);
+        int nAttempt = 0;
+        boolean success = false;
+
+        while ((!success)&&(nAttempt<MAX_TASK_ATTEMPTS)) {
+            try {
+
+                final Service.Task task = python.task(getScript(), inputs);
+
+                if (settings.verbose) {
+                    task.listen(evt -> System.out.println("[itk-elastix] " + evt.message));
+                }
+                task.start();
+                task.waitFor();
+                if (task.status != Service.TaskStatus.COMPLETE) {
+                    nAttempt++;
+                    if (nAttempt == MAX_TASK_ATTEMPTS) {
+                        throw new RuntimeException("itk-elastix registration failed: " + task.error);
+                    }
+                } else {
+                    success = true;
+                }
+            } catch (Exception e) {
+                nAttempt++;
+                if (nAttempt == MAX_TASK_ATTEMPTS) {
+                    throw e;// new RuntimeException("itk-elastix registration failed: " + task.error);
+                }
+
+            }
         }
+        if (success) {
+            System.out.println("Registration ok on attempt "+nAttempt);
+        }
+
     }
 
     private static String callImports() {
