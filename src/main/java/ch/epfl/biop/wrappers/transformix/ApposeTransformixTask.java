@@ -1,9 +1,6 @@
 package ch.epfl.biop.wrappers.transformix;
 
 import ch.epfl.biop.wrappers.elastix.ApposeElastixTask;
-import org.apposed.appose.Appose;
-import org.apposed.appose.BuildException;
-import org.apposed.appose.Environment;
 import org.apposed.appose.Service;
 
 import java.util.HashMap;
@@ -17,10 +14,8 @@ import java.util.Map;
  * the {@code itk-elastix} library. No external transformix binary or PATH configuration needed.</p>
  *
  * <p>The output contract is identical to the CLI version: after {@link #run}, the output
- * folder contains {@code result.tif} for image transforms.</p>
- *
- * <p><b>Current limitation:</b> point/ROI transformation is not yet supported.
- * Image transformation only for now.</p>
+ * folder contains {@code result.tif} for image transforms, or {@code outputpoints.txt}
+ * for point/ROI transforms.</p>
  */
 public class ApposeTransformixTask implements TransformixTask {
 
@@ -36,71 +31,57 @@ public class ApposeTransformixTask implements TransformixTask {
         boolean hasImage = imagePath != null && !imagePath.isEmpty();
         boolean hasPts = ptsPath != null && !ptsPath.isEmpty();
 
-        if (hasPts) {
-            throw new UnsupportedOperationException(
-                    "Point/ROI transformation is not yet supported by ApposeTransformixTask. " +
-                    "Use DefaultTransformixTask (CLI) for point transformations.");
-        }
-
-        if (!hasImage) {
+        if (!hasImage && !hasPts) {
             throw new IllegalArgumentException(
-                    "No image provided for transformation. Set an image path in TransformixTaskSettings.");
+                    "No image or points provided for transformation. " +
+                    "Set an image or points path in TransformixTaskSettings.");
         }
 
-        imagePath = imagePath.replace("\\", "/");
+        Service python = ApposeElastixTask.getElastixApposeService();
+        final Map<String, Object> inputs = new HashMap<>();
+        inputs.put("transform_file", transformFile);
+        inputs.put("output_folder", outputFolder);
+        inputs.put("n_threads", nThreads);
 
-        // --- Build the Appose environment ---
-        /*final Environment env = Appose
-                .pixi()
-                .channels("conda-forge")
-                .conda("appose", "python==3.11", "numpy")
-                .pypi("itk-elastix")
-                .name("itk-elastix-v0")
-                .logDebug()
-                .build();*/
+        String script;
+        if (hasImage) {
+            inputs.put("image_path", imagePath.replace("\\", "/"));
+            script = getImageScript();
+        } else {
+            inputs.put("pts_file", ptsPath.replace("\\", "/"));
+            script = getPointsScript();
+        }
 
-        // --- Run transformation in Python ---
-        //try (
-            Service python = ApposeElastixTask.getElastixApposeService();//env.python().init(callImports());// {
-            final Map<String, Object> inputs = new HashMap<>();
-            inputs.put("image_path", imagePath);
-            inputs.put("transform_file", transformFile);
-            inputs.put("output_folder", outputFolder);
-            inputs.put("n_threads", nThreads);
+        final Service.Task task = python.task(script, inputs);
+        if (settings.verbose) {
+            task.listen(evt -> System.out.println("[itk-transformix] " + evt.message));
+        }
+        task.start();
+        task.waitFor();
 
-            final Service.Task task = python.task(getScript(), inputs);
-            if (settings.verbose) {
-                task.listen(evt -> System.out.println("[itk-transformix] " + evt.message));
-            }
-            task.start();
-            task.waitFor();
-
-            if (task.status != Service.TaskStatus.COMPLETE) {
-                throw new RuntimeException("itk-transformix transformation failed: " + task.error);
-            }
-        //}
+        if (task.status != Service.TaskStatus.COMPLETE) {
+            throw new RuntimeException("itk-transformix transformation failed: " + task.error);
+        }
     }
 
-    private static String callImports() {
-        return ""
-                + "import itk\n"
-                + "import os\n";
-    }
 
-    private static String getScript() {
+    private static String loadParamsSnippet() {
         return ""
                 + "task.update('Loading transform parameters...')\n"
                 + "param_object = itk.ParameterObject.New()\n"
                 + "param_object.ReadParameterFile(transform_file)\n"
                 + "\n"
-                // Override ResultImagePixelType to float for consistency
                 + "for i in range(param_object.GetNumberOfParameterMaps()):\n"
                 + "    pm = param_object.GetParameterMap(i)\n"
                 + "    pm['ResultImagePixelType'] = ['float']\n"
                 + "    if n_threads > 0:\n"
                 + "        pm['NumberOfThreads'] = [str(n_threads)]\n"
                 + "    param_object.SetParameterMap(i, pm)\n"
-                + "\n"
+                + "\n";
+    }
+
+    private static String getImageScript() {
+        return loadParamsSnippet()
                 + "task.update('Loading image...')\n"
                 + "moving = itk.imread(image_path, itk.F)\n"
                 + "\n"
@@ -114,7 +95,22 @@ public class ApposeTransformixTask implements TransformixTask {
                 + "task.update('done.')\n";
     }
 
-    static volatile Service CACHED_SERVICE = null;
-
+    private static String getPointsScript() {
+        return loadParamsSnippet()
+                + "import numpy as np\n"
+                + "\n"
+                // Create a small dummy image — transformix_filter requires a moving image
+                + "dummy = itk.image_from_array(np.zeros((10, 10), dtype=np.float32))\n"
+                + "\n"
+                + "task.update(f'Transforming points from {pts_file}...')\n"
+                + "result = itk.transformix_filter(\n"
+                + "    dummy,\n"
+                + "    param_object,\n"
+                + "    fixed_point_set_file_name=pts_file,\n"
+                + "    output_directory=output_folder,\n"
+                + ")\n"
+                + "\n"
+                + "task.update('done.')\n";
+    }
 
 }
