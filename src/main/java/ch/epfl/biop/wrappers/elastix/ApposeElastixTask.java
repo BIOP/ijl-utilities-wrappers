@@ -21,8 +21,8 @@ import java.util.function.Supplier;
  * <p>The output contract is identical to the CLI version: after {@link #run}, the output
  * folder contains {@code TransformParameters.0.txt}, {@code TransformParameters.1.txt}, etc.</p>
  *
- * <p><b>Current limitation:</b> multi-channel registration (multiple fixed/moving images)
- * is not yet supported. Single-channel only for now.</p>
+ * <p>Supports multi-channel registration: when multiple fixed/moving images are provided,
+ * they are passed to itk-elastix via {@code ElastixRegistrationMethod.SetFixedImage(img, index)}.</p>
  */
 public class ApposeElastixTask implements ElastixTask {
 
@@ -40,12 +40,6 @@ public class ApposeElastixTask implements ElastixTask {
             movingImagePaths.add(s.get().replace("\\", "/"));
         }
 
-        if (fixedImagePaths.size() > 1 || movingImagePaths.size() > 1) {
-            throw new UnsupportedOperationException(
-                    "Multi-channel registration is not yet supported by ApposeElastixTask. " +
-                    "Use DefaultElastixTask (CLI) for multi-channel images.");
-        }
-
         List<String> parameterFiles = new ArrayList<>();
         for (Supplier<String> s : settings.transformationParameterPathSupplier) {
             parameterFiles.add(s.get().replace("\\", "/"));
@@ -60,27 +54,25 @@ public class ApposeElastixTask implements ElastixTask {
         int nThreads = settings.nThreads;
 
         // --- Run registration in Python ---
-        //try () {
-            Service python = getElastixApposeService();
-            final Map<String, Object> inputs = new HashMap<>();
-            inputs.put("fixed_image_path", fixedImagePaths.get(0));
-            inputs.put("moving_image_path", movingImagePaths.get(0));
-            inputs.put("parameter_files", parameterFiles);
-            inputs.put("output_folder", outputFolder);
-            inputs.put("initial_transform_file", initialTransformFile);
-            inputs.put("n_threads", nThreads);
+        Service python = getElastixApposeService();
+        final Map<String, Object> inputs = new HashMap<>();
+        inputs.put("fixed_image_paths", fixedImagePaths);
+        inputs.put("moving_image_paths", movingImagePaths);
+        inputs.put("parameter_files", parameterFiles);
+        inputs.put("output_folder", outputFolder);
+        inputs.put("initial_transform_file", initialTransformFile);
+        inputs.put("n_threads", nThreads);
 
-            final Service.Task task = python.task(getScript(), inputs);
-            if (settings.verbose) {
-                task.listen(evt -> System.out.println("[itk-elastix] " + evt.message));
-            }
-            task.start();
-            task.waitFor();
+        final Service.Task task = python.task(getScript(), inputs);
+        if (settings.verbose) {
+            task.listen(evt -> System.out.println("[itk-elastix] " + evt.message));
+        }
+        task.start();
+        task.waitFor();
 
-            if (task.status != Service.TaskStatus.COMPLETE) {
-                throw new RuntimeException("itk-elastix registration failed: " + task.error);
-            }
-        //}
+        if (task.status != Service.TaskStatus.COMPLETE) {
+            throw new RuntimeException("itk-elastix registration failed: " + task.error);
+        }
     }
 
     private static String callImports() {
@@ -94,9 +86,10 @@ public class ApposeElastixTask implements ElastixTask {
                 + "import shutil\n"
                 + "import tempfile\n"
                 + "\n"
-                + "task.update('Loading images...')\n"
-                + "fixed = itk.imread(fixed_image_path, itk.F)\n"
-                + "moving = itk.imread(moving_image_path, itk.F)\n"
+                + "task.update(f'Loading {len(fixed_image_paths)} fixed and {len(moving_image_paths)} moving image(s)...')\n"
+                + "fixed_images = [itk.imread(p, itk.F) for p in fixed_image_paths]\n"
+                + "moving_images = [itk.imread(p, itk.F) for p in moving_image_paths]\n"
+                + "multi_channel = len(fixed_images) > 1\n"
                 + "\n"
                 // Run each registration stage separately, using a temp subdirectory per stage
                 // so itk-elastix doesn't overwrite previous results.
@@ -116,18 +109,38 @@ public class ApposeElastixTask implements ElastixTask {
                 // Use a temp directory for this stage's output
                 + "    stage_dir = tempfile.mkdtemp(prefix=f'elastix_stage{stage_idx}_')\n"
                 + "\n"
-                + "    task.update(f'Stage {stage_idx}: running registration...')\n"
-                + "    kwargs = dict(\n"
-                + "        fixed_image=fixed,\n"
-                + "        moving_image=moving,\n"
-                + "        parameter_object=param_obj,\n"
-                + "        output_directory=stage_dir,\n"
-                + "        log_to_console=False\n"
-                + "    )\n"
-                + "    if prev_transform_path is not None:\n"
-                + "        kwargs['initial_transform_parameter_file_name'] = prev_transform_path\n"
+                + "    task.update(f'Stage {stage_idx}: running registration ({len(fixed_images)} channel(s))...')\n"
                 + "\n"
-                + "    result_image, result_params = itk.elastix_registration_method(**kwargs)\n"
+                // Single-channel: use the simple function API
+                + "    if not multi_channel:\n"
+                + "        kwargs = dict(\n"
+                + "            fixed_image=fixed_images[0],\n"
+                + "            moving_image=moving_images[0],\n"
+                + "            parameter_object=param_obj,\n"
+                + "            output_directory=stage_dir,\n"
+                + "            log_to_console=False\n"
+                + "        )\n"
+                + "        if prev_transform_path is not None:\n"
+                + "            kwargs['initial_transform_parameter_file_name'] = prev_transform_path\n"
+                + "        result_image, result_params = itk.elastix_registration_method(**kwargs)\n"
+                + "\n"
+                // Multi-channel: use ElastixRegistrationMethod with SetFixedImage + AddFixedImage
+                + "    else:\n"
+                + "        ImageType = type(fixed_images[0])\n"
+                + "        erm = itk.ElastixRegistrationMethod[ImageType, ImageType].New()\n"
+                + "        erm.SetFixedImage(fixed_images[0])\n"
+                + "        for fimg in fixed_images[1:]:\n"
+                + "            erm.AddFixedImage(fimg)\n"
+                + "        erm.SetMovingImage(moving_images[0])\n"
+                + "        for mimg in moving_images[1:]:\n"
+                + "            erm.AddMovingImage(mimg)\n"
+                + "        erm.SetParameterObject(param_obj)\n"
+                + "        erm.SetOutputDirectory(stage_dir)\n"
+                + "        erm.SetLogToConsole(False)\n"
+                + "        if prev_transform_path is not None:\n"
+                + "            erm.SetInitialTransformParameterFileName(prev_transform_path)\n"
+                + "        erm.UpdateLargestPossibleRegion()\n"
+                + "        result_params = erm.GetTransformParameterObject()\n"
                 + "\n"
                 // Move TransformParameters.0.txt from stage temp dir to final location
                 + "    src = os.path.join(stage_dir, 'TransformParameters.0.txt')\n"
