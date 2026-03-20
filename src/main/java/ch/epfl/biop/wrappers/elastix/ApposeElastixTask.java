@@ -1,6 +1,7 @@
 package ch.epfl.biop.wrappers.elastix;
 
 import org.apposed.appose.Appose;
+import org.apposed.appose.BuildException;
 import org.apposed.appose.Environment;
 import org.apposed.appose.Service;
 
@@ -58,18 +59,9 @@ public class ApposeElastixTask implements ElastixTask {
 
         int nThreads = settings.nThreads;
 
-        // --- Build the Appose environment ---
-        final Environment env = Appose
-                .pixi()
-                .channels("conda-forge")
-                .conda("appose", "python==3.11", "numpy")
-                .pypi("itk-elastix")
-                .name("itk-elastix-v0")
-                .logDebug()
-                .build();
-
         // --- Run registration in Python ---
-        try (Service python = env.python().init(callImports())) {
+        //try () {
+            Service python = getElastixApposeService();
             final Map<String, Object> inputs = new HashMap<>();
             inputs.put("fixed_image_path", fixedImagePaths.get(0));
             inputs.put("moving_image_path", movingImagePaths.get(0));
@@ -88,7 +80,7 @@ public class ApposeElastixTask implements ElastixTask {
             if (task.status != Service.TaskStatus.COMPLETE) {
                 throw new RuntimeException("itk-elastix registration failed: " + task.error);
             }
-        }
+        //}
     }
 
     private static String callImports() {
@@ -171,5 +163,25 @@ public class ApposeElastixTask implements ElastixTask {
                 + "    task.update(f'Stage {stage_idx}: wrote {os.path.basename(dst)}')\n"
                 + "\n"
                 + "task.update('done.')\n";
+    }
+
+    static volatile Service CACHED_SERVICE = null;
+
+    public synchronized static Service getElastixApposeService() throws BuildException {
+        // Already exists ? Reuse it.
+        if (CACHED_SERVICE!=null) return CACHED_SERVICE;
+
+        // --- Build the Appose environment ---
+        final Environment env = Appose
+                .pixi()
+                .channels("conda-forge")
+                .conda("appose", "python==3.11", "numpy")
+                .pypi("itk-elastix")
+                .name("itk-elastix-v0")
+                .logDebug()
+                .build();
+
+        CACHED_SERVICE = env.python().init(callImports());
+        return CACHED_SERVICE;
     }
 }

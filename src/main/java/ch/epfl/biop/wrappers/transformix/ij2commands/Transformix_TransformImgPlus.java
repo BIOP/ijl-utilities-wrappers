@@ -2,6 +2,7 @@ package ch.epfl.biop.wrappers.transformix.ij2commands;
 
 import ch.epfl.biop.fiji.imageplusutils.ImagePlusFunctions;
 import ch.epfl.biop.wrappers.elastix.RegisterHelper;
+import ch.epfl.biop.wrappers.transformix.ApposeTransformixTask;
 import ch.epfl.biop.wrappers.transformix.DefaultTransformixTask;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
@@ -34,7 +35,8 @@ public class Transformix_TransformImgPlus implements Command  {
 					TransformHelper th = new TransformHelper();
 					th.setTransformFile(rh);
 					th.setImage(imp);
-					th.transform(new DefaultTransformixTask());
+					//th.transform(new DefaultTransformixTask());
+                    th.transform(new ApposeTransformixTask());
 					return ((ImagePlus) (th.getTransformedImage().to(ImagePlus.class)));
 				}
 				,img_in);

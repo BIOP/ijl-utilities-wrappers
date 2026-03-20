@@ -1,7 +1,4 @@
-import ch.epfl.biop.wrappers.elastix.ApposeElastixTask;
-import ch.epfl.biop.wrappers.elastix.DefaultElastixTask;
-import ch.epfl.biop.wrappers.elastix.RegParamRigid_Default;
-import ch.epfl.biop.wrappers.elastix.RegisterHelper;
+import ch.epfl.biop.wrappers.elastix.*;
 import ch.epfl.biop.wrappers.transformix.DefaultTransformixTask;
 import ch.epfl.biop.wrappers.transformix.TransformHelper;
 
@@ -36,6 +33,7 @@ public class DemoApposeToCLITransformix {
         rh.setMovingImage(movingImage.getAbsolutePath());
         rh.verbose();
         rh.addTransform(new RegParamRigid_Default());
+        rh.addTransform(new RegParamAffine_Fast());
         rh.align(new ApposeElastixTask());
         //rh.align(new DefaultElastixTask());
 
