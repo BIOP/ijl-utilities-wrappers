@@ -1,0 +1,27 @@
+(CenterOfRotationPoint 129.42570948674643 124.699798529275)
+(Direction 1 0 0 1)
+(FixedImageDimension 2)
+(FixedInternalImagePixelType "float")
+(HowToCombineTransforms "Compose")
+(Index 0 0)
+(InitialTransformParameterFileName "C:/Users/chiarutt/AppData/Local/Temp/reg-out11631910095389753003\TransformParameters.0.txt")
+(MovingImageDimension 2)
+(MovingInternalImagePixelType "float")
+(NumberOfParameters 6)
+(Origin 0 0)
+(Size 256 254)
+(Spacing 1 1)
+(Transform "AffineTransform")
+(TransformParameters 1.0418541800464103 0.031199704611102885 -0.027062749271872803 1.0536356978337493 -0.7892785816424984 -0.44491562265137136)
+(UseDirectionCosines "true")
+
+// ResampleInterpolator specific
+(FinalBSplineInterpolationOrder 3)
+(ResampleInterpolator "FinalBSplineInterpolator")
+
+// Resampler specific
+(CompressResultImage "false")
+(DefaultPixelValue 0)
+(Resampler "DefaultResampler")
+(ResultImageFormat "tif")
+(ResultImagePixelType "float")
