@@ -105,13 +105,24 @@ public class ApposeElastixTask implements ElastixTask {
     private static String callImports() {
         return ""
                 + "import itk\n"
-                + "import os\n";
+                + "import os\n"
+                + "import sys\n";
     }
 
     private static String getScript() {
         return ""
                 + "import shutil\n"
                 + "import tempfile\n"
+                + "\n"
+                // Report GIL status: sys._is_gil_enabled() is only available in Python 3.13+
+                // Free-threaded Python (GIL disabled) requires: python-freethreading conda package
+                // + PYTHON_GIL=0 env var at launch. Note: itk-elastix PyPI wheels may not yet
+                // provide cp313t (free-threaded) builds; ITK C++ already releases the GIL anyway.
+                + "try:\n"
+                + "    gil_active = sys._is_gil_enabled()\n"
+                + "except AttributeError:\n"
+                + "    gil_active = True  # Python < 3.13: GIL always active\n"
+                + "task.update(f'GIL active: {gil_active}')\n"
                 + "\n"
                 + "task.update(f'Loading {len(fixed_image_paths)} fixed and {len(moving_image_paths)} moving image(s)...')\n"
                 + "fixed_images = [itk.imread(p, itk.F) for p in fixed_image_paths]\n"
@@ -212,6 +223,10 @@ public class ApposeElastixTask implements ElastixTask {
         if (CACHED_SERVICE!=null) return CACHED_SERVICE;
 
         // --- Build the Appose environment ---
+        // Python 3.13+ is required for sys._is_gil_enabled() and the free-threaded build option.
+        // To actually disable the GIL, also add "python-freethreading" to conda() and set
+        // PYTHON_GIL=0 in the environment before launching — but itk-elastix PyPI wheels
+        // must provide cp313t builds for full free-threaded support.
         final Environment env = Appose
                 .pixi()
                 .channels("conda-forge")
