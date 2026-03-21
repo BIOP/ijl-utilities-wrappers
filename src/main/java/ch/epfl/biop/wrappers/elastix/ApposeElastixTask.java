@@ -106,7 +106,8 @@ public class ApposeElastixTask implements ElastixTask {
         return ""
                 + "import itk\n"
                 + "import os\n"
-                + "import sys\n";
+                + "import sys\n"
+                + "print(f'[itk-elastix] Python {sys.version}, cpu_count={os.cpu_count()}')\n";
     }
 
     private static String getScript() {
@@ -139,10 +140,11 @@ public class ApposeElastixTask implements ElastixTask {
                 + "    param_obj.ReadParameterFile(pf)\n"
                 + "\n"
                 + "    pm = param_obj.GetParameterMap(0)\n"
-                + "    if n_threads > 0:\n"
-                + "        pm['MaximumNumberOfSamplingAttempts'] = ['5']\n"
-                + "        pm['NumberOfThreads'] = [str(n_threads)]\n"
+                + "    effective_threads = n_threads if n_threads > 0 else os.cpu_count()\n"
+                + "    pm['NumberOfThreads'] = [str(effective_threads)]\n"
+                + "    pm['MaximumNumberOfSamplingAttempts'] = ['5']\n"
                 + "    param_obj.SetParameterMap(0, pm)\n"
+                + "    task.update(f'Stage {stage_idx}: using {effective_threads} thread(s)')\n"
                 + "\n"
                 // Use a temp directory for this stage's output
                 + "    stage_dir = tempfile.mkdtemp(prefix=f'elastix_stage{stage_idx}_')\n"
