@@ -56,7 +56,6 @@ public class ApposeElastixTask implements ElastixTask {
         int nThreads = settings.nThreads;
 
         // --- Run registration in Python ---
-        Service python = getElastixApposeService();
         final Map<String, Object> inputs = new HashMap<>();
         inputs.put("fixed_image_paths", fixedImagePaths);
         inputs.put("moving_image_paths", movingImagePaths);
@@ -67,37 +66,15 @@ public class ApposeElastixTask implements ElastixTask {
 
         // Because of https://github.com/apposed/appose/issues/15 in windows
 
-        int nAttempt = 0;
-        boolean success = false;
+        try (Service python = getElastixApposeService().init(callImports())) {
 
-        while ((!success)&&(nAttempt<MAX_TASK_ATTEMPTS)) {
-            try {
+            final Service.Task task = python.task(getScript(), inputs);
 
-                final Service.Task task = python.task(getScript(), inputs);
-
-                if (settings.verbose) {
-                    task.listen(evt -> System.out.println("[itk-elastix] " + evt.message));
-                }
-                task.start();
-                task.waitFor();
-                if (task.status != Service.TaskStatus.COMPLETE) {
-                    nAttempt++;
-                    if (nAttempt == MAX_TASK_ATTEMPTS) {
-                        throw new RuntimeException("itk-elastix registration failed: " + task.error);
-                    }
-                } else {
-                    success = true;
-                }
-            } catch (Exception e) {
-                nAttempt++;
-                if (nAttempt == MAX_TASK_ATTEMPTS) {
-                    throw e;// new RuntimeException("itk-elastix registration failed: " + task.error);
-                }
-
+            if (settings.verbose) {
+                task.listen(evt -> System.out.println("[itk-elastix] " + evt.message));
             }
-        }
-        if (success) {
-            System.out.println("Registration ok on attempt "+nAttempt);
+            task.start();
+            task.waitFor();
         }
 
     }
@@ -105,16 +82,31 @@ public class ApposeElastixTask implements ElastixTask {
     private static String callImports() {
         return ""
                 + "import itk\n"
-                + "import os\n"
-                + "import sys\n"
-                + "print(f'[itk-elastix] Python {sys.version}, cpu_count={os.cpu_count()}')\n";
+                + "import os\n";
     }
 
     private static String getScript() {
         return ""
                 + "import shutil\n"
                 + "import tempfile\n"
+                + "import sys\n"
+                + "import os\n"
+                + "import itk\n"
                 + "\n"
+                // Report both logical and physical core counts.
+                // psutil.cpu_count(logical=False) gives physical cores; os.cpu_count() includes HT.
+                // On an HT system, os.cpu_count() == 2× physical, and passing all logical CPUs to
+                // ITK's thread pool can hurt BSpline performance (cache thrashing on dense Jacobian
+                // accumulation). We default to physical cores if psutil is available.
+                + "try:\n"
+                + "    import psutil as _psutil\n"
+                + "    _physical_cores = _psutil.cpu_count(logical=False) or os.cpu_count()\n"
+                + "except ImportError:\n"
+                + "    _physical_cores = None\n"
+                + "print(f'[itk-elastix] Python {sys.version}, logical_cpus={os.cpu_count()}, physical_cores={_physical_cores}')\n"
+                + "try:\n"
+                + "    import itk_elastix; print(f'[itk-elastix] itk-elastix pkg version: {itk_elastix.__version__}')\n"
+                + "except Exception: pass\n"
                 // Report GIL status: sys._is_gil_enabled() is only available in Python 3.13+
                 // Free-threaded Python (GIL disabled) requires: python-freethreading conda package
                 // + PYTHON_GIL=0 env var at launch. Note: itk-elastix PyPI wheels may not yet
@@ -140,47 +132,71 @@ public class ApposeElastixTask implements ElastixTask {
                 + "    param_obj.ReadParameterFile(pf)\n"
                 + "\n"
                 + "    pm = param_obj.GetParameterMap(0)\n"
-                + "    effective_threads = n_threads if n_threads > 0 else os.cpu_count()\n"
+                // Use physical cores (not HT logical CPUs) to match what 'elastix -threads 0' does.
+                // On a hyperthreaded system os.cpu_count() == 2× physical, and feeding all logical
+                // CPUs to ITK's thread pool can hurt BSpline Jacobian accumulation (cache thrashing).
+                // _physical_cores is set in callImports() via psutil; falls back to os.cpu_count().
+                + "    _default_threads = _physical_cores if _physical_cores else os.cpu_count()\n"
+                + "    effective_threads = n_threads if n_threads > 0 else _default_threads\n"
                 + "    pm['NumberOfThreads'] = [str(effective_threads)]\n"
-                + "    pm['MaximumNumberOfSamplingAttempts'] = ['5']\n"
+                // Do NOT add MaximumNumberOfSamplingAttempts here — CLI doesn't set it either,
+                // and we want the two paths to be as identical as possible.
                 + "    param_obj.SetParameterMap(0, pm)\n"
                 + "    task.update(f'Stage {stage_idx}: using {effective_threads} thread(s)')\n"
+                // Dump the full parameter map so we can verify itk-elastix sees the same params as the CLI.
+                + "    task.update(f'Stage {stage_idx}: param dump: {dict(pm)}')\n"
                 + "\n"
                 // Use a temp directory for this stage's output
                 + "    stage_dir = tempfile.mkdtemp(prefix=f'elastix_stage{stage_idx}_')\n"
                 + "\n"
                 + "    task.update(f'Stage {stage_idx}: running registration ({len(fixed_images)} channel(s))...')\n"
                 + "\n"
-                // Single-channel: use the simple function API
-                + "    if not multi_channel:\n"
-                + "        kwargs = dict(\n"
-                + "            fixed_image=fixed_images[0],\n"
-                + "            moving_image=moving_images[0],\n"
-                + "            parameter_object=param_obj,\n"
-                + "            output_directory=stage_dir,\n"
-                + "            log_to_console=False\n"
-                + "        )\n"
-                + "        if prev_transform_path is not None:\n"
-                + "            kwargs['initial_transform_parameter_file_name'] = prev_transform_path\n"
-                + "        result_image, result_params = itk.elastix_registration_method(**kwargs)\n"
-                + "\n"
-                // Multi-channel: use ElastixRegistrationMethod with SetFixedImage + AddFixedImage
-                + "    else:\n"
-                + "        ImageType = type(fixed_images[0])\n"
-                + "        erm = itk.ElastixRegistrationMethod[ImageType, ImageType].New()\n"
+                // Use the object API for all cases (single- and multi-channel alike).
+                // SetLogToFile(True) writes elastix.log to stage_dir — read it after registration
+                // to see BSpline grid schedule, per-level iteration counts, and any warnings.
+                + "    ImageType = type(fixed_images[0])\n"
+                + "    erm = itk.ElastixRegistrationMethod[ImageType, ImageType].New()\n"
+                + "    if multi_channel:\n"
                 + "        erm.SetFixedImage(fixed_images[0])\n"
                 + "        for fimg in fixed_images[1:]:\n"
                 + "            erm.AddFixedImage(fimg)\n"
                 + "        erm.SetMovingImage(moving_images[0])\n"
                 + "        for mimg in moving_images[1:]:\n"
                 + "            erm.AddMovingImage(mimg)\n"
-                + "        erm.SetParameterObject(param_obj)\n"
-                + "        erm.SetOutputDirectory(stage_dir)\n"
-                + "        erm.SetLogToConsole(False)\n"
-                + "        if prev_transform_path is not None:\n"
-                + "            erm.SetInitialTransformParameterFileName(prev_transform_path)\n"
-                + "        erm.UpdateLargestPossibleRegion()\n"
-                + "        result_params = erm.GetTransformParameterObject()\n"
+                + "    else:\n"
+                + "        erm.SetFixedImage(fixed_images[0])\n"
+                + "        erm.SetMovingImage(moving_images[0])\n"
+                + "    erm.SetParameterObject(param_obj)\n"
+                + "    erm.SetOutputDirectory(stage_dir)\n"
+                + "    erm.SetLogToConsole(False)\n"
+                // SetLogToFile writes stage_dir/elastix.log — captured below for diagnostics
+                + "    erm.SetLogToFile(True)\n"
+                + "    if prev_transform_path is not None:\n"
+                + "        erm.SetInitialTransformParameterFileName(prev_transform_path)\n"
+                + "    import time as _time\n"
+                + "    _t0 = _time.perf_counter()\n"
+                + "    erm.UpdateLargestPossibleRegion()\n"
+                + "    _dt = _time.perf_counter() - _t0\n"
+                + "    task.update(f'Stage {stage_idx}: UpdateLargestPossibleRegion took {_dt:.1f}s')\n"
+                + "    result_params = erm.GetTransformParameterObject()\n"
+                + "\n"
+                // Print BSpline grid dimensions from the output transform to verify the grid
+                // that itk-elastix actually built (should be ~12×12 for 256px / 20-voxel spacing).
+                + "    try:\n"
+                + "        out_pm = result_params.GetParameterMap(0)\n"
+                + "        task.update(f'Stage {stage_idx}: result GridSize={out_pm.get(\"GridSize\",\"?\")}')\n"
+                + "        task.update(f'Stage {stage_idx}: result GridSpacing={out_pm.get(\"GridSpacing\",\"?\")}')\n"
+                + "    except Exception as _e:\n"
+                + "        task.update(f'Stage {stage_idx}: could not read result grid info: {_e}')\n"
+                + "\n"
+                // Capture the elastix log (contains BSpline grid schedule, per-level timing,
+                // iteration counts, and any warnings about parameter interpretation).
+                + "    _log_path = os.path.join(stage_dir, 'elastix.log')\n"
+                + "    if os.path.exists(_log_path):\n"
+                + "        with open(_log_path, 'r', errors='replace') as _lf:\n"
+                + "            task.update(f'Stage {stage_idx}: elastix.log:\\n' + _lf.read())\n"
+                + "    else:\n"
+                + "        task.update(f'Stage {stage_idx}: elastix.log not found in {stage_dir}')\n"
                 + "\n"
                 // Move TransformParameters.0.txt from stage temp dir to final location
                 + "    src = os.path.join(stage_dir, 'TransformParameters.0.txt')\n"
@@ -218,27 +234,21 @@ public class ApposeElastixTask implements ElastixTask {
                 + "task.update('done.')\n";
     }
 
-    static volatile Service CACHED_SERVICE = null;
+    static volatile Environment CACHED_ENV = null;
 
     public synchronized static Service getElastixApposeService() throws BuildException {
-        // Already exists ? Reuse it.
-        if (CACHED_SERVICE!=null) return CACHED_SERVICE;
 
-        // --- Build the Appose environment ---
-        // Python 3.13+ is required for sys._is_gil_enabled() and the free-threaded build option.
-        // To actually disable the GIL, also add "python-freethreading" to conda() and set
-        // PYTHON_GIL=0 in the environment before launching — but itk-elastix PyPI wheels
-        // must provide cp313t builds for full free-threaded support.
-        final Environment env = Appose
+        if (CACHED_ENV == null) CACHED_ENV = Appose
                 .pixi()
                 .channels("conda-forge")
-                .conda("appose", "python==3.11", "numpy")
-                .pypi("itk-elastix")
-                .name("itk-elastix-v0")
+                .conda("appose", "python==3.11", "numpy", "psutil")
+                .pypi("itk-elastix==0.21.0")
+                .env("NSLOTS", "1") // See https://discourse.itk.org/t/8x-slower-registration-with-itk-elastix-python-api-vs-elastix-cli-minimal-reproducible-example/7736/15
+                .env("ITK_GLOBAL_DEFAULT_THREADER", "Platform")
+                .name("itk-elastix-v2")   // bump name to force rebuild after psutil addition
                 .logDebug()
                 .build();
 
-        CACHED_SERVICE = env.python().init(callImports());
-        return CACHED_SERVICE;
+        return CACHED_ENV.python();
     }
 }

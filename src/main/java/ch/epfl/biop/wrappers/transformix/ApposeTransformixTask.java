@@ -5,8 +5,7 @@ import org.apposed.appose.Service;
 
 import java.util.HashMap;
 import java.util.Map;
-
-import static ch.epfl.biop.wrappers.elastix.ApposeElastixTask.MAX_TASK_ATTEMPTS;
+import static ch.epfl.biop.wrappers.elastix.ApposeElastixTask.getElastixApposeService;
 
 /**
  * Appose-based implementation of {@link TransformixTask} using itk-elastix.
@@ -39,10 +38,6 @@ public class ApposeTransformixTask implements TransformixTask {
                     "Set an image or points path in TransformixTaskSettings.");
         }
 
-        int nAttempt = 0;
-        boolean success = false;
-
-        Service python = ApposeElastixTask.getElastixApposeService();
         final Map<String, Object> inputs = new HashMap<>();
         inputs.put("transform_file", transformFile);
         inputs.put("output_folder", outputFolder);
@@ -57,33 +52,14 @@ public class ApposeTransformixTask implements TransformixTask {
             script = getPointsScript();
         }
 
-        while ((!success)&&(nAttempt<MAX_TASK_ATTEMPTS)) {
-            try {
-
-                final Service.Task task = python.task(script, inputs);
-                if (settings.verbose) {
-                    task.listen(evt -> System.out.println("[itk-transformix] " + evt.message));
-                }
-                task.start();
-                task.waitFor();
-                if (task.status != Service.TaskStatus.COMPLETE) {
-                    nAttempt++;
-                    if (nAttempt == MAX_TASK_ATTEMPTS) {
-                        throw new RuntimeException("itk-elastix registration failed: " + task.error);
-                    }
-                } else {
-                    success = true;
-                }
-            } catch (Exception e) {
-                nAttempt++;
-                if (nAttempt == MAX_TASK_ATTEMPTS) {
-                    throw e;// new RuntimeException("itk-elastix registration failed: " + task.error);
-                }
-
+        try (Service python = getElastixApposeService()) {
+            final Service.Task task = python.task(script, inputs);
+            if (settings.verbose) {
+                task.listen(evt -> System.out.println("[itk-transformix] " + evt.message));
             }
-        }
-        if (success) {
-            System.out.println("Registration ok on attempt "+nAttempt);
+            task.start();
+            task.waitFor();
+
         }
     }
 

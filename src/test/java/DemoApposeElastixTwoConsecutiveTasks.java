@@ -73,19 +73,19 @@ public class DemoApposeElastixTwoConsecutiveTasks {
         // ---------------------------------------------------------------
         // Summary table
         // ---------------------------------------------------------------
-        System.out.println("\n╔═══════════════════╦═════════════╦═════════════╦═════════════╗");
-        System.out.println("║                   ║   Affine    ║   BSpline   ║    Total    ║");
-        System.out.println("╠═══════════════════╬═════════════╬═════════════╬═════════════╣");
+        System.out.println("\n╔════════════════════╦═════════════╦═════════════╦═════════════╗");
+        System.out.println("║                    ║   Affine    ║   BSpline   ║    Total    ║");
+        System.out.println("╠════════════════════╬═════════════╬═════════════╬═════════════╣");
         for (int run = 0; run < N_RUNS; run++) {
-            String label = run == 0 ? "Appose run 1 (warm)" : "Appose run " + (run + 1);
+            String label = run == 0 ? "Appose run 1 (warm)" : "Appose run  " + (run + 1);
             printRow(label, apposeTimes[run]);
         }
-        System.out.println("╠═══════════════════╬═════════════╬═════════════╬═════════════╣");
+        System.out.println("╠════════════════════╬═════════════╬═════════════╬═════════════╣");
         for (int run = 0; run < N_RUNS; run++) {
-            String label = run == 0 ? "CLI    run 1 (warm)" : "CLI    run " + (run + 1);
+            String label = run == 0 ? "CLI   run 1 (warm)" : "CLI    run  " + (run + 1);
             printRow(label, cliTimes[run]);
         }
-        System.out.println("╚═══════════════════╩═════════════╩═════════════╩═════════════╝");
+        System.out.println("╚════════════════════╩═════════════╩═════════════╩═════════════╝");
     }
 
     /**
@@ -96,7 +96,7 @@ public class DemoApposeElastixTwoConsecutiveTasks {
     static long[] runSequentialTasks(File fixedImage, File movingImage, ElastixTask task) throws Exception {
 
         // ---- Task 1: affine ----
-        System.out.println("[Task 1] Starting affine registration...");
+        /*System.out.println("[Task 1] Starting affine registration...");
         RegisterHelper rh1 = new RegisterHelper();
         rh1.setFixedImage(fixedImage.getAbsolutePath());
         rh1.setMovingImage(movingImage.getAbsolutePath());
@@ -109,7 +109,7 @@ public class DemoApposeElastixTwoConsecutiveTasks {
 
         String affineTransformFile = rh1.getFinalTransformFile();
         boolean affineOk = new File(affineTransformFile).exists();
-        System.out.printf("[Task 1] Affine done in %d ms — transform exists: %b%n", affineMs, affineOk);
+        System.out.printf("[Task 1] Affine done in %d ms — transform exists: %b%n", affineMs, affineOk);*/
 
         // ---- Task 2: BSpline, initialized from affine result ----
         System.out.println("[Task 2] Starting BSpline registration (reusing service)...");
@@ -117,7 +117,7 @@ public class DemoApposeElastixTwoConsecutiveTasks {
         rh2.setFixedImage(fixedImage.getAbsolutePath());
         rh2.setMovingImage(movingImage.getAbsolutePath());
         rh2.addTransform(new RegParamBSpline_Default());
-        rh2.addInitialTransformFromFilePath(affineTransformFile);
+        //rh2.addInitialTransformFromFilePath(affineTransformFile);
         rh2.verbose();
 
         long t1 = System.currentTimeMillis();
@@ -128,11 +128,11 @@ public class DemoApposeElastixTwoConsecutiveTasks {
         boolean bsplineOk = new File(bsplineTransformFile).exists();
         System.out.printf("[Task 2] BSpline done in %d ms — transform exists: %b%n", bsplineMs, bsplineOk);
 
-        if (!affineOk || !bsplineOk) {
+        if (/*!affineOk ||*/ !bsplineOk) {
             System.err.println("  *** FAILURE: one or both transform files are missing! ***");
         }
 
-        return new long[]{ affineMs, bsplineMs };
+        return new long[]{ 0/*affineMs*/, bsplineMs };
     }
 
     static void printRow(String label, long[] times) {

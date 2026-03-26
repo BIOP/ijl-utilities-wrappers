@@ -35,8 +35,7 @@ public class Transformix_TransformImgPlus implements Command  {
 					TransformHelper th = new TransformHelper();
 					th.setTransformFile(rh);
 					th.setImage(imp);
-					//th.transform(new DefaultTransformixTask());
-                    th.transform(new ApposeTransformixTask());
+					th.transform(new DefaultTransformixTask());
 					return ((ImagePlus) (th.getTransformedImage().to(ImagePlus.class)));
 				}
 				,img_in);

@@ -94,8 +94,7 @@ public class Elastix_Register implements Command {
 			rh.addTransform(rp);
 		}
 		try {
-			//rh.align(new DefaultElastixTask());
-            rh.align(new ApposeElastixTask());
+			rh.align(new DefaultElastixTask());
 			rh.to(RHZipFile.class);
 		} catch (Exception e) {
 			e.printStackTrace();
