@@ -59,22 +59,19 @@ BUILTIN_MODEL_NAMES = {
     "cyto",
     "cyto2",
     "cyto3",
-    from dataclasses import dataclass
-    import datetime
-    from importlib.metadata import PackageNotFoundError, version as package_version
-    import logging
-    import math
-    import multiprocessing
-    import os
-    import pathlib
-    import re
-    import shutil
-    import subprocess
-    import sys
-    import tempfile
-    import threading
-    import webbrowser
-    import xml.etree.ElementTree as ET
+    "nuclei",
+    "livecell",
+    "tissuenet",
+    "tissuenet_cp3",
+    "cpsam",
+}
+
+
+@dataclass
+class LevelInfo:
+    key: str
+    array: object
+    x_factor: float = 1.0
     y_factor: float = 1.0
     z_factor: float = 1.0
     x_um: float | None = None
@@ -374,6 +371,14 @@ def parse_args():
     )
     parser.add_argument("--use_gpu", action="store_true")
     parser.add_argument("--do_3D", action="store_true")
+    parser.add_argument(
+        "--gpu_cpu_split",
+        action="store_true",
+        help=(
+            "Experimental optimization for 3D GPU runs: keep Cellpose network "
+            "inference on the GPU and move mask reconstruction to the CPU."
+        ),
+    )
     parser.add_argument(
         "--cellprob_threshold",
         type=float,
@@ -1395,13 +1400,14 @@ def patch_distributed_segmentation(module):
         test_mode=False,
     ):
         print("RUNNING BLOCK: ", block_index, "\tREGION: ", crop, flush=True)
-        segmentation = module.read_preprocess_and_segment(
+        segmentation = read_preprocess_and_segment(
             input_zarr,
             crop,
             preprocessing_steps,
             model_kwargs,
             eval_kwargs,
             worker_logs_directory,
+            gpu_cpu_split=getattr(module, "_ijl_gpu_cpu_split", False),
         )
         fixed_crop = tuple(
             slice(
@@ -1485,12 +1491,14 @@ def load_distributed_eval(
     open_dask_dashboard=False,
     flow3d_smooth=0.0,
     cellprob_smooth=0.0,
+    gpu_cpu_split=False,
 ):
     patch_zarr_open_for_cellpose()
     import cellpose.contrib.distributed_segmentation as distributed_segmentation
 
     distributed_segmentation._ijl_dask_temp_directory = dask_temp_directory
     distributed_segmentation._ijl_open_dask_dashboard = open_dask_dashboard
+    distributed_segmentation._ijl_gpu_cpu_split = bool(gpu_cpu_split)
     patch_distributed_segmentation(distributed_segmentation)
     patch_cellpose_model_behavior(flow3d_smooth=flow3d_smooth, cellprob_smooth=cellprob_smooth)
     return distributed_segmentation.distributed_eval
@@ -1565,15 +1573,127 @@ def load_distributed_segmentation_module(
     open_dask_dashboard=False,
     flow3d_smooth=0.0,
     cellprob_smooth=0.0,
+    gpu_cpu_split=False,
 ):
     patch_zarr_open_for_cellpose()
     import cellpose.contrib.distributed_segmentation as distributed_segmentation
 
     distributed_segmentation._ijl_dask_temp_directory = dask_temp_directory
     distributed_segmentation._ijl_open_dask_dashboard = open_dask_dashboard
+    distributed_segmentation._ijl_gpu_cpu_split = bool(gpu_cpu_split)
     patch_distributed_segmentation(distributed_segmentation)
     patch_cellpose_model_behavior(flow3d_smooth=flow3d_smooth, cellprob_smooth=cellprob_smooth)
     return distributed_segmentation
+
+
+def apply_preprocessing_steps(image, crop, preprocessing_steps):
+    processed = image
+    for preprocessing_step in preprocessing_steps:
+        preprocessing_step[1]["crop"] = crop
+        processed = preprocessing_step[0](processed, **preprocessing_step[1])
+    return processed
+
+
+def setup_worker_log_file(worker_logs_directory):
+    if worker_logs_directory is None:
+        return None
+
+    worker_name = "single"
+    try:
+        import distributed
+
+        worker_name = distributed.get_worker().name
+    except Exception:
+        pass
+
+    log_file = f"dask_worker_{worker_name}.log"
+    return pathlib.Path(worker_logs_directory).joinpath(log_file)
+
+
+def infer_spatial_shape(image, do_3d):
+    if do_3d:
+        return tuple(int(value) for value in image.shape[:3])
+    return tuple(int(value) for value in image.shape[:2])
+
+
+def resolve_split_niter(model, eval_kwargs):
+    diameter = eval_kwargs.get("diameter")
+    rescale = eval_kwargs.get("rescale")
+    if rescale is None:
+        if diameter is not None and diameter > 0:
+            rescale = model.diam_mean / float(diameter)
+        else:
+            rescale = model.diam_mean / model.diam_labels
+
+    resample = bool(eval_kwargs.get("resample", True))
+    default_niter = 200 if not resample else (1.0 / float(rescale) * 200.0)
+    niter = eval_kwargs.get("niter")
+    if niter in (None, 0):
+        return default_niter
+    return niter
+
+
+def run_gpu_cpu_split_segmentation(model, image, eval_kwargs):
+    import torch
+    from cellpose import dynamics
+
+    inference_eval_kwargs = dict(eval_kwargs)
+    inference_eval_kwargs["compute_masks"] = False
+    _, flows, _ = model.eval(image, **inference_eval_kwargs)
+    dP = np.asarray(flows[1])
+    cellprob = np.asarray(flows[2])
+
+    if getattr(model.device, "type", None) == "cuda":
+        torch.cuda.empty_cache()
+    gc.collect()
+
+    do_3d = bool(eval_kwargs.get("do_3D", False))
+    resize = infer_spatial_shape(image, do_3d)
+    resize = resize if tuple(dP.shape[-len(resize):]) != resize else None
+    masks = dynamics.resize_and_compute_masks(
+        dP,
+        cellprob,
+        niter=resolve_split_niter(model, eval_kwargs),
+        cellprob_threshold=float(eval_kwargs.get("cellprob_threshold", 0.0)),
+        flow_threshold=float(eval_kwargs.get("flow_threshold", 0.4)),
+        interp=bool(eval_kwargs.get("interp", True)),
+        do_3D=do_3d,
+        min_size=int(eval_kwargs.get("min_size", 15)),
+        max_size_fraction=float(eval_kwargs.get("max_size_fraction", 0.4)),
+        resize=resize,
+        device=torch.device("cpu"),
+    )
+    return np.asarray(masks, dtype=np.uint32)
+
+
+def read_preprocess_and_segment(
+    input_zarr,
+    crop,
+    preprocessing_steps,
+    model_kwargs,
+    eval_kwargs,
+    worker_logs_directory,
+    gpu_cpu_split=False,
+):
+    import cellpose.io
+    import cellpose.models
+
+    image = input_zarr[crop]
+    image = apply_preprocessing_steps(image, crop, preprocessing_steps)
+
+    log_file = setup_worker_log_file(worker_logs_directory)
+    cellpose.io.logger_setup(stdout_file_replacement=log_file)
+    model = cellpose.models.CellposeModel(**model_kwargs)
+
+    if (
+        gpu_cpu_split
+        and bool(eval_kwargs.get("do_3D", False))
+        and getattr(model.device, "type", None) == "cuda"
+    ):
+        print("GPU/CPU split enabled: GPU inference, CPU mask reconstruction.")
+        return run_gpu_cpu_split_segmentation(model, image, eval_kwargs)
+
+    return model.eval(image, **eval_kwargs)[0].astype(np.uint32)
 
 
 def run_single_block_eval(
@@ -1595,13 +1715,14 @@ def run_single_block_eval(
 
     print("Single-block plan detected; bypassing distributed stitching/relabeling.")
     print(f"Dask worker logs will be written under: {worker_logs_dir.parent}")
-    labels = distributed_segmentation.read_preprocess_and_segment(
+    labels = read_preprocess_and_segment(
         input_zarr,
         full_crop,
         preprocessing_steps,
         model_kwargs,
         eval_kwargs,
         str(worker_logs_dir),
+        gpu_cpu_split=args.gpu_cpu_split,
     )
     labels = np.asarray(labels, dtype=np.uint32)
     pyramid_arrays, pyramid_pixel_sizes = prepare_output_labels(
@@ -1753,6 +1874,7 @@ def print_plan(
         f"  3D smoothing: flow3D_smooth={args.flow3D_smooth}, "
         f"cellprob_smooth={args.cellprob_smooth}"
     )
+    print(f"  GPU/CPU split: {args.gpu_cpu_split}")
     print(
         f"  Source channels: {channel_plan.source_channel_count} "
         f"(axis={channel_plan.source_channel_axis})"
@@ -1886,6 +2008,7 @@ def main():
             open_dask_dashboard=args.open_dask_dashboard,
             flow3d_smooth=args.flow3D_smooth,
             cellprob_smooth=args.cellprob_smooth,
+            gpu_cpu_split=args.gpu_cpu_split,
         )
 
         if total_blocks <= 1:
