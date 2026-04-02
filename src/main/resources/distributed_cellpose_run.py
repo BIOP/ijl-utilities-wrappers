@@ -23,8 +23,11 @@ Cellpose 3 + Zarr 3 environment:
 """
 
 import argparse
+import gc
 from dataclasses import dataclass
+import datetime
 from importlib.metadata import PackageNotFoundError, version as package_version
+import logging
 import math
 import multiprocessing
 import os
@@ -34,6 +37,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import webbrowser
 import xml.etree.ElementTree as ET
 
@@ -55,19 +59,22 @@ BUILTIN_MODEL_NAMES = {
     "cyto",
     "cyto2",
     "cyto3",
-    "nuclei",
-    "livecell",
-    "tissuenet",
-    "tissuenet_cp3",
-    "cpsam",
-}
-
-
-@dataclass
-class LevelInfo:
-    key: str
-    array: object
-    x_factor: float = 1.0
+    from dataclasses import dataclass
+    import datetime
+    from importlib.metadata import PackageNotFoundError, version as package_version
+    import logging
+    import math
+    import multiprocessing
+    import os
+    import pathlib
+    import re
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+    import threading
+    import webbrowser
+    import xml.etree.ElementTree as ET
     y_factor: float = 1.0
     z_factor: float = 1.0
     x_um: float | None = None
@@ -139,6 +146,65 @@ class SpatialChannelAdapter:
                 source_key.append(spatial_key[spatial_index])
                 spatial_index += 1
         return self.source[tuple(source_key)]
+
+
+class Tee:
+    def __init__(self, stream, file_handle, lock=None):
+        self.stream = stream
+        self.file_handle = file_handle
+        self.lock = lock or threading.Lock()
+
+    def write(self, message):
+        with self.lock:
+            if self.stream:
+                self.stream.write(message)
+                try:
+                    self.stream.flush()
+                except Exception:
+                    pass
+            if self.file_handle:
+                self.file_handle.write(message)
+                self.file_handle.flush()
+
+    def flush(self):
+        with self.lock:
+            if self.stream and hasattr(self.stream, "flush"):
+                self.stream.flush()
+            if self.file_handle and hasattr(self.file_handle, "flush"):
+                self.file_handle.flush()
+
+
+def update_log_handlers():
+    try:
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setStream(sys.stderr)
+
+        for name in logging.Logger.manager.loggerDict:
+            log_instance = logging.getLogger(name)
+            for handler in log_instance.handlers:
+                if isinstance(handler, logging.StreamHandler):
+                    handler.setStream(sys.stderr)
+    except Exception:
+        pass
+
+
+def setup_persistent_process_log(output_tiff):
+    output_directory = pathlib.Path(output_tiff).parent
+    output_directory.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+    log_path = output_directory / f"distributed_cellpose_{timestamp}.log"
+    log_handle = open(log_path, "a", encoding="utf-8")
+    log_lock = threading.Lock()
+
+    sys.stdout = Tee(sys.stdout, log_handle, lock=log_lock)
+    sys.stderr = Tee(sys.stderr, log_handle, lock=log_lock)
+    update_log_handlers()
+
+    print(f"Persistent process log created at: {log_path}")
+    return log_handle, log_path
 
 
 def parse_args():
@@ -1711,64 +1777,53 @@ def print_plan(
 
 def main():
     args = parse_args()
+    log_handle, log_path = setup_persistent_process_log(args.output_tiff)
     resolve_user_channel_args(args)
     resolve_pretrained_model_alias(args)
     resolve_input_source_args(args)
+    try:
+        cp_version = get_installed_version("cellpose")
+        cp_major = int(cp_version.split(".")[0]) if cp_version else 0
+        zarr_version = get_installed_version("zarr")
+        print(f"Detected Cellpose {cp_version}, Zarr {zarr_version}")
 
-    cp_version = get_installed_version("cellpose")
-    cp_major = int(cp_version.split(".")[0]) if cp_version else 0
-    zarr_version = get_installed_version("zarr")
-    print(f"Detected Cellpose {cp_version}, Zarr {zarr_version}")
+        avail_ram = get_available_ram_bytes()
+        print(f"Available RAM: {avail_ram / 1024**3:.2f} GiB")
+        dask_temp_directory = resolve_dask_temp_directory(args)
+        print(f"Dask temp directory: {dask_temp_directory}")
+        if args.use_gpu:
+            gpu_ram = get_available_gpu_bytes()
+            args.processing_memory_budget_bytes = gpu_ram * GPU_RAM_FRACTION
+            print(
+                f"Available GPU RAM: {gpu_ram / 1024**3:.2f} GiB "
+                f"(planning budget {args.processing_memory_budget_bytes / 1024**3:.2f} GiB)"
+            )
 
-    avail_ram = get_available_ram_bytes()
-    print(f"Available RAM: {avail_ram / 1024**3:.2f} GiB")
-    dask_temp_directory = resolve_dask_temp_directory(args)
-    print(f"Dask temp directory: {dask_temp_directory}")
-    if args.use_gpu:
-        gpu_ram = get_available_gpu_bytes()
-        args.processing_memory_budget_bytes = gpu_ram * GPU_RAM_FRACTION
-        print(
-            f"Available GPU RAM: {gpu_ram / 1024**3:.2f} GiB "
-            f"(planning budget {args.processing_memory_budget_bytes / 1024**3:.2f} GiB)"
-        )
+        if args.auto_cluster:
+            auto_configure_cluster(args, avail_ram)
 
-    if args.auto_cluster:
-        auto_configure_cluster(args, avail_ram)
+        root, input_kind, input_pixel_sizes = open_input_source(args)
+        root_pixel_sizes = read_root_pixel_sizes(root)
+        for axis in ("Z", "Y", "X"):
+            if root_pixel_sizes[axis] is None and input_pixel_sizes[axis] is not None:
+                root_pixel_sizes[axis] = input_pixel_sizes[axis]
+        if input_kind == "tiff-folder" and any(value is not None for value in input_pixel_sizes.values()):
+            print(f"TIFF-derived pixel sizes (um): {input_pixel_sizes}")
+        base_pixel_sizes = resolve_base_pixel_sizes(args, root_pixel_sizes)
 
-    root, input_kind, input_pixel_sizes = open_input_source(args)
-    root_pixel_sizes = read_root_pixel_sizes(root)
-    for axis in ("Z", "Y", "X"):
-        if root_pixel_sizes[axis] is None and input_pixel_sizes[axis] is not None:
-            root_pixel_sizes[axis] = input_pixel_sizes[axis]
-    if input_kind == "tiff-folder" and any(value is not None for value in input_pixel_sizes.values()):
-        print(f"TIFF-derived pixel sizes (um): {input_pixel_sizes}")
-    base_pixel_sizes = resolve_base_pixel_sizes(args, root_pixel_sizes)
+        level_infos = build_level_infos(root, root_pixel_sizes)
+        full_diameter_px = resolve_full_resolution_diameter_px(args, base_pixel_sizes)
+        selected_level = select_resolution_level(level_infos, args, full_diameter_px)
+        output_pixel_sizes = resolve_output_pixel_sizes(selected_level, base_pixel_sizes)
 
-    level_infos = build_level_infos(root, root_pixel_sizes)
-    full_diameter_px = resolve_full_resolution_diameter_px(args, base_pixel_sizes)
-    selected_level = select_resolution_level(level_infos, args, full_diameter_px)
-    output_pixel_sizes = resolve_output_pixel_sizes(selected_level, base_pixel_sizes)
+        args.anisotropy = resolve_anisotropy(args, output_pixel_sizes)
+        level_xy_factor = max(selected_level.x_factor or 1.0, selected_level.y_factor or 1.0, 1.0)
+        diameter_px = full_diameter_px / level_xy_factor
 
-    args.anisotropy = resolve_anisotropy(args, output_pixel_sizes)
-    level_xy_factor = max(selected_level.x_factor or 1.0, selected_level.y_factor or 1.0, 1.0)
-    diameter_px = full_diameter_px / level_xy_factor
+        source_array = selected_level.array
+        print(f"Processing array shape: {source_array.shape} dtype: {source_array.dtype}")
 
-    source_array = selected_level.array
-    print(f"Processing array shape: {source_array.shape} dtype: {source_array.dtype}")
-
-    channel_plan = build_channel_plan(source_array, args)
-    blocksize = resolve_blocksize(
-        args,
-        channel_plan.input_zarr,
-        diameter_px,
-        args.anisotropy,
-        avail_ram,
-        channel_plan.processed_channel_count,
-    )
-
-    total_blocks = estimate_total_blocks(channel_plan.input_zarr.shape, blocksize)
-    maybe_reduce_workers_after_blocksize(args, avail_ram, total_blocks)
-    if args.auto_cluster:
+        channel_plan = build_channel_plan(source_array, args)
         blocksize = resolve_blocksize(
             args,
             channel_plan.input_zarr,
@@ -1777,99 +1832,114 @@ def main():
             avail_ram,
             channel_plan.processed_channel_count,
         )
+
         total_blocks = estimate_total_blocks(channel_plan.input_zarr.shape, blocksize)
+        maybe_reduce_workers_after_blocksize(args, avail_ram, total_blocks)
+        if args.auto_cluster:
+            blocksize = resolve_blocksize(
+                args,
+                channel_plan.input_zarr,
+                diameter_px,
+                args.anisotropy,
+                avail_ram,
+                channel_plan.processed_channel_count,
+            )
+            total_blocks = estimate_total_blocks(channel_plan.input_zarr.shape, blocksize)
 
-    model_kwargs = build_model_kwargs(args, cp_major)
-    eval_kwargs = build_eval_kwargs(
-        args,
-        diameter_px,
-        cp_major,
-        channel_plan.processed_channel_count,
-    )
-    cluster_kwargs = {
-        "ncpus": int(args.ncpus),
-        "n_workers": int(args.n_workers),
-        "memory_limit": args.memory_per_worker,
-        "threads_per_worker": 1,
-    }
+        model_kwargs = build_model_kwargs(args, cp_major)
+        eval_kwargs = build_eval_kwargs(
+            args,
+            diameter_px,
+            cp_major,
+            channel_plan.processed_channel_count,
+        )
+        cluster_kwargs = {
+            "ncpus": int(args.ncpus),
+            "n_workers": int(args.n_workers),
+            "memory_limit": args.memory_per_worker,
+            "threads_per_worker": 1,
+        }
 
-    print_plan(
-        args,
-        input_kind,
-        cp_version,
-        selected_level,
-        source_array,
-        channel_plan,
-        diameter_px,
-        output_pixel_sizes,
-        blocksize,
-        total_blocks,
-        model_kwargs,
-        eval_kwargs,
-        cluster_kwargs,
-    )
-
-    if args.dry_run:
-        print("Dry run requested; exiting before Cellpose import.")
-        return
-
-    distributed_segmentation = load_distributed_segmentation_module(
-        dask_temp_directory=dask_temp_directory,
-        open_dask_dashboard=args.open_dask_dashboard,
-        flow3d_smooth=args.flow3D_smooth,
-        cellprob_smooth=args.cellprob_smooth,
-    )
-
-    if total_blocks <= 1:
-        run_single_block_eval(
-            distributed_segmentation,
-            channel_plan.input_zarr,
-            channel_plan.preprocessing_steps,
+        print_plan(
+            args,
+            input_kind,
+            cp_version,
+            selected_level,
+            source_array,
+            channel_plan,
+            diameter_px,
+            output_pixel_sizes,
+            blocksize,
+            total_blocks,
             model_kwargs,
             eval_kwargs,
-            args,
-            level_infos,
-            selected_level,
-            base_pixel_sizes,
-            args.output_tiff,
+            cluster_kwargs,
         )
-    else:
-        distributed_eval = distributed_segmentation.distributed_eval
-        output_dir = pathlib.Path(args.output_tiff).parent
-        write_path = output_dir / "_dist_cellpose_result.zarr"
 
-        print("Starting distributed_eval")
-        try:
-            result_zarr, _ = distributed_eval(
-                input_zarr=channel_plan.input_zarr,
-                blocksize=blocksize,
-                write_path=str(write_path),
-                preprocessing_steps=channel_plan.preprocessing_steps,
-                model_kwargs=model_kwargs,
-                eval_kwargs=eval_kwargs,
-                cluster_kwargs=cluster_kwargs,
-                temporary_directory=str(output_dir),
-            )
+        if args.dry_run:
+            print("Dry run requested; exiting before Cellpose import.")
+            print(f"Dry run completed; persistent process log written to: {log_path}")
+            return
 
-            print(f"Writing OME-TIFF: {args.output_tiff}")
-            labels = np.asarray(result_zarr[...], dtype=np.uint32)
-            pyramid_arrays, pyramid_pixel_sizes = prepare_output_labels(
-                labels,
+        distributed_segmentation = load_distributed_segmentation_module(
+            dask_temp_directory=dask_temp_directory,
+            open_dask_dashboard=args.open_dask_dashboard,
+            flow3d_smooth=args.flow3D_smooth,
+            cellprob_smooth=args.cellprob_smooth,
+        )
+
+        if total_blocks <= 1:
+            run_single_block_eval(
+                distributed_segmentation,
+                channel_plan.input_zarr,
+                channel_plan.preprocessing_steps,
+                model_kwargs,
+                eval_kwargs,
                 args,
                 level_infos,
                 selected_level,
                 base_pixel_sizes,
-            )
-            write_output_tiff_with_pyramid(
                 args.output_tiff,
-                pyramid_arrays,
-                pyramid_pixel_sizes,
             )
-        finally:
-            if write_path.exists():
-                shutil.rmtree(write_path, ignore_errors=True)
+        else:
+            distributed_eval = distributed_segmentation.distributed_eval
+            output_dir = pathlib.Path(args.output_tiff).parent
+            write_path = output_dir / "_dist_cellpose_result.zarr"
 
-    print("Done.")
+            print("Starting distributed_eval")
+            try:
+                result_zarr, _ = distributed_eval(
+                    input_zarr=channel_plan.input_zarr,
+                    blocksize=blocksize,
+                    write_path=str(write_path),
+                    preprocessing_steps=channel_plan.preprocessing_steps,
+                    model_kwargs=model_kwargs,
+                    eval_kwargs=eval_kwargs,
+                    cluster_kwargs=cluster_kwargs,
+                    temporary_directory=str(output_dir),
+                )
+
+                print(f"Writing OME-TIFF: {args.output_tiff}")
+                labels = np.asarray(result_zarr[...], dtype=np.uint32)
+                pyramid_arrays, pyramid_pixel_sizes = prepare_output_labels(
+                    labels,
+                    args,
+                    level_infos,
+                    selected_level,
+                    base_pixel_sizes,
+                )
+                write_output_tiff_with_pyramid(
+                    args.output_tiff,
+                    pyramid_arrays,
+                    pyramid_pixel_sizes,
+                )
+            finally:
+                if write_path.exists():
+                    shutil.rmtree(write_path, ignore_errors=True)
+
+        print("Done.")
+    finally:
+        log_handle.close()
 
 
 if __name__ == "__main__":
