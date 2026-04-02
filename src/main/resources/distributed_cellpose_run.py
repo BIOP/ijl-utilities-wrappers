@@ -28,6 +28,7 @@ from dataclasses import dataclass
 import datetime
 from importlib.metadata import PackageNotFoundError, version as package_version
 import logging
+import inspect
 import math
 import multiprocessing
 import os
@@ -654,7 +655,7 @@ def convert_unit_to_um(value, unit):
     if value is None or unit is None:
         return None
     unit_str = str(unit).strip().lower()
-    if unit_str in {"um", "µm", "micrometer", "micrometers", "micron", "microns"}:
+    if unit_str in {"um", "micrometer", "micrometers", "micron", "microns"}:
         return float(value)
     if unit_str in {"nm", "nanometer", "nanometers"}:
         return float(value) / 1000.0
@@ -721,7 +722,7 @@ def parse_ome_physical_sizes(ome_xml):
 
     for axis in ("X", "Y", "Z"):
         value = pixels_element.attrib.get(f"PhysicalSize{axis}")
-        unit = pixels_element.attrib.get(f"PhysicalSize{axis}Unit", "µm")
+        unit = pixels_element.attrib.get(f"PhysicalSize{axis}Unit", "um")
         if value is not None:
             try:
                 sizes[axis] = convert_unit_to_um(float(value), unit)
@@ -745,7 +746,7 @@ def extract_tiff_folder_pixel_sizes(folder_path, glob_pattern):
                     sizes[axis] = ome_sizes[axis]
 
             imagej_metadata = tif.imagej_metadata or {}
-            imagej_unit = imagej_metadata.get("unit", "µm")
+            imagej_unit = imagej_metadata.get("unit", "um")
             spacing = imagej_metadata.get("spacing")
             if sizes["Z"] is None and spacing is not None:
                 try:
@@ -1633,37 +1634,79 @@ def resolve_split_niter(model, eval_kwargs):
     return niter
 
 
+def build_resize_and_compute_masks_kwargs(dynamics, eval_kwargs, niter, do_3d, device):
+    resize_function = dynamics.resize_and_compute_masks
+    supported_kwargs = getattr(resize_function, "_ijl_supported_kwargs", None)
+    if supported_kwargs is None:
+        supported_kwargs = frozenset(inspect.signature(resize_function).parameters)
+        setattr(resize_function, "_ijl_supported_kwargs", supported_kwargs)
+
+    kwargs = {
+        "niter": niter,
+        "cellprob_threshold": float(eval_kwargs.get("cellprob_threshold", 0.0)),
+        "flow_threshold": float(eval_kwargs.get("flow_threshold", 0.4)),
+        "do_3D": do_3d,
+        "min_size": int(eval_kwargs.get("min_size", 15)),
+        "max_size_fraction": float(eval_kwargs.get("max_size_fraction", 0.4)),
+        "device": device,
+    }
+    if "interp" in supported_kwargs:
+        kwargs["interp"] = bool(eval_kwargs.get("interp", True))
+    return kwargs
+
+
 def run_gpu_cpu_split_segmentation(model, image, eval_kwargs):
     import torch
     from cellpose import dynamics
 
+    do_3d = bool(eval_kwargs.get("do_3D", False))
+    target_shape = infer_spatial_shape(image, do_3d)
     inference_eval_kwargs = dict(eval_kwargs)
     inference_eval_kwargs["compute_masks"] = False
-    _, flows, _ = model.eval(image, **inference_eval_kwargs)
-    dP = np.asarray(flows[1])
-    cellprob = np.asarray(flows[2])
 
-    if getattr(model.device, "type", None) == "cuda":
+    with torch.inference_mode():
+        _, flows, _ = model.eval(image, **inference_eval_kwargs)
+
+    dP = np.ascontiguousarray(np.asarray(flows[1], dtype=np.float32))
+    cellprob = np.ascontiguousarray(np.asarray(flows[2], dtype=np.float32))
+    niter = resolve_split_niter(model, eval_kwargs)
+    device_type = getattr(model.device, "type", None)
+
+    del flows
+    del model
+    del image
+
+    if device_type == "cuda":
         torch.cuda.empty_cache()
+        if hasattr(torch.cuda, "ipc_collect"):
+            torch.cuda.ipc_collect()
     gc.collect()
 
-    do_3d = bool(eval_kwargs.get("do_3D", False))
-    resize = infer_spatial_shape(image, do_3d)
-    resize = resize if tuple(dP.shape[-len(resize):]) != resize else None
+    cellprob_threshold = float(eval_kwargs.get("cellprob_threshold", 0.0))
+    if not np.any(cellprob > cellprob_threshold):
+        print("GPU/CPU split: no cell pixels above threshold; skipping CPU mask reconstruction.")
+        return np.zeros(target_shape, dtype=np.uint32)
+
     masks = dynamics.resize_and_compute_masks(
         dP,
         cellprob,
-        niter=resolve_split_niter(model, eval_kwargs),
-        cellprob_threshold=float(eval_kwargs.get("cellprob_threshold", 0.0)),
-        flow_threshold=float(eval_kwargs.get("flow_threshold", 0.4)),
-        interp=bool(eval_kwargs.get("interp", True)),
-        do_3D=do_3d,
-        min_size=int(eval_kwargs.get("min_size", 15)),
-        max_size_fraction=float(eval_kwargs.get("max_size_fraction", 0.4)),
-        resize=resize,
-        device=torch.device("cpu"),
+        **build_resize_and_compute_masks_kwargs(
+            dynamics,
+            eval_kwargs,
+            niter=niter,
+            do_3d=do_3d,
+            device=torch.device("cpu"),
+        ),
     )
-    return np.asarray(masks, dtype=np.uint32)
+
+    del dP
+    del cellprob
+    gc.collect()
+
+    masks = np.asarray(masks, dtype=np.uint32)
+    if tuple(masks.shape) != target_shape:
+        masks = resize_labels_nearest(masks, target_shape)
+    return masks
 
 
 def read_preprocess_and_segment(
