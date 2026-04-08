@@ -17,7 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 
 @SuppressWarnings({"CanBeFinal", "unused"})
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose>Convert to Zarr (for Distributed Cellpose)...")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Convert to Zarr (for Distributed Cellpose)...")
 public class ConvertToZarr implements Command {
 
     static {
