@@ -1,13 +1,15 @@
 package ch.epfl.biop.wrappers.cellpose.ij2commands;
 
 import ch.epfl.biop.java.utilities.TempDirectory;
-import ch.epfl.biop.wrappers.cellpose.CellposeDistributedTask;
-import ch.epfl.biop.wrappers.cellpose.CellposeDistributedTaskSettings;
+import ch.epfl.biop.wrappers.cellpose.DefaultDistributedCellposeTask;
+import ch.epfl.biop.wrappers.cellpose.DefaultZarrConversionTask;
+import ch.epfl.biop.wrappers.cellpose.DistributedCellposeTaskSettings;
+import ch.epfl.biop.wrappers.cellpose.ZarrConversionTaskSettings;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.io.FileSaver;
+import ij.measure.Calibration;
 import org.scijava.ItemIO;
-import org.scijava.ItemVisibility;
 import org.scijava.command.Command;
 import org.scijava.log.LogService;
 import org.scijava.plugin.Parameter;
@@ -20,300 +22,360 @@ public class CellposeDistributed implements Command {
 
     static {
         if (IJ.isLinux()) {
-            default_conda_env_path = "/opt/conda/envs/cellpose";
+            defaultEnvPath = "/opt/conda/envs/cellpose";
         } else if (IJ.isWindows()) {
-            default_conda_env_path = "C:/Users/username/.conda/envs/cellpose";
+            defaultEnvPath = "C:/Users/username/.conda/envs/cellpose";
         } else if (IJ.isMacOSX()) {
-            default_conda_env_path = "/Users/username/.conda/envs/cellpose";
+            defaultEnvPath = "/Users/username/.conda/envs/cellpose";
         }
     }
 
-    static String default_conda_env_path;
+    static String defaultEnvPath;
 
     @Parameter
     LogService ls;
 
-    @Parameter(required = false)
+    @Parameter(required = false, label = "Input image (open image, highest priority)")
     ImagePlus imp;
 
-    @Parameter(required = false, label = "Input File or Folder", description = "Path to a TIFF file or a folder of TIFFs. If empty, takes the image currently open in Fiji.")
+    @Parameter(required = false, label = "Input File or Folder", description = "A pre-existing Zarr, a folder of TIFFs, or any file that will be converted to OME-Zarr before segmentation.")
     File input_file_or_folder;
 
-    @Parameter(label = "conda environment path", style = "directory", description = "Path to the conda environment containing cellpose, dask, and zarr.")
-    File env_path = new File(default_conda_env_path);
+    @Parameter(label = "Environment path", style = "directory")
+    File env_path = new File(defaultEnvPath);
 
-    @Parameter(required = false, label = "--pretrained_model", description = "Cellpose model name (e.g., cyto3, nuclei, cito3, or a path to a custom model if you use additional_flags).")
+    @Parameter(label = "Environment type", choices = {"conda", "venv"})
+    String env_type = "conda";
+
+    @Parameter(label = "Model")
     String model = "cyto3";
 
-    @Parameter(label = "Diameter", description = "Approximate diameter of the objects in calibrated units (e.g., \u00B5m). Use 0 for auto-detection.")
-    double diameter = 30;
+    @Parameter(required = false, label = "Custom pretrained model path")
+    File pretrained_model;
 
-    @Parameter(label = "Main channel (Cytoplasm or nuclei)", description = "Channel to be segmented (1-based index, e.g. 1 for ImageJ Channel 1).")
+    @Parameter(label = "Diameter", description = "For open images this uses calibrated units. For path-based inputs this is treated as pixels unless pixel sizes are specified.")
+    double diameter = 30.0;
+
+    @Parameter(required = false, label = "Pixel size XY (µm)")
+    String pixel_size_xy_um = "";
+
+    @Parameter(required = false, label = "Pixel size Z (µm)")
+    String pixel_size_z_um = "";
+
+    @Parameter(label = "Primary channel")
     int ch1 = 1;
 
-    @Parameter(label = "Nuclear channel (Optional)", description = "Optional second channel (e.g., nuclei). Use 0 if not used/not available.")
+    @Parameter(label = "Secondary channel")
     int ch2 = 0;
 
-    @Parameter(label = "--flow_threshold", description = "Flow error threshold. Typical values: 0.4 (default). Increase for more masks, decrease for fewer.")
-    double flow_threshold = 0.4;
+    @Parameter(label = "Channel axis")
+    int channel_axis = -1;
 
-    @Parameter(label = "--cellprob_threshold", description = "Cell probability threshold. Typical values: -6 to 6. Default 0. Decrease to get more masks.")
-    double cellprob_threshold = 0.0;
+    @Parameter(label = "Output format", choices = {"ome-tiff", "ome-zarr"})
+    String output_format = "ome-tiff";
 
-    @Parameter(label = "--stitch_threshold", description = "Stitch threshold for 3D volumes. 0.0 to disable stitching. Typical values: 0.5.")
-    double stitch_threshold = 0.0;
+    @Parameter(label = "Output resolution", choices = {"level0", "native"})
+    String output_resolution = "level0";
 
-    @Parameter(label = "Gaussian blur sigma (XY)", description = "Apply a Gaussian blur before segmentation to reduce noise. 0 to disable.")
-    double gauss = 0.0;
+    @Parameter(required = false, label = "Output name", description = "Optional basename for the result. Leave blank to derive it from the input.")
+    String output_name = "";
 
-    @Parameter(label = "Median filter radius (px)", description = "Apply a median filter to remove hotspots. 0 to disable.")
-    int median = 0;
+    @Parameter(required = false, label = "Save Results Directory", style = "directory")
+    File output_directory;
 
-    @Parameter(label = "Global Normalization (Beta)", description = "Normalize the entire volume before tiling. Prevents stitching artifacts in noisy images.")
-    boolean global_norm = false;
-
-    @Parameter(label = "--min_size", description = "Minimum size of detected objects in pixels.")
-    int min_size = 15;
-
-    @Parameter(label = "Auto Min Intensity Threshold", description = "If checked, automatically calculates background threshold ('auto').")
-    boolean auto_min_intensity = true;
-
-    @Parameter(label = "Min Intensity Value", description = "Skip blocks with max intensity below this threshold. Used only if Auto is unchecked.")
-    double min_intensity = 0.0;
-
-    @Parameter(required = false, label = "To add more parameters (comma separated)", description = "Comma-separated list of additional CLI flags (e.g., --use_gpu).")
-    String additional_flags = "";
-
-    @Parameter(label = "blocksize (Z,Y,X) or 'auto'", description = "Size of processing blocks. 'auto' calculates optimal blocks for large 3D images.")
+    @Parameter(label = "Blocksize (Z,Y,X) or auto")
     String blocksize = "auto";
 
-    @Parameter(label = "Cellpose Internal bsize", description = "Internal Cellpose tile size. Set to 0 to use Cellpose default (224 or 256). Set larger than blocksize to disable internal tiling.")
-    int bsize = 0;
+    @Parameter(label = "Resolution level", description = "Use -1 for automatic selection.")
+    int resolution_level = -1;
 
-    @Parameter(label = "Cellpose Internal tile_overlap", description = "Overlap between internal tiles (0.1 to 0.5). Default is 0.1.")
-    double tile_overlap = 0.1;
+    @Parameter(label = "Auto cluster")
+    boolean auto_cluster = true;
 
-    @Parameter(label = "Number of workers (0 for auto)", description = "Number of parallel workers. 0 uses half of available CPU cores.")
-    int n_workers = 0;
+    @Parameter(label = "Workers")
+    int n_workers = 1;
 
-    @Parameter(label = "--batch_size", description = "Batch size for each worker. Default 1 is recommended for stability in 3D.")
-    int batch_size = 1;
+    @Parameter(label = "CPUs per worker")
+    int ncpus = 4;
 
-    @Parameter(label = "Optimize Parallelism", description = "Automatically find the best blocksize and worker count for speed. If unchecked, defaults to 1 worker.")
-    boolean optimize_parallel = false;
+    @Parameter(label = "Memory per worker")
+    String memory_per_worker = "8GB";
 
-    @Parameter(label = "--use_gpu", description = "Use GPU acceleration if available.")
+    @Parameter(label = "Use GPU")
     boolean use_gpu = true;
 
-    @Parameter(label = "Show Dask Dashboard", description = "Opens the Dask distributed dashboard in your default web browser.")
-    boolean show_dashboard = false;
+    @Parameter(label = "3D mode")
+    boolean do_3D = false;
 
-    @Parameter(label = "Reuse/Keep Intermediate Zarr", description = "If checked, the intermediate Zarr will be saved in the output directory for reuse in future runs.")
+    @Parameter(label = "Open Dask dashboard")
+    boolean show_dashboard = true;
+
+    @Parameter(label = "Reuse converted input Zarr")
     boolean reuse_zarr = true;
 
-    @Parameter(required = false, label = "Save Results Directory", style = "directory", description = "Optional: Directory where the segmentation results (.tif and .zarr) will be saved. If empty, a temporary directory is used.")
-    File output_directory;
+    @Parameter(label = "Cell probability threshold")
+    double cellprob_threshold = 0.0;
+
+    @Parameter(label = "Minimum object size")
+    int min_size = 15;
+
+    @Parameter(label = "Flow 3D smoothing")
+    double flow3D_smooth = 1.0;
+
+    @Parameter(label = "Cell probability smoothing")
+    double cellprob_smooth = 0.0;
+
+    @Parameter(label = "No resample")
+    boolean no_resample = false;
+
+    @Parameter(required = false, label = "Additional CLI flags", description = "Comma-separated list of extra CLI flags forwarded verbatim.")
+    String additional_flags = "";
 
     @Parameter(type = ItemIO.OUTPUT)
     ImagePlus cellpose_imp;
 
     @Override
     public void run() {
-        if ((env_path == null) || (!env_path.exists())) {
-            ls.error("Error: the cellpose environment path does not exist: " + env_path);
+        if (env_path == null || !env_path.exists()) {
+            ls.error("Environment path does not exist: " + env_path);
             return;
         }
 
-        // Optimal calculation for distributed blocksize
-        String effectiveBlocksize = blocksize;
-        if (blocksize.equalsIgnoreCase("auto")) {
-            // We pass "auto" to the CLI, let the Python side decide based on hardware
-            effectiveBlocksize = "auto";
-            ls.info("Blocksize is 'auto'. Calculating optimal hardware-dependent blocksize...");
-        }
-
-        File inputPath;
-        File outputPath;
-        double diameterInPixels;
-        double anisotropy = 1.0;
-        String logDirectory;
-        String shortTitle;
-        File tempDir = null;
-
-        if (input_file_or_folder != null && input_file_or_folder.exists()) {
-            inputPath = input_file_or_folder;
-            diameterInPixels = diameter; // Assumes pixel units when using path-based input
-            shortTitle = inputPath.getName();
-            boolean isZarr = inputPath.getName().toLowerCase().endsWith(".zarr") ||
-                            new File(inputPath, ".zarray").exists() ||
-                            new File(inputPath, ".zgroup").exists();
-
-            if (output_directory != null && output_directory.exists()) {
-                if (inputPath.isDirectory() && !isZarr) {
-                    outputPath = output_directory;
-                } else {
-                    String outName = inputPath.getName().replace(".tif", "_cellpose.tif").replace(".zarr", "_cellpose.tif");
-                    outputPath = new File(output_directory, outName);
-                }
-                logDirectory = output_directory.getAbsolutePath();
-            } else {
-                if (inputPath.isDirectory() && !isZarr) {
-                    ls.warn("Input is a folder but no output directory provided. Results will be saved in a temporary folder.");
-                    outputPath = new TempDirectory("cellpose_dist_out").getPath().toFile();
-                    outputPath.mkdir();
-                } else {
-                    String fileName = inputPath.getAbsolutePath();
-                    String outName = fileName.replace(".tif", "_cellpose.tif").replace(".zarr", "_cellpose.tif");
-                    // Ensure we don't just append if extension wasn't there
-                    if (outName.equals(fileName)) {
-                        outName = fileName + "_cellpose.tif";
-                    }
-                    outputPath = new File(outName);
-                }
-                logDirectory = (inputPath.isDirectory() && !isZarr) ? outputPath.getAbsolutePath() : inputPath.getParent();
-            }
-            ls.info("Running Cellpose Distributed on: " + inputPath.getAbsolutePath());
-        } else {
-            if (imp == null) {
-                ls.error("Error: No image open in Fiji and no input path provided.");
+        try {
+            InputContext context = prepareInputContext();
+            File workingDirectory = determineWorkingDirectory(context);
+            if (workingDirectory == null) {
+                ls.error("Could not determine an output directory.");
                 return;
             }
-            shortTitle = imp.getShortTitle();
-            tempDir = new TempDirectory("cellpose_dist").getPath().toFile();
-            tempDir.mkdir();
-            ls.info("Temporary folder for this run: " + tempDir.getAbsolutePath());
+            workingDirectory.mkdirs();
 
-            inputPath = new File(tempDir, "input.tif");
-            new FileSaver(imp).saveAsTiff(inputPath.getAbsolutePath());
+            String outputBaseName = (output_name != null && !output_name.trim().isEmpty())
+                ? stripExtension(output_name.trim())
+                : context.baseName + "_cellpose";
+            String outputSuffix = output_format.equals("ome-zarr") ? ".ome.zarr" : ".ome.tif";
+            File outputPath = new File(workingDirectory, outputBaseName + outputSuffix);
 
-            if (output_directory != null && output_directory.exists()) {
-                outputPath = new File(output_directory, imp.getShortTitle() + "_cellpose.tif");
+            String zarrInputPath = null;
+            String tiffInputFolderPath = null;
+            boolean inputIsZarr = isZarrPath(context.inputPath);
+            boolean inputIsTiffFolder = context.inputPath.isDirectory() && !inputIsZarr;
+
+            if (inputIsZarr) {
+                zarrInputPath = context.inputPath.getAbsolutePath();
+            } else if (inputIsTiffFolder) {
+                tiffInputFolderPath = context.inputPath.getAbsolutePath();
             } else {
-                outputPath = new File(tempDir, "output.tif");
-            }
+                File conversionTargetDirectory = (reuse_zarr && output_directory != null && output_directory.exists())
+                    ? output_directory
+                    : workingDirectory;
+                File convertedInputZarr = new File(conversionTargetDirectory, context.baseName + "_input.zarr");
+                if (!convertedInputZarr.exists()) {
+                    ZarrConversionTaskSettings conversionSettings = new ZarrConversionTaskSettings()
+                        .setEnvPath(env_path.getAbsolutePath())
+                        .setEnvType(env_type)
+                        .setInputPath(context.inputPath.getAbsolutePath())
+                        .setOutputZarrPath(convertedInputZarr.getAbsolutePath())
+                        .setChunks("auto")
+                        .setNLevels("auto");
 
-            // Calibration-aware diameter
-            double pixelWidth = imp.getCalibration().pixelWidth;
-            double pixelDepth = imp.getCalibration().pixelDepth;
-            diameterInPixels = diameter;
-            if (diameter > 0) {
-                diameterInPixels = diameter / pixelWidth;
-                ls.info("Calibrated diameter: " + diameter + " " + imp.getCalibration().getUnit() + " -> " + String.format("%.2f", diameterInPixels) + " pixels");
-            }
+                    if (context.pixelSizeXyUm > 0) {
+                        conversionSettings.setPixelSizeXUm(context.pixelSizeXyUm);
+                        conversionSettings.setPixelSizeYUm(context.pixelSizeXyUm);
+                    }
+                    if (context.pixelSizeZUm > 0) {
+                        conversionSettings.setPixelSizeZUm(context.pixelSizeZUm);
+                    }
 
-            if (imp.getNSlices() > 1) {
-                anisotropy = pixelDepth / pixelWidth;
-                if (Math.abs(anisotropy - 1.0) > 0.01) {
-                    ls.info("Calculated anisotropy (Z/XY): " + String.format("%.3f", anisotropy));
-                } else {
-                    anisotropy = 1.0;
+                    DefaultZarrConversionTask conversionTask = new DefaultZarrConversionTask();
+                    conversionTask.setSettings(conversionSettings);
+                    ls.info("Converting input to OME-Zarr: " + convertedInputZarr.getAbsolutePath());
+                    conversionTask.run();
                 }
+                zarrInputPath = convertedInputZarr.getAbsolutePath();
             }
-            logDirectory = output_directory != null ? output_directory.getAbsolutePath() : tempDir.getAbsolutePath();
-        }
 
-        // GUI channels are 1-based (1=Channel 1, 0=None).
-        // We pass them as-is to the CLI to match Cellpose's internal 1-based channel logic
-        // (where 0 means 'none' for the second channel).
-        int effectiveCh1 = ch1;
-        int effectiveCh2 = ch2 > 0 ? ch2 : -1;
+            int effectiveCh1 = ch1 > 0 ? ch1 - 1 : -1;
+            int effectiveCh2 = ch2 > 0 ? ch2 - 1 : -1;
 
-        String intensityString = auto_min_intensity ? "auto" : String.valueOf(min_intensity);
-
-        int effectiveBsize = bsize > 0 ? bsize : -1;
-
-        String inputZarrPath = null;
-        if (reuse_zarr && output_directory != null && output_directory.exists() && input_file_or_folder != null && input_file_or_folder.exists()) {
-            // If an output directory is provided, create a stable Zarr path in it for reuse.
-            // This works for TIFFs, ZIPs, or already existing Zarrs that need channel extraction.
-            String baseName = input_file_or_folder.getName();
-            int dotIdx = baseName.lastIndexOf('.');
-            if (dotIdx > 0) {
-                baseName = baseName.substring(0, dotIdx);
-            }
-            inputZarrPath = new File(output_directory, baseName + "_input.zarr").getAbsolutePath();
-        }
-
-        CellposeDistributedTaskSettings settings = new CellposeDistributedTaskSettings()
+            DistributedCellposeTaskSettings settings = new DistributedCellposeTaskSettings()
                 .setEnvPath(env_path.getAbsolutePath())
-                .setInputPath(inputPath.getAbsolutePath())
+                .setEnvType(env_type)
                 .setOutputPath(outputPath.getAbsolutePath())
-                .setInputZarrPath(inputZarrPath)
-                .setModel(model)
-                .setDiameter(diameterInPixels)
-                .setChannels(effectiveCh1, effectiveCh2)
-                .setBlocksize(effectiveBlocksize)
-                .setAnisotropy(anisotropy)
-                .setUseGpu(use_gpu)
-                .setOptimizeParallel(optimize_parallel)
-                .setBatchSize(batch_size)
-                .setShowDashboard(show_dashboard)
-                .setFlowThreshold(flow_threshold)
-                .setCellprobThreshold(cellprob_threshold)
-                .setStitchThreshold(stitch_threshold)
-                .setGauss(gauss)
-                .setMedian(median)
-                .setGlobalNorm(global_norm)
-                .setBsize(effectiveBsize)
-                .setTileOverlap(tile_overlap)
-                .setMinSize(min_size)
-                .setMinIntensity(intensityString)
+                .setOutputFormat(output_format)
+                .setOutputResolution(output_resolution)
+                .setResolutionLevel(resolution_level)
+                .setModelType(model)
+                .setDiameter((float) context.diameterPixels)
+                .setChannel1(effectiveCh1)
+                .setChannel2(effectiveCh2)
+                .setChannelAxis(channel_axis)
+                .setBlocksize(blocksize)
+                .setAutoCluster(auto_cluster)
                 .setNWorkers(n_workers)
-                .setLogDirectory(logDirectory)
+                .setNCpus(ncpus)
+                .setMemoryPerWorker(memory_per_worker)
+                .setUseGpu(use_gpu)
+                .setDo3D(do_3D)
+                .setOpenDaskDashboard(show_dashboard)
+                .setAnisotropy((float) context.anisotropy)
+                .setCellprobThreshold(cellprob_threshold)
+                .setMinSize(min_size)
+                .setFlow3DSmooth(flow3D_smooth)
+                .setCellprobSmooth(cellprob_smooth)
+                .setNoResample(no_resample)
                 .setAdditionalFlags(additional_flags);
 
-        CellposeDistributedTask task = new CellposeDistributedTask();
-        task.setSettings(settings);
+            if (pretrained_model != null && pretrained_model.exists()) {
+                settings.setPretrainedModel(pretrained_model.getAbsolutePath());
+            }
+            if (context.diameterUm > 0) {
+                settings.setDiameterUm((float) context.diameterUm);
+            }
+            if (context.pixelSizeXyUm > 0) {
+                settings.setPixelSizeXyUm(context.pixelSizeXyUm);
+            }
+            if (context.pixelSizeZUm > 0) {
+                settings.setPixelSizeZUm(context.pixelSizeZUm);
+            }
+            if (zarrInputPath != null) {
+                settings.setZarrInputPath(zarrInputPath);
+            }
+            if (tiffInputFolderPath != null) {
+                settings.setTiffInputFolderPath(tiffInputFolderPath);
+            }
 
-        try {
+            DefaultDistributedCellposeTask task = new DefaultDistributedCellposeTask();
+            task.setSettings(settings);
             task.run();
-            // If output is a folder, do not open as ImagePlus
-            if (!inputPath.isDirectory()) {
+
+            if (output_format.equals("ome-tiff") && outputPath.isFile()) {
                 cellpose_imp = IJ.openImage(outputPath.getAbsolutePath());
                 if (cellpose_imp != null) {
-                    cellpose_imp.setTitle(shortTitle + "-cellpose-dist");
+                    cellpose_imp.setTitle(outputBaseName);
                     if (imp != null) {
                         cellpose_imp.setCalibration(imp.getCalibration());
                     }
                     cellpose_imp.show();
-                    ls.info("Cellpose Distributed finished. Result opened: " + cellpose_imp.getTitle());
+                    ls.info("Cellpose Distributed finished. Result opened: " + outputPath.getAbsolutePath());
                 } else {
-                    ls.error("Error: Could not open the output image at " + outputPath.getAbsolutePath());
+                    ls.warn("Cellpose finished, but Fiji could not open the OME-TIFF automatically: " + outputPath.getAbsolutePath());
                 }
             } else {
-                ls.info("Cellpose Distributed finished in batch mode. Results saved in: " + outputPath.getAbsolutePath());
+                ls.info("Cellpose Distributed finished. Result written to: " + outputPath.getAbsolutePath());
             }
-        } catch (Exception e) {
-            ls.error("Cellpose Distributed failed: " + e.getMessage());
-            e.printStackTrace();
-        } finally {
-            // Cleanup: delete input file and other temporary artifacts
-            try {
-                if (input_file_or_folder == null && inputPath != null && inputPath.exists()) {
-                    inputPath.delete();
-                }
-
-                if (tempDir != null && tempDir.exists()) {
-                    File[] files = tempDir.listFiles();
-                    if (files != null) {
-                        for (File f : files) {
-                            // Don't delete the output if it's in the temp dir and we just opened it
-                            if (output_directory == null && outputPath != null && f.getAbsolutePath().equals(outputPath.getAbsolutePath())) {
-                                continue;
-                            }
-                            // Don't delete log files in case of failure
-                            if (f.getName().endsWith(".log")) {
-                                continue;
-                            }
-                            f.delete();
-                        }
-                    }
-                    // Try to delete tempDir, will only succeed if empty
-                    tempDir.delete();
-                }
-            } catch (Exception e) {
-                ls.warn("Could not clean up temporary files: " + e.getMessage());
-            }
+        } catch (Exception exception) {
+            ls.error("Cellpose Distributed failed: " + exception.getMessage());
+            exception.printStackTrace();
         }
+    }
+
+    private InputContext prepareInputContext() {
+        InputContext context = new InputContext();
+        context.pixelSizeXyUm = parseOptionalDouble(pixel_size_xy_um);
+        context.pixelSizeZUm = parseOptionalDouble(pixel_size_z_um);
+        context.diameterPixels = diameter;
+        context.diameterUm = -1.0;
+        context.anisotropy = 1.0;
+
+        if (imp != null) {
+            context.tempDir = new TempDirectory("cellpose_dist").getPath().toFile();
+            context.tempDir.mkdir();
+            context.baseName = stripExtension(imp.getTitle());
+            context.tempInputFile = new File(context.tempDir, context.baseName + ".tif");
+            new FileSaver(imp).saveAsTiff(context.tempInputFile.getAbsolutePath());
+
+            Calibration calibration = imp.getCalibration();
+            double factor = unitToMicronFactor(calibration.getUnit());
+            double calibratedX = calibration.pixelWidth * factor;
+            double calibratedZ = calibration.pixelDepth * factor;
+            if (context.pixelSizeXyUm <= 0 && calibratedX > 0) {
+                context.pixelSizeXyUm = calibratedX;
+            }
+            if (context.pixelSizeZUm <= 0 && calibratedZ > 0) {
+                context.pixelSizeZUm = calibratedZ;
+            }
+            context.diameterUm = diameter;
+            if (context.pixelSizeXyUm > 0) {
+                context.diameterPixels = diameter / context.pixelSizeXyUm;
+            }
+            if (context.pixelSizeXyUm > 0 && context.pixelSizeZUm > 0) {
+                context.anisotropy = context.pixelSizeZUm / context.pixelSizeXyUm;
+            }
+            context.inputPath = context.tempInputFile;
+            return context;
+        }
+
+        if (input_file_or_folder == null || !input_file_or_folder.exists()) {
+            throw new IllegalArgumentException("Provide either an open image or an input file/folder.");
+        }
+
+        context.inputPath = input_file_or_folder;
+        context.baseName = stripExtension(input_file_or_folder.getName());
+        return context;
+    }
+
+    private File determineWorkingDirectory(InputContext context) {
+        if (output_directory != null && output_directory.exists()) {
+            return output_directory;
+        }
+        if (context.tempDir != null) {
+            return context.tempDir;
+        }
+        return context.inputPath != null ? context.inputPath.getParentFile() : null;
+    }
+
+    static String stripExtension(String name) {
+        int dot = name.lastIndexOf('.');
+        return (dot > 0) ? name.substring(0, dot) : name;
+    }
+
+    static boolean isZarrPath(File file) {
+        return file != null && (
+            file.getName().toLowerCase().endsWith(".zarr") ||
+            new File(file, ".zarray").exists() ||
+            new File(file, ".zgroup").exists()
+        );
+    }
+
+    static double parseOptionalDouble(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return -1.0;
+        }
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException ignored) {
+            return -1.0;
+        }
+    }
+
+    static double unitToMicronFactor(String unit) {
+        if (unit == null || unit.isEmpty()) return 1.0;
+        switch (unit.toLowerCase()) {
+            case "nm":
+                return 0.001;
+            case "mm":
+                return 1000.0;
+            case "cm":
+                return 10000.0;
+            case "µm":
+            case "um":
+            case "micron":
+                return 1.0;
+            default:
+                return 1.0;
+        }
+    }
+
+    private static class InputContext {
+        File inputPath;
+        String baseName;
+        double diameterPixels;
+        double diameterUm;
+        double pixelSizeXyUm;
+        double pixelSizeZUm;
+        double anisotropy;
+        File tempDir;
+        File tempInputFile;
     }
 }
