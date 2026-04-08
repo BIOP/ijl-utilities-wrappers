@@ -76,6 +76,38 @@ In Fiji, the distributed Cellpose command can also do this conversion automatica
 
 ## Typical usage
 
+### Environment path in Fiji
+
+The Fiji wrappers now support three environment types:
+
+- `conda`
+- `venv`
+- `pixi`
+
+For `conda` and `venv`, select the environment directory itself.
+
+For `pixi`, select the Pixi project root, meaning the folder that contains:
+
+- `pyproject.toml`
+- `.pixi`
+
+Example:
+
+- `S:/pixi/napari`
+
+The wrappers resolve Pixi paths like this:
+
+- if the selected path is a Pixi project root, they look inside `.pixi/envs`
+- if `.pixi/envs/default` exists, they use it
+- if there is only one environment inside `.pixi/envs`, they use that one automatically
+- if there are multiple environments, you should point Fiji to the specific environment directory you want, for example `S:/pixi/cellpose/.pixi/envs/cellpose3`
+
+This is important for projects such as:
+
+- `S:/pixi/cellpose/.pixi/envs`
+
+where several Pixi environments may exist side by side.
+
 ### From Fiji
 
 Use the Fiji command when you want a guided interface.
@@ -110,6 +142,77 @@ s:/pixi/cellpose/.pixi/envs/cellpose3/python.exe src/main/resources/distributed_
   --resolution_level -1 \
   --output_resolution level0
 ```
+
+
+## Viewing the original Zarr and result in Napari
+
+If you want to inspect the original image together with the segmentation result, Napari is a convenient viewer.
+
+### Creating the Napari Pixi environment
+
+Using a Pixi project with a `pyproject.toml` like the Napari example discussed here, you can create the Napari environment like this:
+
+```powershell
+mkdir S:/pixi/napari
+cd S:/pixi/napari
+```
+
+Place your Napari `pyproject.toml` in that folder, then run:
+
+```powershell
+pixi install
+```
+
+This will create the Pixi-managed environment for that project, typically under:
+
+- `S:/pixi/napari/.pixi/envs/default`
+
+You can also let Pixi create it automatically the first time you run Napari:
+
+```powershell
+cd S:/pixi/napari
+pixi run napari
+```
+
+With the attached `pyproject.toml`, this Napari environment includes:
+
+- `napari[pyqt6,optional]`
+- `napari-tiff`
+- `napari-animation`
+
+So it is suitable for opening the original Zarr and the segmentation result in the same viewer session.
+
+With a Pixi project such as:
+
+- `S:/pixi/napari`
+
+you can launch Napari from that Pixi project root and open both datasets in the same session.
+
+Typical examples:
+
+```powershell
+cd S:/pixi/napari
+pixi run napari U:/path/to/input.zarr U:/path/to/output.ome.zarr
+```
+
+If your output was written as OME-TIFF instead:
+
+```powershell
+cd S:/pixi/napari
+pixi run napari U:/path/to/input.zarr U:/path/to/output.ome.tif
+```
+
+What this does:
+
+- opens the original Zarr or OME-Zarr image
+- opens the segmentation result in the same Napari session
+- lets you compare the raw image and labels directly as separate layers
+
+Practical note:
+
+- OME-Zarr output is usually the most convenient choice for large results in Napari
+- if you use the Fiji wrappers with `env_type = pixi`, you can select either the Pixi project root or the exact `.pixi/envs/<name>` directory
+- if the Pixi project has multiple environments and no `default`, select the exact environment directory you want
 
 
 ## The most important options
