@@ -264,7 +264,9 @@ public class ExecutePythonInConda {
         int exitValue = p.exitValue();
 
         if (exitValue != 0) {
-            System.out.println("Runner " + envDirPath + " exited with value " + exitValue + ". Please check output above for indications of the problem.");
+            String message = "Runner " + envDirPath + " exited with value " + exitValue + ". Please check output above for indications of the problem.";
+            System.out.println(message);
+            throw new IOException(message);
         } else {
             System.out.println( envDirPath + " run finished");
         }

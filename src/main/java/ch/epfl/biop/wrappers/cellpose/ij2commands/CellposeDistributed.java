@@ -57,7 +57,7 @@ public class CellposeDistributed implements Command {
     @Parameter(required = false, label = "Custom pretrained model path", description = "Optional path to a custom trained Cellpose model. If set, it overrides the Model field.")
     File pretrained_model;
 
-    @Parameter(label = "Diameter", description = "For open images this uses calibrated units. For path-based inputs this is treated as pixels unless pixel sizes are specified.")
+    @Parameter(label = "Diameter", description = "Approximate object diameter in physical units, in micrometers. For calibrated inputs, this is forwarded as a physical-size value so the runner can convert it to pixels at the selected resolution level.")
     double diameter = 30.0;
 
     @Parameter(required = false, visibility = ItemVisibility.INVISIBLE, label = "Pixel size XY (µm)", description = "Optional XY pixel size override in micrometers. Use only when the input metadata is missing or incorrect.")
@@ -313,6 +313,14 @@ public class CellposeDistributed implements Command {
         File selectedInput = input_folder != null ? input_folder : input_file_or_folder;
         if (selectedInput == null || !selectedInput.exists()) {
             throw new IllegalArgumentException("Provide either an open image or an input file/folder.");
+        }
+
+        context.diameterUm = diameter;
+        if (context.pixelSizeXyUm > 0) {
+            context.diameterPixels = diameter / context.pixelSizeXyUm;
+        }
+        if (context.pixelSizeXyUm > 0 && context.pixelSizeZUm > 0) {
+            context.anisotropy = context.pixelSizeZUm / context.pixelSizeXyUm;
         }
 
         context.inputPath = selectedInput;

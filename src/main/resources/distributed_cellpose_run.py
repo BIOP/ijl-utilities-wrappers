@@ -1128,6 +1128,26 @@ def align_blocksize_to_chunks(blocksize, shape, chunks):
     return aligned
 
 
+def estimate_cellpose_do3d_working_set_bytes(edge_z, edge_xy, rescale_xy, anisotropy):
+    effective_rescale_xy = max(float(rescale_xy), 1.0)
+    effective_anisotropy = max(float(anisotropy or 1.0), 1.0)
+    float32_bytes = np.dtype(np.float32).itemsize
+
+    rescaled_z = float(edge_z) * effective_rescale_xy * effective_anisotropy
+    rescaled_xy = float(edge_xy) * effective_rescale_xy
+
+    # Cellpose do_3D allocates a float32 flow volume with 4 channels and needs
+    # additional headroom for intermediate tensors and stitched outputs.
+    return (
+        rescaled_z
+        * rescaled_xy
+        * rescaled_xy
+        * 4.0
+        * float32_bytes
+        * BLOCK_OVERHEAD
+    )
+
+
 def resolve_blocksize(args, input_zarr, diameter_px, anisotropy, avail_ram, processed_channels):
     shape = tuple(int(value) for value in input_zarr.shape)
     spatial_ndim = input_zarr.ndim
@@ -1151,21 +1171,15 @@ def resolve_blocksize(args, input_zarr, diameter_px, anisotropy, avail_ram, proc
     train_diam = training_diameter_px(args)
     safe_diameter_px = max(float(diameter_px), train_diam / 2.0, 1.0)
     r_xy = train_diam / safe_diameter_px
+    rescale_xy = 1.0 if args.no_resample else max(r_xy, 1.0)
     effective_bytes = dtype_bytes * max(1, int(processed_channels))
 
     if args.do_3D and spatial_ndim == 3:
-        # Cellpose do_3D is still dominated by 2D-style inference passes, so XY
-        # memory is the main constraint. Z should stay large enough for robust
-        # 3D stitching without forcing cubic blocks.
-        max_rescaled_area = mem_budget / (effective_bytes * BLOCK_OVERHEAD)
-        raw_edge_xy = math.sqrt(max_rescaled_area) / max(r_xy, 1e-6)
-        edge_xy = prev_power_of_two(raw_edge_xy)
         min_xy = max(int(math.ceil(5 * diameter_px)), 64)
         if args.use_gpu:
             max_xy_cap = 2048 if not args.no_resample else 4096
         else:
             max_xy_cap = 1024
-        edge_xy = max(min_xy, min(edge_xy, max_xy_cap, shape[-1], shape[-2]))
 
         target_z_context = max(
             int(math.ceil(6 * diameter_px / max(anisotropy, 1e-3))),
@@ -1175,6 +1189,34 @@ def resolve_blocksize(args, input_zarr, diameter_px, anisotropy, avail_ram, proc
         edge_z = prev_power_of_two(target_z_context)
         edge_z_cap = 128
         edge_z = max(16, min(edge_z, edge_z_cap, shape[0]))
+
+        max_rescaled_area = mem_budget / max(effective_bytes * BLOCK_OVERHEAD, 1e-6)
+        raw_edge_xy = math.sqrt(max_rescaled_area) / max(rescale_xy, 1e-6)
+        edge_xy = prev_power_of_two(raw_edge_xy)
+        edge_xy = max(min_xy, min(edge_xy, max_xy_cap, shape[-1], shape[-2]))
+
+        while edge_xy > min_xy:
+            estimated_working_set = estimate_cellpose_do3d_working_set_bytes(
+                edge_z,
+                edge_xy,
+                rescale_xy,
+                anisotropy,
+            )
+            if estimated_working_set <= mem_budget:
+                break
+            edge_xy = max(min_xy, prev_power_of_two(edge_xy - 1))
+
+        while edge_z > 16:
+            estimated_working_set = estimate_cellpose_do3d_working_set_bytes(
+                edge_z,
+                edge_xy,
+                rescale_xy,
+                anisotropy,
+            )
+            if estimated_working_set <= mem_budget:
+                break
+            edge_z = max(16, prev_power_of_two(edge_z - 1))
+
         blocksize = [edge_z, edge_xy, edge_xy]
     else:
         max_rescaled_area = mem_budget / (effective_bytes * BLOCK_OVERHEAD)
@@ -1193,6 +1235,37 @@ def resolve_blocksize(args, input_zarr, diameter_px, anisotropy, avail_ram, proc
             blocksize = [edge_xy, edge_xy]
 
     blocksize = align_blocksize_to_chunks(blocksize, shape, getattr(input_zarr, "chunks", None))
+
+    if args.do_3D and spatial_ndim == 3:
+        while blocksize[1] > 64:
+            estimated_working_set = estimate_cellpose_do3d_working_set_bytes(
+                blocksize[0],
+                blocksize[1],
+                rescale_xy,
+                anisotropy,
+            )
+            if estimated_working_set <= mem_budget:
+                break
+            reduced_xy = max(64, prev_power_of_two(blocksize[1] - 1))
+            if reduced_xy == blocksize[1]:
+                break
+            blocksize[1] = reduced_xy
+            blocksize[2] = reduced_xy
+
+        while blocksize[0] > 16:
+            estimated_working_set = estimate_cellpose_do3d_working_set_bytes(
+                blocksize[0],
+                blocksize[1],
+                rescale_xy,
+                anisotropy,
+            )
+            if estimated_working_set <= mem_budget:
+                break
+            reduced_z = max(16, prev_power_of_two(blocksize[0] - 1))
+            if reduced_z == blocksize[0]:
+                break
+            blocksize[0] = reduced_z
+
     print(
         f"Auto blocksize: {blocksize} "
         f"(diameter_px={diameter_px:.2f}, train_diam={train_diam:.0f}, "
