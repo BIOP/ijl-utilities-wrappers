@@ -28,10 +28,7 @@ from dataclasses import dataclass
 import datetime
 from importlib.metadata import PackageNotFoundError, version as package_version
 import logging
-<<<<<<< HEAD
-=======
 import inspect
->>>>>>> gpu_cpu_split
 import math
 import multiprocessing
 import os
@@ -50,14 +47,11 @@ from scipy.ndimage import gaussian_filter
 import tifffile
 import zarr
 
-<<<<<<< HEAD
-=======
 try:
     from zarr.codecs import BloscCodec, BytesCodec, ShardingCodec
 except ImportError:
     BloscCodec = BytesCodec = ShardingCodec = None
 
->>>>>>> gpu_cpu_split
 
 MIN_DIAMETER_PX = 15.0
 TRAIN_DIAM_NUCLEI = 17.0
@@ -67,37 +61,16 @@ AUTO_RAM_FRACTION = 0.80
 GPU_RAM_FRACTION = 0.85
 MIN_3D_Z_DIAMETER_SLICES = 4.0
 GLOBAL_LABEL_STRIDE = 100000
-<<<<<<< HEAD
-=======
 TIFF_TILE_EDGE = 256
 TIFF_LABEL_COMPRESSION = "zlib"
 OME_ZARR_CHUNK_Z = 8
 OME_ZARR_CHUNK_YX = 1024
 OME_ZARR_INNER_CHUNK_Z = 1
 OME_ZARR_INNER_CHUNK_YX = 256
->>>>>>> gpu_cpu_split
 BUILTIN_MODEL_NAMES = {
     "cyto",
     "cyto2",
     "cyto3",
-<<<<<<< HEAD
-    from dataclasses import dataclass
-    import datetime
-    from importlib.metadata import PackageNotFoundError, version as package_version
-    import logging
-    import math
-    import multiprocessing
-    import os
-    import pathlib
-    import re
-    import shutil
-    import subprocess
-    import sys
-    import tempfile
-    import threading
-    import webbrowser
-    import xml.etree.ElementTree as ET
-=======
     "nuclei",
     "livecell",
     "tissuenet",
@@ -111,7 +84,6 @@ class LevelInfo:
     key: str
     array: object
     x_factor: float = 1.0
->>>>>>> gpu_cpu_split
     y_factor: float = 1.0
     z_factor: float = 1.0
     x_um: float | None = None
@@ -227,13 +199,8 @@ def update_log_handlers():
         pass
 
 
-<<<<<<< HEAD
-def setup_persistent_process_log(output_tiff):
-    output_directory = pathlib.Path(output_tiff).parent
-=======
 def setup_persistent_process_log(output_path):
     output_directory = pathlib.Path(output_path).parent
->>>>>>> gpu_cpu_split
     output_directory.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
@@ -274,9 +241,6 @@ def parse_args():
         help="Regex used by Cellpose wrap_folder_of_tiffs to infer tile positions",
     )
     parser.add_argument(
-<<<<<<< HEAD
-        "--output_tiff", required=True, help="Path for the output OME-TIFF labels"
-=======
         "--output_path",
         default=None,
         help="Path for the output labels, either an OME-TIFF file or an OME-Zarr directory.",
@@ -291,7 +255,6 @@ def parse_args():
         "--output_tiff",
         default=None,
         help=argparse.SUPPRESS,
->>>>>>> gpu_cpu_split
     )
     parser.add_argument(
         "--output_resolution",
@@ -511,8 +474,6 @@ def normalize_axis(axis, ndim):
     return normalized
 
 
-<<<<<<< HEAD
-=======
 def resolve_output_args(args):
     if args.output_path is None and args.output_tiff is None:
         sys.exit("ERROR: provide --output_path, or use the deprecated --output_tiff alias.")
@@ -539,7 +500,6 @@ def resolve_output_args(args):
         )
 
 
->>>>>>> gpu_cpu_split
 def parse_spatial_blocksize(raw_blocksize, spatial_ndim, channel_axis, source_ndim):
     values = [int(part.strip()) for part in raw_blocksize.replace("x", ",").split(",")]
     if len(values) == spatial_ndim:
@@ -737,11 +697,7 @@ def convert_unit_to_um(value, unit):
     if value is None or unit is None:
         return None
     unit_str = str(unit).strip().lower()
-<<<<<<< HEAD
-    if unit_str in {"um", "µm", "micrometer", "micrometers", "micron", "microns"}:
-=======
     if unit_str in {"um", "micrometer", "micrometers", "micron", "microns"}:
->>>>>>> gpu_cpu_split
         return float(value)
     if unit_str in {"nm", "nanometer", "nanometers"}:
         return float(value) / 1000.0
@@ -808,11 +764,7 @@ def parse_ome_physical_sizes(ome_xml):
 
     for axis in ("X", "Y", "Z"):
         value = pixels_element.attrib.get(f"PhysicalSize{axis}")
-<<<<<<< HEAD
-        unit = pixels_element.attrib.get(f"PhysicalSize{axis}Unit", "µm")
-=======
         unit = pixels_element.attrib.get(f"PhysicalSize{axis}Unit", "um")
->>>>>>> gpu_cpu_split
         if value is not None:
             try:
                 sizes[axis] = convert_unit_to_um(float(value), unit)
@@ -836,11 +788,7 @@ def extract_tiff_folder_pixel_sizes(folder_path, glob_pattern):
                     sizes[axis] = ome_sizes[axis]
 
             imagej_metadata = tif.imagej_metadata or {}
-<<<<<<< HEAD
-            imagej_unit = imagej_metadata.get("unit", "µm")
-=======
             imagej_unit = imagej_metadata.get("unit", "um")
->>>>>>> gpu_cpu_split
             spacing = imagej_metadata.get("spacing")
             if sizes["Z"] is None and spacing is not None:
                 try:
@@ -1225,12 +1173,8 @@ def resolve_blocksize(args, input_zarr, diameter_px, anisotropy, avail_ram, proc
             16,
         )
         edge_z = prev_power_of_two(target_z_context)
-<<<<<<< HEAD
-        edge_z = max(16, min(edge_z, 128, shape[0]))
-=======
         edge_z_cap = 128
         edge_z = max(16, min(edge_z, edge_z_cap, shape[0]))
->>>>>>> gpu_cpu_split
         blocksize = [edge_z, edge_xy, edge_xy]
     else:
         max_rescaled_area = mem_budget / (effective_bytes * BLOCK_OVERHEAD)
@@ -1500,11 +1444,7 @@ def patch_distributed_segmentation(module):
         test_mode=False,
     ):
         print("RUNNING BLOCK: ", block_index, "\tREGION: ", crop, flush=True)
-<<<<<<< HEAD
-        segmentation = module.read_preprocess_and_segment(
-=======
         segmentation = read_preprocess_and_segment(
->>>>>>> gpu_cpu_split
             input_zarr,
             crop,
             preprocessing_steps,
@@ -1685,8 +1625,6 @@ def load_distributed_segmentation_module(
     return distributed_segmentation
 
 
-<<<<<<< HEAD
-=======
 def apply_preprocessing_steps(image, crop, preprocessing_steps):
     processed = image
     for preprocessing_step in preprocessing_steps:
@@ -1738,7 +1676,6 @@ def read_preprocess_and_segment(
     return model.eval(image, **eval_kwargs)[0].astype(np.uint32)
 
 
->>>>>>> gpu_cpu_split
 def run_single_block_eval(
     distributed_segmentation,
     input_zarr,
@@ -1749,28 +1686,16 @@ def run_single_block_eval(
     level_infos,
     selected_level,
     base_pixel_sizes,
-<<<<<<< HEAD
-    output_tiff,
-):
-    full_crop = tuple(slice(0, int(length)) for length in input_zarr.shape)
-    timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-    worker_logs_dir = pathlib.Path(output_tiff).parent / f"dask_worker_logs_{timestamp}"
-=======
     output_path,
 ):
     full_crop = tuple(slice(0, int(length)) for length in input_zarr.shape)
     timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
     worker_logs_dir = pathlib.Path(output_path).parent / f"dask_worker_logs_{timestamp}"
->>>>>>> gpu_cpu_split
     worker_logs_dir.mkdir(parents=True, exist_ok=True)
 
     print("Single-block plan detected; bypassing distributed stitching/relabeling.")
     print(f"Dask worker logs will be written under: {worker_logs_dir.parent}")
-<<<<<<< HEAD
-    labels = distributed_segmentation.read_preprocess_and_segment(
-=======
     labels = read_preprocess_and_segment(
->>>>>>> gpu_cpu_split
         input_zarr,
         full_crop,
         preprocessing_steps,
@@ -1779,32 +1704,18 @@ def run_single_block_eval(
         str(worker_logs_dir),
     )
     labels = np.asarray(labels, dtype=np.uint32)
-<<<<<<< HEAD
-    pyramid_arrays, pyramid_pixel_sizes = prepare_output_labels(
-=======
     pyramid_shapes, pyramid_pixel_sizes = prepare_output_label_specs(
->>>>>>> gpu_cpu_split
         labels,
         args,
         level_infos,
         selected_level,
         base_pixel_sizes,
     )
-<<<<<<< HEAD
-
-    print(f"Writing OME-TIFF: {output_tiff}")
-    write_output_tiff_with_pyramid(output_tiff, pyramid_arrays, pyramid_pixel_sizes)
-
-
-def write_output_tiff(output_tiff, labels, pixel_sizes):
-    write_output_tiff_with_pyramid(output_tiff, [labels], [pixel_sizes])
-=======
     write_output_labels(args, labels, pyramid_shapes, pyramid_pixel_sizes)
 
 
 def write_output_tiff(output_tiff, labels, pixel_sizes):
     write_output_tiff_with_pyramid(output_tiff, labels, [tuple(labels.shape)], [pixel_sizes])
->>>>>>> gpu_cpu_split
 
 
 def spatial_shape_from_array(array, channel_axis_argument):
@@ -1833,13 +1744,6 @@ def resize_labels_nearest(labels, target_shape):
     return resized
 
 
-<<<<<<< HEAD
-def write_output_tiff_with_pyramid(output_tiff, pyramid_arrays, pyramid_pixel_sizes):
-    if not pyramid_arrays:
-        raise ValueError("pyramid_arrays must contain at least one level.")
-
-    axes = "ZYX" if pyramid_arrays[0].ndim == 3 else "YX"
-=======
 def build_resize_indices(source_len, target_len, start=0, stop=None):
     if stop is None:
         stop = target_len
@@ -2243,7 +2147,6 @@ def _write_output_tiff_with_pyramid_once(output_tiff, labels_source, pyramid_sha
         raise ValueError("pyramid_shapes must contain at least one level.")
 
     axes = "ZYX" if len(pyramid_shapes[0]) == 3 else "YX"
->>>>>>> gpu_cpu_split
 
     def metadata_for(pixel_sizes):
         metadata = {"axes": axes, "PhysicalSizeXUnit": "um", "PhysicalSizeYUnit": "um"}
@@ -2264,21 +2167,6 @@ def _write_output_tiff_with_pyramid_once(output_tiff, labels_source, pyramid_sha
         return (1.0 / float(xy_um), 1.0 / float(xy_um))
 
     pathlib.Path(output_tiff).parent.mkdir(parents=True, exist_ok=True)
-<<<<<<< HEAD
-    subifds = max(0, len(pyramid_arrays) - 1)
-    with tifffile.TiffWriter(output_tiff, bigtiff=True) as writer:
-        writer.write(
-            np.asarray(pyramid_arrays[0]),
-            metadata=metadata_for(pyramid_pixel_sizes[0]),
-            resolution=resolution_for(pyramid_pixel_sizes[0]),
-            subifds=subifds,
-        )
-        for level_array, pixel_sizes in zip(pyramid_arrays[1:], pyramid_pixel_sizes[1:]):
-            writer.write(
-                np.asarray(level_array),
-                metadata=None,
-                resolution=resolution_for(pixel_sizes),
-=======
     subifds = max(0, len(pyramid_shapes) - 1)
     with tifffile.TiffWriter(output_tiff, bigtiff=True, ome=True) as writer:
         tile_shape = estimate_tile_shape(pyramid_shapes[0])
@@ -2302,13 +2190,10 @@ def _write_output_tiff_with_pyramid_once(output_tiff, labels_source, pyramid_sha
                 metadata=None,
                 resolution=resolution_for(pixel_sizes),
                 compression=TIFF_LABEL_COMPRESSION,
->>>>>>> gpu_cpu_split
                 subfiletype=1,
             )
 
 
-<<<<<<< HEAD
-=======
 def validate_output_ome_tiff(output_tiff, pyramid_shapes):
     output_path = pathlib.Path(output_tiff)
     expected_axes = "ZYX" if len(pyramid_shapes[0]) == 3 else "YX"
@@ -2386,7 +2271,6 @@ def write_output_tiff_with_pyramid(output_tiff, labels_source, pyramid_shapes, p
     ) from last_error
 
 
->>>>>>> gpu_cpu_split
 def resolve_output_level_infos(level_infos, selected_level, output_resolution):
     selected_index = next(
         index for index, level_info in enumerate(level_infos) if level_info.key == selected_level.key
@@ -2396,35 +2280,13 @@ def resolve_output_level_infos(level_infos, selected_level, output_resolution):
     return level_infos[selected_index:]
 
 
-<<<<<<< HEAD
-def prepare_output_labels(labels, args, level_infos, selected_level, base_pixel_sizes):
-=======
 def prepare_output_label_specs(labels_source, args, level_infos, selected_level, base_pixel_sizes):
->>>>>>> gpu_cpu_split
     output_level_infos = resolve_output_level_infos(
         level_infos,
         selected_level,
         args.output_resolution,
     )
 
-<<<<<<< HEAD
-    pyramid_arrays = []
-    pyramid_pixel_sizes = []
-    for index, level_info in enumerate(output_level_infos):
-        target_shape = spatial_shape_from_array(level_info.array, args.channel_axis)
-        if index == 0:
-            level_labels = resize_labels_nearest(labels, target_shape)
-        else:
-            level_labels = resize_labels_nearest(pyramid_arrays[0], target_shape)
-        pyramid_arrays.append(level_labels)
-        pyramid_pixel_sizes.append(resolve_output_pixel_sizes(level_info, base_pixel_sizes))
-
-    if not args.pyramidal_output:
-        pyramid_arrays = pyramid_arrays[:1]
-        pyramid_pixel_sizes = pyramid_pixel_sizes[:1]
-
-    return pyramid_arrays, pyramid_pixel_sizes
-=======
     source_shape = tuple(int(value) for value in labels_source.shape)
     pyramid_shapes = []
     pyramid_pixel_sizes = []
@@ -2451,7 +2313,6 @@ def prepare_output_label_specs(labels_source, args, level_infos, selected_level,
         pyramid_pixel_sizes = pyramid_pixel_sizes[:1]
 
     return pyramid_shapes, pyramid_pixel_sizes
->>>>>>> gpu_cpu_split
 
 
 def print_plan(
@@ -2478,11 +2339,7 @@ def print_plan(
     print(f"  Effective diameter: {diameter_px:.2f} px")
     print(f"  Output pixel sizes (um): {output_pixel_sizes}")
     print(
-<<<<<<< HEAD
-        f"  Output export: resolution={args.output_resolution}, "
-=======
         f"  Output export: format={args.output_format}, resolution={args.output_resolution}, "
->>>>>>> gpu_cpu_split
         f"pyramidal={args.pyramidal_output}"
     )
     print(
@@ -2513,12 +2370,8 @@ def print_plan(
 
 def main():
     args = parse_args()
-<<<<<<< HEAD
-    log_handle, log_path = setup_persistent_process_log(args.output_tiff)
-=======
     resolve_output_args(args)
     log_handle, log_path = setup_persistent_process_log(args.output_path)
->>>>>>> gpu_cpu_split
     resolve_user_channel_args(args)
     resolve_pretrained_model_alias(args)
     resolve_input_source_args(args)
@@ -2640,32 +2493,6 @@ def main():
                 level_infos,
                 selected_level,
                 base_pixel_sizes,
-<<<<<<< HEAD
-                args.output_tiff,
-            )
-        else:
-            distributed_eval = distributed_segmentation.distributed_eval
-            output_dir = pathlib.Path(args.output_tiff).parent
-            write_path = output_dir / "_dist_cellpose_result.zarr"
-
-            print("Starting distributed_eval")
-            try:
-                result_zarr, _ = distributed_eval(
-                    input_zarr=channel_plan.input_zarr,
-                    blocksize=blocksize,
-                    write_path=str(write_path),
-                    preprocessing_steps=channel_plan.preprocessing_steps,
-                    model_kwargs=model_kwargs,
-                    eval_kwargs=eval_kwargs,
-                    cluster_kwargs=cluster_kwargs,
-                    temporary_directory=str(output_dir),
-                )
-
-                print(f"Writing OME-TIFF: {args.output_tiff}")
-                labels = np.asarray(result_zarr[...], dtype=np.uint32)
-                pyramid_arrays, pyramid_pixel_sizes = prepare_output_labels(
-                    labels,
-=======
                 args.output_path,
             )
         else:
@@ -2697,22 +2524,11 @@ def main():
 
                 pyramid_shapes, pyramid_pixel_sizes = prepare_output_label_specs(
                     result_zarr,
->>>>>>> gpu_cpu_split
                     args,
                     level_infos,
                     selected_level,
                     base_pixel_sizes,
                 )
-<<<<<<< HEAD
-                write_output_tiff_with_pyramid(
-                    args.output_tiff,
-                    pyramid_arrays,
-                    pyramid_pixel_sizes,
-                )
-            finally:
-                if write_path.exists():
-                    shutil.rmtree(write_path, ignore_errors=True)
-=======
                 write_output_labels(
                     args,
                     result_zarr,
@@ -2727,7 +2543,6 @@ def main():
                     print(
                         f"Preserving segmentation results at {write_path} so {args.output_format} export can be retried without rerunning segmentation."
                     )
->>>>>>> gpu_cpu_split
 
         print("Done.")
     finally:
