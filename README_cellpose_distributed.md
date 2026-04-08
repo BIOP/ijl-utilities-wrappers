@@ -175,6 +175,135 @@ Recommendation:
 - for large 3D data, start with `--use_gpu --do_3D --auto_cluster --resolution_level -1`
 
 
+## How automatic optimization works
+
+There are two separate automatic choices during planning:
+
+- the working pyramid level selected by `--resolution_level -1`
+- the processing block size selected by `--blocksize auto`
+
+These two decisions are linked, because the chosen pyramid level changes the effective object size in pixels, and that effective size is then used to estimate a safe block size.
+
+
+### Automatic pyramid level selection
+
+When `--resolution_level` is set to `-1`, the script inspects all available pyramid levels and scores them.
+
+The main idea is:
+
+- convert the requested object diameter to full-resolution pixels
+- compute what that diameter would look like at each pyramid level
+- prefer the level where the effective diameter is closest to the model's training scale
+
+In practice, the script uses these training targets:
+
+- `nuclei` models target about `17 px`
+- most other models target about `30 px`
+
+For each candidate level, it computes an effective diameter:
+
+- effective diameter at level = full-resolution diameter / XY downsampling factor of that level
+
+It then prefers the level whose effective diameter is closest to the model training diameter.
+
+The selection is not based only on closeness. The script also adds penalties when a level would make the objects too small:
+
+- if the effective XY diameter drops below `15 px`, that level is strongly penalized
+- in `--do_3D` mode, if the effective Z diameter drops below about `4 slices`, that level is also penalized
+
+If two levels score similarly, the script prefers the finer one, meaning the less-downsampled level.
+
+Practical interpretation:
+
+- large objects are more likely to be segmented from a coarser pyramid level
+- small objects are more likely to stay at a finer level
+- 3D data is protected against choosing a level that would leave too little Z context
+
+This choice only controls the working resolution used during segmentation. The exported labels can still be written either:
+
+- at the selected working resolution with `output_resolution = native`
+- resampled back to the original full-resolution space with `output_resolution = level0`
+
+
+### Automatic block size selection
+
+When `--blocksize auto` is used, the script estimates a block size that is large enough to contain several objects, but small enough to fit the available memory.
+
+The blocksize planner uses:
+
+- the selected working pyramid level
+- the effective object diameter at that level
+- whether the run uses CPU or GPU
+- the number of processed channels
+- the per-worker memory budget
+- the array chunking of the input Zarr
+
+The memory budget depends on the execution mode:
+
+- in GPU mode, it uses about `85%` of the available GPU memory for planning
+- in CPU mode, it uses about `80%` of the available RAM, divided by the planned number of workers
+
+The script then estimates how much image area can safely fit in memory after accounting for:
+
+- image datatype size
+- one or two processed channels
+- internal overhead during Cellpose processing
+- rescaling between the chosen level and the model training scale
+
+The result is converted into block edges with a few guardrails.
+
+For 2D runs:
+
+- XY block edges are kept at least around `5 x diameter`, with a minimum of `64 px`
+- XY block edges are capped at `4096 px` on GPU and `1024 px` on CPU
+
+For `--do_3D` runs:
+
+- XY is still the main memory constraint, because the processing is dominated by 2D-style inference passes
+- XY edges use the same diameter-based minimum, but GPU runs are usually capped at `2048 px`
+- if `--no_resample` is active, the GPU XY cap can grow to `4096 px`
+- Z is chosen separately to keep enough depth context, typically targeting about `6 x diameter / anisotropy`, with lower and upper safeguards
+
+After that, the block size is aligned to the input Zarr chunk grid so that reads are more storage-friendly.
+
+Practical interpretation:
+
+- bigger objects usually lead to bigger minimum blocks
+- more channels usually reduce the chosen block size
+- more workers in CPU mode usually reduce the per-worker memory budget, which can reduce block size
+- chunk alignment can make the final blocksize slightly larger than the raw estimate
+
+
+### Interaction with `auto_cluster`
+
+`auto_cluster` affects auto blocksize because it decides how many workers share the available RAM.
+
+The sequence is:
+
+1. choose workers and memory per worker
+2. compute auto blocksize from that per-worker memory budget
+3. estimate the number of planned blocks
+4. if there are fewer blocks than workers, reduce the worker count
+5. recompute blocksize with the larger memory budget per remaining worker
+
+This means the final blocksize is sometimes larger than the first estimate, especially on small or moderately sized datasets where the initial worker count would have been excessive.
+
+
+### What to use in practice
+
+For most large datasets, the intended default is:
+
+- `resolution_level = -1`
+- `blocksize = auto`
+- `auto_cluster = true`
+
+Use manual values only when:
+
+- you already know a specific pyramid level gives better biological results
+- you want reproducible benchmarking with a fixed block layout
+- you are debugging performance or storage behavior
+
+
 ## Full option reference
 
 This section describes the available CLI options in plain language.
