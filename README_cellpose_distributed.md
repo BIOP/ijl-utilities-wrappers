@@ -88,7 +88,6 @@ For `conda` and `venv`, select the environment directory itself.
 
 For `pixi`, select the Pixi project root, meaning the folder that contains:
 
-- `pyproject.toml`
 - `.pixi`
 
 Example:
@@ -150,17 +149,14 @@ If you want to inspect the original image together with the segmentation result,
 
 ### Creating the Napari Pixi environment
 
-Using a Pixi project with a `pyproject.toml` like the Napari example discussed here, you can create the Napari environment like this:
+To recreate an equivalent Napari Pixi environment, create a new Pixi project and install the same Python version and dependencies:
 
 ```powershell
 mkdir S:/pixi/napari
 cd S:/pixi/napari
-```
-
-Place your Napari `pyproject.toml` in that folder, then run:
-
-```powershell
-pixi install
+pixi init --format pyproject
+pixi add python=3.11.*
+pixi add "napari[pyqt6,optional]>=0.7.0,<0.8" "napari-tiff>=0.1.5,<0.2" "napari-animation"
 ```
 
 This will create the Pixi-managed environment for that project, typically under:
@@ -174,7 +170,7 @@ cd S:/pixi/napari
 pixi run napari
 ```
 
-With the attached `pyproject.toml`, this Napari environment includes:
+This Napari environment includes:
 
 - `napari[pyqt6,optional]`
 - `napari-tiff`
