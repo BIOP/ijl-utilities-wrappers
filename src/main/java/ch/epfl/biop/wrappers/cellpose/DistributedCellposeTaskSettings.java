@@ -7,7 +7,14 @@ public class DistributedCellposeTaskSettings {
 
     String zarrInputPath;
     String tiffInputFolderPath;
+<<<<<<< HEAD
     String outputTiffPath;
+=======
+    String outputPath;
+    String outputFormat = "ome-tiff";
+    String outputResolution = "level0";
+    int resolutionLevel = -1;
+>>>>>>> gpu_cpu_split
 
     /** Cellpose 3 model name (e.g. "cyto3", "nuclei"). Ignored in Cellpose 4. */
     String modelType = "cyto3";
@@ -62,7 +69,17 @@ public class DistributedCellposeTaskSettings {
 
     boolean useGpu  = false;
     boolean do3D    = false;
+<<<<<<< HEAD
     float anisotropy = 1.0f;
+=======
+    boolean noResample = false;
+    boolean openDaskDashboard = true;
+    float anisotropy = 1.0f;
+    double cellprobThreshold = 0.0;
+    int minSize = 15;
+    double flow3DSmooth = 1.0;
+    double cellprobSmooth = 0.0;
+>>>>>>> gpu_cpu_split
 
     /**
      * When true, the Python script auto-detects the number of workers and
@@ -94,8 +111,34 @@ public class DistributedCellposeTaskSettings {
         return this;
     }
 
+<<<<<<< HEAD
     public DistributedCellposeTaskSettings setOutputTiffPath(String outputTiffPath) {
         this.outputTiffPath = outputTiffPath;
+=======
+    public DistributedCellposeTaskSettings setOutputPath(String outputPath) {
+        this.outputPath = outputPath;
+        return this;
+    }
+
+    public DistributedCellposeTaskSettings setOutputFormat(String outputFormat) {
+        this.outputFormat = outputFormat;
+        return this;
+    }
+
+    public DistributedCellposeTaskSettings setOutputResolution(String outputResolution) {
+        this.outputResolution = outputResolution;
+        return this;
+    }
+
+    public DistributedCellposeTaskSettings setResolutionLevel(int resolutionLevel) {
+        this.resolutionLevel = resolutionLevel;
+        return this;
+    }
+
+    public DistributedCellposeTaskSettings setOutputTiffPath(String outputTiffPath) {
+        this.outputPath = outputTiffPath;
+        this.outputFormat = "ome-tiff";
+>>>>>>> gpu_cpu_split
         return this;
     }
 
@@ -174,11 +217,47 @@ public class DistributedCellposeTaskSettings {
         return this;
     }
 
+<<<<<<< HEAD
+=======
+    public DistributedCellposeTaskSettings setNoResample(boolean noResample) {
+        this.noResample = noResample;
+        return this;
+    }
+
+    public DistributedCellposeTaskSettings setOpenDaskDashboard(boolean openDaskDashboard) {
+        this.openDaskDashboard = openDaskDashboard;
+        return this;
+    }
+
+>>>>>>> gpu_cpu_split
     public DistributedCellposeTaskSettings setAnisotropy(float anisotropy) {
         this.anisotropy = anisotropy;
         return this;
     }
 
+<<<<<<< HEAD
+=======
+    public DistributedCellposeTaskSettings setCellprobThreshold(double cellprobThreshold) {
+        this.cellprobThreshold = cellprobThreshold;
+        return this;
+    }
+
+    public DistributedCellposeTaskSettings setMinSize(int minSize) {
+        this.minSize = minSize;
+        return this;
+    }
+
+    public DistributedCellposeTaskSettings setFlow3DSmooth(double flow3DSmooth) {
+        this.flow3DSmooth = flow3DSmooth;
+        return this;
+    }
+
+    public DistributedCellposeTaskSettings setCellprobSmooth(double cellprobSmooth) {
+        this.cellprobSmooth = cellprobSmooth;
+        return this;
+    }
+
+>>>>>>> gpu_cpu_split
     public DistributedCellposeTaskSettings setAutoCluster(boolean autoCluster) {
         this.autoCluster = autoCluster;
         return this;

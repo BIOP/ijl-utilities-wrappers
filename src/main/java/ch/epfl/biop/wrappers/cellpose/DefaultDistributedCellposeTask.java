@@ -64,8 +64,22 @@ public class DefaultDistributedCellposeTask extends DistributedCellposeTask {
             throw new IllegalArgumentException("Either zarrInputPath or tiffInputFolderPath must be set.");
         }
 
+<<<<<<< HEAD
         arguments.add("--output_tiff");
         arguments.add(settings.outputTiffPath);
+=======
+        arguments.add("--output_path");
+        arguments.add(settings.outputPath);
+
+        arguments.add("--output_format");
+        arguments.add(settings.outputFormat);
+
+        arguments.add("--output_resolution");
+        arguments.add(settings.outputResolution);
+
+        arguments.add("--resolution_level");
+        arguments.add(String.valueOf(settings.resolutionLevel));
+>>>>>>> gpu_cpu_split
 
         arguments.add("--pretrained_model");
         if (settings.pretrainedModel != null && !settings.pretrainedModel.trim().isEmpty()) {
@@ -93,6 +107,21 @@ public class DefaultDistributedCellposeTask extends DistributedCellposeTask {
             arguments.add(String.valueOf(settings.pixelSizeZUm));
         }
 
+<<<<<<< HEAD
+=======
+        arguments.add("--cellprob_threshold");
+        arguments.add(String.valueOf(settings.cellprobThreshold));
+
+        arguments.add("--min_size");
+        arguments.add(String.valueOf(settings.minSize));
+
+        arguments.add("--flow3D_smooth");
+        arguments.add(String.valueOf(settings.flow3DSmooth));
+
+        arguments.add("--cellprob_smooth");
+        arguments.add(String.valueOf(settings.cellprobSmooth));
+
+>>>>>>> gpu_cpu_split
         arguments.add("--chan");
         arguments.add(String.valueOf(settings.ch1));
 
@@ -120,6 +149,11 @@ public class DefaultDistributedCellposeTask extends DistributedCellposeTask {
 
         if (settings.useGpu)  arguments.add("--use_gpu");
         if (settings.do3D)    arguments.add("--do_3D");
+<<<<<<< HEAD
+=======
+        if (settings.noResample) arguments.add("--no_resample");
+        if (!settings.openDaskDashboard) arguments.add("--no_open_dask_dashboard");
+>>>>>>> gpu_cpu_split
 
         if (settings.anisotropy != 1.0f) {
             arguments.add("--anisotropy");

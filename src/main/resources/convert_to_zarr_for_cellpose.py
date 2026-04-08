@@ -4,7 +4,13 @@ Convert any Bio-Formats-readable image to a pyramidal OME-Zarr array suitable
 for distributed Cellpose segmentation.
 
 The output is an OME-Zarr 0.4 multiscales group:  output.zarr/0/, /1/, …
+<<<<<<< HEAD
 Each level is downsampled 2× in the spatial axes only (channel axis preserved).
+=======
+For generic inputs, each level is downsampled 2× in the spatial axes only
+(channel axis preserved). For Imaris ``.ims`` inputs, the native IMS pyramid
+geometry is preserved exactly.
+>>>>>>> gpu_cpu_split
 Physical pixel sizes are stored both in the OME-Zarr multiscales metadata and
 as a top-level ``physical_pixel_sizes_um`` attribute so that downstream tools
 can convert µm diameters to pixel diameters without parsing the full multiscales
@@ -909,12 +915,21 @@ def _write_ome_zarr_from_ims(
     proportional to ``n_channels × chunk_z × Y × X`` rather than the whole
     volume.  Multichannel data is written channel-last (Z, Y, X, C).
 
+<<<<<<< HEAD
     Pyramid levels are downsampled 2× in ZYX from the previously written zarr
     level, also in 2-Z-plane slabs.
     """
     try:
         import h5py
         from skimage.transform import downscale_local_mean
+=======
+    Pyramid levels preserve the native IMS geometry and physical scale from each
+    ``ResolutionLevel N`` entry, cropping away HDF5 storage padding via the
+    per-level ``ImageSizeX/Y/Z`` attributes.
+    """
+    try:
+        import h5py
+>>>>>>> gpu_cpu_split
     except ImportError as exc:
         sys.exit(f"Missing dependency for IMS conversion: {exc}")
 
@@ -973,9 +988,57 @@ def _write_ome_zarr_from_ims(
         )
         n_ch = len(ch_keys)
 
+<<<<<<< HEAD
         ds0 = tp_root[ch_keys[0]]["Data"]
         z_size, y_size, x_size = ds0.shape
         dtype = ds0.dtype
+=======
+        def _int_attr(attrs, key, fallback):
+            s = _attr_str(attrs, key)
+            try:
+                return int(s) if s else int(fallback)
+            except (TypeError, ValueError):
+                return int(fallback)
+
+        ds_root = f["/DataSet"]
+        native_level_names = sorted(
+            [k for k in ds_root.keys() if k.startswith("ResolutionLevel ")],
+            key=lambda name: int(name.split()[-1]),
+        )
+        if not native_level_names:
+            sys.exit("No IMS pyramid levels found under /DataSet.")
+
+        requested_levels = int(n_levels)
+        if requested_levels > len(native_level_names):
+            print(
+                f"  Requested {requested_levels} levels but IMS only provides {len(native_level_names)}. "
+                "Capping output to the native IMS pyramid depth."
+            )
+        native_level_names = native_level_names[: min(requested_levels, len(native_level_names))]
+
+        level_entries = []
+        for level_name in native_level_names:
+            channel0 = ds_root[level_name]["TimePoint 0"][ch_keys[0]]
+            data = channel0["Data"]
+            attrs = channel0.attrs
+            logical_shape = (
+                _int_attr(attrs, "ImageSizeZ", data.shape[0]),
+                _int_attr(attrs, "ImageSizeY", data.shape[1]),
+                _int_attr(attrs, "ImageSizeX", data.shape[2]),
+            )
+            level_entries.append(
+                {
+                    "name": level_name,
+                    "index": int(level_name.split()[-1]),
+                    "stored_shape": tuple(int(v) for v in data.shape),
+                    "logical_shape": logical_shape,
+                }
+            )
+
+        level0 = level_entries[0]
+        z_size, y_size, x_size = level0["logical_shape"]
+        dtype = ds_root[level0["name"]]["TimePoint 0"][ch_keys[0]]["Data"].dtype
+>>>>>>> gpu_cpu_split
         print(
             f"IMS: {n_ch} channel(s), shape=({z_size},{y_size},{x_size}), dtype={dtype}"
         )
@@ -1030,9 +1093,24 @@ def _write_ome_zarr_from_ims(
             f"Pixel sizes (µm): Z={pixel_sizes['Z']}, Y={pixel_sizes['Y']}, X={pixel_sizes['X']}"
         )
 
+<<<<<<< HEAD
         full_shape = (
             (z_size, y_size, x_size) if n_ch == 1 else (z_size, y_size, x_size, n_ch)
         )
+=======
+        def _full_shape(level_shape):
+            return level_shape if n_ch == 1 else level_shape + (n_ch,)
+
+        def _level_pixel_sizes(level_shape):
+            level_z, level_y, level_x = level_shape
+            return {
+                "Z": ((ez_max - ez_min) / level_z) if (ez_min is not None and ez_max is not None and level_z > 0) else pixel_sizes["Z"],
+                "Y": ((ey_max - ey_min) / level_y) if (ey_min is not None and ey_max is not None and level_y > 0) else pixel_sizes["Y"],
+                "X": ((ex_max - ex_min) / level_x) if (ex_min is not None and ex_max is not None and level_x > 0) else pixel_sizes["X"],
+            }
+
+        full_shape = _full_shape(level0["logical_shape"])
+>>>>>>> gpu_cpu_split
         spatial_axes = [0, 1, 2]
 
         chunks0 = _chunks_for_level(base_chunks, 0, full_shape)
@@ -1049,6 +1127,7 @@ def _write_ome_zarr_from_ims(
     # SAVE METADATA (including group setup) FIRST to avoid race conditions
     # when creating datasets in parallel on network drives.
     # ---------------------------
+<<<<<<< HEAD
     pz = pixel_sizes["Z"] or 1.0
     py_ = pixel_sizes["Y"] or 1.0
     px_ = pixel_sizes["X"] or 1.0
@@ -1059,11 +1138,23 @@ def _write_ome_zarr_from_ims(
             if n_ch == 1
             else [pz * sf, py_ * sf, px_ * sf, 1.0]
         )
+=======
+    def _get_scale(level_shape):
+        sizes = _level_pixel_sizes(level_shape)
+        scale = [sizes["Z"] or 1.0, sizes["Y"] or 1.0, sizes["X"] or 1.0]
+        if n_ch > 1:
+            scale.append(1.0)
+        return scale
+>>>>>>> gpu_cpu_split
 
     datasets_meta = [
         {
             "path": "0",
+<<<<<<< HEAD
             "coordinateTransformations": [{"type": "scale", "scale": _get_scale(1)}],
+=======
+            "coordinateTransformations": [{"type": "scale", "scale": _get_scale(level0["logical_shape"])}],
+>>>>>>> gpu_cpu_split
         }
     ]
 
@@ -1074,6 +1165,7 @@ def _write_ome_zarr_from_ims(
     else:
         storage_chunks = chunks0
 
+<<<<<<< HEAD
     # Pre-calculate all pyramid level shapes and metadata
     pyramid_info = []  # list of (level, shape, chunks, storage_chunks)
     curr_shape = full_shape
@@ -1086,6 +1178,14 @@ def _write_ome_zarr_from_ims(
         l_shape = tuple((s + 1) // 2 for s in curr_shape[:3]) + (
             curr_shape[3:] if n_ch > 1 else ()
         )
+=======
+    # Pre-calculate native IMS pyramid level shapes and metadata
+    pyramid_info = []  # list of (level, ims_name, logical_shape, chunks, storage_chunks)
+
+    for entry in level_entries[1:]:
+        l_idx = entry["index"]
+        l_shape = _full_shape(entry["logical_shape"])
+>>>>>>> gpu_cpu_split
         l_chunks = _chunks_for_level(base_chunks, l_idx, l_shape)
         if n_ch > 1 and len(l_chunks) == 3:
             l_chunks = l_chunks + (n_ch,)
@@ -1095,16 +1195,27 @@ def _write_ome_zarr_from_ims(
         else:
             l_storage = l_chunks
 
+<<<<<<< HEAD
         pyramid_info.append((l_idx, l_shape, l_chunks, l_storage))
+=======
+        pyramid_info.append((l_idx, entry["name"], entry["logical_shape"], l_shape, l_chunks, l_storage))
+>>>>>>> gpu_cpu_split
         datasets_meta.append(
             {
                 "path": str(l_idx),
                 "coordinateTransformations": [
+<<<<<<< HEAD
                     {"type": "scale", "scale": _get_scale(2**l_idx)}
                 ],
             }
         )
         curr_shape = l_shape
+=======
+                    {"type": "scale", "scale": _get_scale(entry["logical_shape"])}
+                ],
+            }
+        )
+>>>>>>> gpu_cpu_split
 
     if n_ch == 1:
         axes = [
@@ -1136,7 +1247,11 @@ def _write_ome_zarr_from_ims(
     else:
         arr0 = zstore["0"]
 
+<<<<<<< HEAD
     for level_idx, out_shape, chunks_l, storage_chunks_l in pyramid_info:
+=======
+    for level_idx, _ims_name, _logical_shape, out_shape, chunks_l, storage_chunks_l in pyramid_info:
+>>>>>>> gpu_cpu_split
         if str(level_idx) not in zstore:
             zstore.create_dataset(
                 str(level_idx),
@@ -1181,7 +1296,11 @@ def _write_ome_zarr_from_ims(
             x_end = min(x_start + read_stride_yx, x_size)
 
             with h5py.File(h5_file_path, "r") as f_local:
+<<<<<<< HEAD
                 tp_local = f_local["/DataSet/ResolutionLevel 0/TimePoint 0"]
+=======
+                tp_local = f_local[level0["name"]]["TimePoint 0"] if level0["name"].startswith("/") else f_local[f"/DataSet/{level0['name']}/TimePoint 0"]
+>>>>>>> gpu_cpu_split
                 if n_ch == 1:
                     tile = tp_local[ch_keys[0]]["Data"][
                         z_start:z_end, y_start:y_end, x_start:x_end
@@ -1218,11 +1337,16 @@ def _write_ome_zarr_from_ims(
 
     print(f"  Level 0 done: shape={full_shape}  chunks={chunks0}")
 
+<<<<<<< HEAD
     # 2. Build pyramid levels 1+
     prev_arr = arr0
     prev_shape = full_shape
 
     for level, out_shape, chunks_l, storage_chunks_l in pyramid_info:
+=======
+    # 2. Copy native IMS pyramid levels 1+
+    for level, ims_level_name, logical_shape, out_shape, chunks_l, storage_chunks_l in pyramid_info:
+>>>>>>> gpu_cpu_split
         arr_l = zstore[str(level)]
 
         # Check if this level is already done
@@ -1235,6 +1359,7 @@ def _write_ome_zarr_from_ims(
             level_done = True
 
         if not level_done:
+<<<<<<< HEAD
             src_Z = prev_shape[0]
             chunk_z = chunks_l[0]
             print(f"  Building Level {level} {out_shape} from Level {level - 1}...")
@@ -1303,15 +1428,64 @@ def _write_ome_zarr_from_ims(
                         out_x_start:out_x_end,
                         :,
                     ] = ds_tile[:actual_z, :actual_y, :actual_x, :]
+=======
+            chunk_z = chunks_l[0]
+            level_z, level_y, level_x = logical_shape
+            print(f"  Copying native IMS level {level} {out_shape}...")
+
+            def _copy_ims_level_tile(out_z_start, out_y_start, out_x_start):
+                tile_size_yx = 1024
+                out_z_end = min(out_z_start + chunk_z, level_z)
+                out_y_end = min(out_y_start + tile_size_yx, level_y)
+                out_x_end = min(out_x_start + tile_size_yx, level_x)
+
+                with h5py.File(ims_path, "r") as f_local:
+                    tp_local = f_local[f"/DataSet/{ims_level_name}/TimePoint 0"]
+                    if n_ch == 1:
+                        tile = tp_local[ch_keys[0]]["Data"][
+                            out_z_start:out_z_end,
+                            out_y_start:out_y_end,
+                            out_x_start:out_x_end,
+                        ]
+                        arr_l[
+                            out_z_start:out_z_end,
+                            out_y_start:out_y_end,
+                            out_x_start:out_x_end,
+                        ] = tile
+                    else:
+                        ch_tiles = [
+                            tp_local[ck]["Data"][
+                                out_z_start:out_z_end,
+                                out_y_start:out_y_end,
+                                out_x_start:out_x_end,
+                            ]
+                            for ck in ch_keys
+                        ]
+                        tile = np.stack(ch_tiles, axis=-1)
+                        arr_l[
+                            out_z_start:out_z_end,
+                            out_y_start:out_y_end,
+                            out_x_start:out_x_end,
+                            :,
+                        ] = tile
+>>>>>>> gpu_cpu_split
 
             # Tile based pyramid build to save RAM
             with ThreadPoolExecutor(max_workers=4) as executor:
                 pyr_futures = []
+<<<<<<< HEAD
                 for ozs in range(0, out_shape[0], chunk_z):
                     for oys in range(0, out_shape[1], 1024):
                         for oxs in range(0, out_shape[2], 1024):
                             pyr_futures.append(
                                 executor.submit(_write_pyramid_tile_ims, ozs, oys, oxs)
+=======
+                for ozs in range(0, level_z, chunk_z):
+                    for oys in range(0, level_y, 1024):
+                        for oxs in range(0, level_x, 1024):
+                            pyr_futures.append(
+                                executor.submit(_copy_ims_level_tile, ozs, oys, oxs)
+>>>>>>> gpu_cpu_split
                             )
 
                 n_pyr_tiles = len(pyr_futures)
@@ -1324,12 +1498,18 @@ def _write_ome_zarr_from_ims(
                         )
 
             print(
+<<<<<<< HEAD
                 f"  Level {level} done: shape={out_shape}  chunks={chunks_l} (tiled parallel)"
             )
 
         prev_arr = arr_l
         prev_shape = out_shape
 
+=======
+                f"  Level {level} done: shape={out_shape}  chunks={chunks_l} (native IMS copy)"
+            )
+
+>>>>>>> gpu_cpu_split
     # ---- OME-Zarr 0.4 metadata (Done) --------------------------------------
     zstore.attrs["physical_pixel_sizes_um"] = pixel_sizes
 
