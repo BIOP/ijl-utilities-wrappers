@@ -38,10 +38,10 @@ abstract public class StarDistAbstractCommand implements Command {
     @Parameter
     ImagePlus imp;
 
-    @Parameter(label = "conda environment path" ,style="directory")
+    @Parameter(label = "environment path" ,style="directory", description = "Path to the environment. For Pixi, select either the project root containing pyproject.toml and .pixi, or a specific .pixi/envs/<name> directory.")
     File env_path = new File(default_conda_env_path);
 
-    @Parameter(label= "virtual environment type", choices= {"conda", "venv"})
+    @Parameter(label= "virtual environment type", choices= {"conda", "venv", "pixi"}, description = "For Pixi, the wrapper accepts a project root, the .pixi/envs directory, or a specific .pixi/envs/<name> directory.")
     String env_type = "conda";
 
     @Parameter(style = "directory")

@@ -15,9 +15,9 @@ public class DefaultDistributedCellposeTask extends DistributedCellposeTask {
     static final String SCRIPT_NAME = "distributed_cellpose_run.py";
 
     /**
-     * Copies the bundled Python script from the JAR to the conda environment
-     * directory, always overwriting any previously deployed version so that
-     * updates bundled in a new JAR are picked up automatically.
+     * Copies the bundled Python script from the JAR to the resolved runtime
+     * environment directory, always overwriting any previously deployed version
+     * so that updates bundled in a new JAR are picked up automatically.
      */
     static boolean ensureScriptIsCopied(String envPath) {
         File dest = new File(envPath, SCRIPT_NAME);
@@ -42,14 +42,15 @@ public class DefaultDistributedCellposeTask extends DistributedCellposeTask {
     public void run() throws Exception {
         String envPath = settings.envPath;
         String envType = settings.envType;
+        String runtimeEnvPath = ExecutePythonInConda.resolveEnvironmentRoot(envPath, envType).getAbsolutePath();
 
-        if (!ensureScriptIsCopied(envPath)) {
+        if (!ensureScriptIsCopied(runtimeEnvPath)) {
             throw new RuntimeException(
-                "The script " + SCRIPT_NAME + " could not be copied to " + envPath +
+                "The script " + SCRIPT_NAME + " could not be copied to " + runtimeEnvPath +
                 ". Please copy it manually.");
         }
 
-        String scriptPath = new File(envPath, SCRIPT_NAME).getAbsolutePath();
+        String scriptPath = new File(runtimeEnvPath, SCRIPT_NAME).getAbsolutePath();
 
         ArrayList<String> arguments = new ArrayList<>();
         arguments.add(scriptPath);

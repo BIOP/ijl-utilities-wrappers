@@ -47,10 +47,10 @@ public class ConvertToZarr implements Command {
     @Parameter(visibility = ItemVisibility.MESSAGE)
     String env_section = "── Environment ─────────────────────────────";
 
-    @Parameter(label = "Conda / venv path", style = "directory")
+    @Parameter(label = "Environment path", style = "directory", description = "Path to the environment. For Pixi, select either the project root containing pyproject.toml and .pixi, or a specific .pixi/envs/<name> directory.")
     File env_path = new File(default_conda_env_path);
 
-    @Parameter(label = "Environment type", choices = {"conda", "venv"})
+    @Parameter(label = "Environment type", choices = {"conda", "venv", "pixi"}, description = "For Pixi, the wrapper accepts a project root, the .pixi/envs directory, or a specific .pixi/envs/<name> directory.")
     String env_type = "conda";
 
     @Parameter(visibility = ItemVisibility.MESSAGE)
@@ -77,7 +77,7 @@ public class ConvertToZarr implements Command {
     @Override
     public void run() {
         if (env_path == null || !env_path.exists()) {
-            ls.error("conda environment path does not exist: " + env_path);
+            ls.error("environment path does not exist: " + env_path);
             return;
         }
 

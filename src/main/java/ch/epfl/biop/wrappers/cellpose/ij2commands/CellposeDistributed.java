@@ -41,10 +41,10 @@ public class CellposeDistributed implements Command {
     @Parameter(required = false, label = "Input File or Folder", description = "A pre-existing Zarr, a folder of TIFFs, or any file that will be converted to OME-Zarr before segmentation.")
     File input_file_or_folder;
 
-    @Parameter(label = "Environment path", style = "directory")
+    @Parameter(label = "Environment path", style = "directory", description = "Path to the environment. For Pixi, select either the project root containing pyproject.toml and .pixi, or a specific .pixi/envs/<name> directory.")
     File env_path = new File(defaultEnvPath);
 
-    @Parameter(label = "Environment type", choices = {"conda", "venv"})
+    @Parameter(label = "Environment type", choices = {"conda", "venv", "pixi"}, description = "For Pixi, the wrapper accepts a project root, the .pixi/envs directory, or a specific .pixi/envs/<name> directory.")
     String env_type = "conda";
 
     @Parameter(label = "Model")

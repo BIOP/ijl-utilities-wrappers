@@ -45,10 +45,10 @@ abstract public class CellposeAbstractCommand implements Command {
     @Parameter
     ImagePlus imp;
 
-    @Parameter(label = "conda environment path" ,style="directory", description = "Path to the conda environment containing cellpose.")
+    @Parameter(label = "environment path" ,style="directory", description = "Path to the environment. For Pixi, select either the project root containing pyproject.toml and .pixi, or a specific .pixi/envs/<name> directory.")
     File env_path = new File(default_conda_env_path);
 
-    @Parameter(label= "virtual environment type", choices= {"conda", "venv"}, description = "Type of virtual environment. Typically 'conda'.")
+    @Parameter(label= "virtual environment type", choices= {"conda", "venv", "pixi"}, description = "Type of virtual environment. For Pixi, the wrapper accepts a project root, the .pixi/envs directory, or a specific .pixi/envs/<name> directory.")
     String env_type = "conda";
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
