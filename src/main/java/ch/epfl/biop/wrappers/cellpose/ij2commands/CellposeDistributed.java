@@ -9,6 +9,7 @@ import ij.IJ;
 import ij.ImagePlus;
 import ij.io.FileSaver;
 import ij.measure.Calibration;
+import org.scijava.ItemVisibility;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
 import org.scijava.log.LogService;
@@ -35,100 +36,103 @@ public class CellposeDistributed implements Command {
     @Parameter
     LogService ls;
 
-    @Parameter(required = false, label = "Input image (open image, highest priority)")
+    @Parameter(required = false, label = "Input image (open image, highest priority)", description = "Uses the currently open Fiji image. If this is set, the file and folder inputs below are ignored.")
     ImagePlus imp;
 
-    @Parameter(required = false, label = "Input File or Folder", description = "A pre-existing Zarr, a folder of TIFFs, or any file that will be converted to OME-Zarr before segmentation.")
+    @Parameter(required = false, label = "Input File", description = "A pre-existing Zarr or any regular image file that will be converted to OME-Zarr before segmentation. Ignored if an open image is provided or if Input Folder is set.")
     File input_file_or_folder;
 
-    @Parameter(label = "Environment path", style = "directory", description = "Path to the environment. For Pixi, select either the project root containing pyproject.toml and .pixi, or a specific .pixi/envs/<name> directory.")
+    @Parameter(required = false, label = "Input Folder", style = "directory", description = "A folder of TIFF tiles or a directory-based Zarr store. If set, this takes priority over Input File. Ignored if an open image is provided.")
+    File input_folder;
+
+    @Parameter(label = "Environment path", style = "directory", description = "Path to the Python environment used to run Cellpose and conversion scripts. For Pixi, select either the project root or a specific .pixi/envs/<name> directory.")
     File env_path = new File(defaultEnvPath);
 
-    @Parameter(label = "Environment type", choices = {"conda", "venv", "pixi"}, description = "For Pixi, the wrapper accepts a project root, the .pixi/envs directory, or a specific .pixi/envs/<name> directory.")
+    @Parameter(label = "Environment type", choices = {"conda", "venv", "pixi"}, description = "Type of Python environment. This controls how Fiji resolves the interpreter and launches the bundled scripts.")
     String env_type = "conda";
 
-    @Parameter(label = "Model")
+    @Parameter(label = "Model", description = "Built-in Cellpose model name used when Custom pretrained model path is empty, for example cyto3 or nuclei.")
     String model = "cyto3";
 
-    @Parameter(required = false, label = "Custom pretrained model path")
+    @Parameter(required = false, label = "Custom pretrained model path", description = "Optional path to a custom trained Cellpose model. If set, it overrides the Model field.")
     File pretrained_model;
 
     @Parameter(label = "Diameter", description = "For open images this uses calibrated units. For path-based inputs this is treated as pixels unless pixel sizes are specified.")
     double diameter = 30.0;
 
-    @Parameter(required = false, label = "Pixel size XY (µm)")
+    @Parameter(required = false, visibility = ItemVisibility.INVISIBLE, label = "Pixel size XY (µm)", description = "Optional XY pixel size override in micrometers. Use only when the input metadata is missing or incorrect.")
     String pixel_size_xy_um = "";
 
-    @Parameter(required = false, label = "Pixel size Z (µm)")
+    @Parameter(required = false, visibility = ItemVisibility.INVISIBLE, label = "Pixel size Z (µm)", description = "Optional Z pixel size override in micrometers. Use only when the input metadata is missing or incorrect.")
     String pixel_size_z_um = "";
 
-    @Parameter(label = "Primary channel")
+    @Parameter(label = "Primary channel", description = "Primary input channel, using Fiji-style 1-based indexing. Use 1 for the first channel.")
     int ch1 = 1;
 
-    @Parameter(label = "Secondary channel")
+    @Parameter(label = "Secondary channel", description = "Optional secondary channel, using Fiji-style 1-based indexing. Set to 0 to disable the secondary channel.")
     int ch2 = 0;
 
-    @Parameter(label = "Channel axis")
+    @Parameter(visibility = ItemVisibility.INVISIBLE, label = "Channel axis", description = "Advanced override for non-standard array layouts. Leave at the default unless the channel dimension is not detected correctly.")
     int channel_axis = -1;
 
-    @Parameter(label = "Output format", choices = {"ome-tiff", "ome-zarr"})
+    @Parameter(label = "Output format", choices = {"ome-tiff", "ome-zarr"}, description = "Format used to write the labels. Use OME-Zarr for large datasets and chunked access, or OME-TIFF for broader TIFF-based compatibility.")
     String output_format = "ome-tiff";
 
-    @Parameter(label = "Output resolution", choices = {"level0", "native"})
+    @Parameter(label = "Output resolution", choices = {"level0", "native"}, description = "Resolution of the written labels. level0 upsamples back to full resolution, while native keeps the selected processing level.")
     String output_resolution = "level0";
 
     @Parameter(required = false, label = "Output name", description = "Optional basename for the result. Leave blank to derive it from the input.")
     String output_name = "";
 
-    @Parameter(required = false, label = "Save Results Directory", style = "directory")
+    @Parameter(required = false, label = "Save Results Directory", style = "directory", description = "Directory used for the final result. For converted non-Zarr inputs, this is also where reusable '<basename>_input.zarr' files are stored when reuse is enabled.")
     File output_directory;
 
-    @Parameter(label = "Blocksize (Z,Y,X) or auto")
+    @Parameter(label = "Blocksize (Z,Y,X) or auto", description = "Processing block size in voxels, for example 64,256,256. If set to auto, Fiji ignores any manual block-size choice and computes it from object size, memory budget, and the selected resolution level.")
     String blocksize = "auto";
 
-    @Parameter(label = "Resolution level", description = "Use -1 for automatic selection.")
+    @Parameter(label = "Resolution level", description = "Pyramid level used for segmentation. Use -1 for automatic selection. When -1 is used, Fiji ignores a manual level choice and picks the level that best matches the effective object size.")
     int resolution_level = -1;
 
-    @Parameter(label = "Auto cluster")
+    @Parameter(label = "Auto cluster", description = "Automatically chooses the worker count and memory per worker from the available machine resources. When enabled, the Workers and Memory per worker fields below are treated as informational defaults and may be overridden.")
     boolean auto_cluster = true;
 
-    @Parameter(label = "Workers")
+    @Parameter(label = "Workers", description = "Number of Dask workers to launch. This is used only when Auto cluster is disabled. When Auto cluster is enabled, this value may be discarded and recalculated.")
     int n_workers = 1;
 
-    @Parameter(label = "CPUs per worker")
+    @Parameter(label = "CPUs per worker", description = "CPU threads assigned to each worker. This still influences planning when Auto cluster is enabled.")
     int ncpus = 4;
 
-    @Parameter(label = "Memory per worker")
+    @Parameter(label = "Memory per worker", description = "Memory limit per worker, for example 8GB. This is used only when Auto cluster is disabled. When Auto cluster is enabled, this value may be discarded and recalculated.")
     String memory_per_worker = "8GB";
 
-    @Parameter(label = "Use GPU")
+    @Parameter(label = "Use GPU", description = "Runs Cellpose inference on the GPU when the selected environment provides GPU support.")
     boolean use_gpu = true;
 
-    @Parameter(label = "3D mode")
+    @Parameter(label = "3D mode", description = "Enables Cellpose 3D segmentation mode for volumetric data.")
     boolean do_3D = false;
 
-    @Parameter(label = "Open Dask dashboard")
+    @Parameter(label = "Open Dask dashboard", description = "Opens the Dask dashboard in a browser when the run starts. Disable this for quieter or headless runs.")
     boolean show_dashboard = true;
 
-    @Parameter(label = "Reuse converted input Zarr")
+    @Parameter(label = "Reuse existing converted input OME-Zarr", description = "If enabled, an existing '<basename>_input.zarr' in the save directory is reused instead of converting the same source file again. This only matters for non-Zarr file inputs.")
     boolean reuse_zarr = true;
 
-    @Parameter(label = "Cell probability threshold")
+    @Parameter(label = "Cell probability threshold", description = "Cellpose cell-probability threshold. Increase it to be stricter, decrease it to accept weaker objects.")
     double cellprob_threshold = 0.0;
 
-    @Parameter(label = "Minimum object size")
+    @Parameter(label = "Minimum object size", description = "Removes masks smaller than this size in pixels or voxels, depending on the processing mode.")
     int min_size = 15;
 
-    @Parameter(label = "Flow 3D smoothing")
+    @Parameter(label = "Flow 3D smoothing", description = "Additional smoothing applied to the 3D flow field before mask reconstruction. Mostly useful for difficult 3D data.")
     double flow3D_smooth = 1.0;
 
-    @Parameter(label = "Cell probability smoothing")
+    @Parameter(label = "Cell probability smoothing", description = "Additional smoothing applied to the cell-probability field. Mostly useful for difficult 3D data.")
     double cellprob_smooth = 0.0;
 
-    @Parameter(label = "No resample")
+    @Parameter(label = "No resample", description = "Disables Cellpose resampling during evaluation. This can be faster, but may change mask quality and also affects the automatic block-size limits.")
     boolean no_resample = false;
 
-    @Parameter(required = false, label = "Additional CLI flags", description = "Comma-separated list of extra CLI flags forwarded verbatim.")
+    @Parameter(required = false, label = "Additional CLI flags", description = "Comma-separated list of extra CLI flags forwarded verbatim. Use this for advanced options such as pixel size overrides or channel axis.")
     String additional_flags = "";
 
     @Parameter(type = ItemIO.OUTPUT)
@@ -306,12 +310,13 @@ public class CellposeDistributed implements Command {
             return context;
         }
 
-        if (input_file_or_folder == null || !input_file_or_folder.exists()) {
+        File selectedInput = input_folder != null ? input_folder : input_file_or_folder;
+        if (selectedInput == null || !selectedInput.exists()) {
             throw new IllegalArgumentException("Provide either an open image or an input file/folder.");
         }
 
-        context.inputPath = input_file_or_folder;
-        context.baseName = stripExtension(input_file_or_folder.getName());
+        context.inputPath = selectedInput;
+        context.baseName = stripExtension(selectedInput.getName());
         return context;
     }
 
