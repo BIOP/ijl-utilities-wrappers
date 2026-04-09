@@ -39,6 +39,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import webbrowser
 import xml.etree.ElementTree as ET
 
@@ -1922,17 +1923,40 @@ def estimate_ome_zarr_chunks(target_shape):
     raise ValueError("Only 2D and 3D label exports are supported.")
 
 
+def largest_divisor_at_most(value, limit):
+    value = int(value)
+    limit = int(limit)
+    if value <= 0 or limit <= 0:
+        raise ValueError("value and limit must be positive integers.")
+    if value <= limit:
+        return value
+
+    best = 1
+    max_factor = int(math.sqrt(value))
+    for candidate in range(1, max_factor + 1):
+        if value % candidate != 0:
+            continue
+        paired = value // candidate
+        if candidate <= limit and candidate > best:
+            best = candidate
+        if paired <= limit and paired > best:
+            best = paired
+    return best
+
+
 def estimate_ome_zarr_inner_chunks(target_shape):
     if len(target_shape) == 3:
+        outer_chunks = estimate_ome_zarr_chunks(target_shape)
         return (
-            min(int(target_shape[0]), OME_ZARR_INNER_CHUNK_Z),
-            min(int(target_shape[1]), OME_ZARR_INNER_CHUNK_YX),
-            min(int(target_shape[2]), OME_ZARR_INNER_CHUNK_YX),
+            largest_divisor_at_most(int(outer_chunks[0]), OME_ZARR_INNER_CHUNK_Z),
+            largest_divisor_at_most(int(outer_chunks[1]), OME_ZARR_INNER_CHUNK_YX),
+            largest_divisor_at_most(int(outer_chunks[2]), OME_ZARR_INNER_CHUNK_YX),
         )
     if len(target_shape) == 2:
+        outer_chunks = estimate_ome_zarr_chunks(target_shape)
         return (
-            min(int(target_shape[0]), OME_ZARR_INNER_CHUNK_YX),
-            min(int(target_shape[1]), OME_ZARR_INNER_CHUNK_YX),
+            largest_divisor_at_most(int(outer_chunks[0]), OME_ZARR_INNER_CHUNK_YX),
+            largest_divisor_at_most(int(outer_chunks[1]), OME_ZARR_INNER_CHUNK_YX),
         )
     raise ValueError("Only 2D and 3D label exports are supported.")
 
@@ -1986,7 +2010,54 @@ def build_ome_zarr_scale(pixel_sizes, target_shape):
     raise ValueError("Only 2D and 3D label exports are supported.")
 
 
-def write_resized_labels_to_zarr(source_array, target_array):
+class TerminalProgressBar:
+    def __init__(self, label, total, min_interval_seconds=0.2):
+        self.label = str(label)
+        self.total = max(1, int(total))
+        self.current = 0
+        self.min_interval_seconds = float(min_interval_seconds)
+        self.last_render_time = 0.0
+        self.rendered = False
+
+    def update(self, amount=1):
+        self.current = min(self.total, self.current + int(amount))
+        now = time.monotonic()
+        if self.current >= self.total or (now - self.last_render_time) >= self.min_interval_seconds:
+            self._render()
+            self.last_render_time = now
+
+    def _render(self):
+        width = 32
+        fraction = min(1.0, max(0.0, float(self.current) / float(self.total)))
+        filled = int(round(fraction * width))
+        bar = "#" * filled + "." * (width - filled)
+        message = (
+            f"\r{self.label}: [{bar}] {self.current}/{self.total} "
+            f"({fraction * 100.0:5.1f}%)"
+        )
+        sys.stdout.write(message)
+        sys.stdout.flush()
+        self.rendered = True
+
+    def close(self):
+        if not self.rendered or self.current < self.total:
+            self.current = self.total
+            self._render()
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+
+def estimate_zarr_write_steps(target_shape, chunk_shape):
+    target_shape = tuple(int(value) for value in target_shape)
+    chunk_shape = tuple(int(value) for value in chunk_shape)
+    y_step = max(1, int(chunk_shape[-2]))
+    y_passes = int(math.ceil(float(target_shape[-2]) / float(y_step)))
+    if len(target_shape) == 2:
+        return y_passes
+    return int(target_shape[0]) * y_passes
+
+
+def write_resized_labels_to_zarr(source_array, target_array, progress_bar=None):
     source_shape = tuple(int(value) for value in source_array.shape)
     target_shape = tuple(int(value) for value in target_array.shape)
 
@@ -2011,34 +2082,25 @@ def write_resized_labels_to_zarr(source_array, target_array):
         build_resize_indices(source_y, target_y, start, stop)
         for start, stop in y_ranges
     ]
-    x_ranges = [
-        (start, min(target_x, start + tile_x))
-        for start in range(0, target_x, tile_x)
-    ]
-    x_indices_per_tile = [
-        build_resize_indices(source_x, target_x, start, stop)
-        for start, stop in x_ranges
-    ]
+    x_indices = (
+        build_resize_indices(source_x, target_x)
+        if source_x != target_x
+        else None
+    )
 
     def write_plane(source_plane, target_plane_index=None):
         source_plane = np.asarray(source_plane, dtype=np.uint32)
         for (y_start, y_stop), y_indices in zip(y_ranges, y_indices_per_tile):
             row_block = np.take(source_plane, y_indices, axis=0)
-            for (x_start, x_stop), x_indices in zip(x_ranges, x_indices_per_tile):
-                if source_x == target_x:
-                    part = row_block[:, x_start:x_stop]
-                else:
-                    part = np.take(row_block, x_indices, axis=1)
-                if target_plane_index is None:
-                    target_array[y_start:y_stop, x_start:x_stop] = np.asarray(
-                        part,
-                        dtype=np.uint32,
-                    )
-                else:
-                    target_array[target_plane_index, y_start:y_stop, x_start:x_stop] = np.asarray(
-                        part,
-                        dtype=np.uint32,
-                    )
+            if x_indices is not None:
+                row_block = np.take(row_block, x_indices, axis=1)
+            row_block = np.asarray(row_block, dtype=np.uint32)
+            if target_plane_index is None:
+                target_array[y_start:y_stop, :] = row_block
+            else:
+                target_array[target_plane_index, y_start:y_stop, :] = row_block
+            if progress_bar is not None:
+                progress_bar.update()
 
     if len(target_shape) == 2:
         write_plane(source_array)
@@ -2074,41 +2136,54 @@ def _write_output_ome_zarr_once(output_path, labels_source, pyramid_shapes, pyra
     else:
         print("OME-Zarr export storage: plain chunks (sharding codec unavailable)")
 
-    for level_index, (level_shape, pixel_sizes) in enumerate(
-        zip(pyramid_shapes, pyramid_pixel_sizes)
-    ):
-        level_shape = tuple(int(value) for value in level_shape)
-        outer_chunks = estimate_ome_zarr_chunks(level_shape)
-        if use_sharding:
-            dataset = zstore.create_array(
-                str(level_index),
-                shape=level_shape,
-                chunks=estimate_ome_zarr_inner_chunks(level_shape),
-                shards=outer_chunks,
-                dtype=np.uint32,
-                serializer=BytesCodec(),
-                compressors=(
-                    BloscCodec(cname="zstd", clevel=1, shuffle="bitshuffle"),
-                ),
-                overwrite=True,
+    total_steps = 0
+    for level_shape in pyramid_shapes:
+        chunk_shape = estimate_ome_zarr_chunks(level_shape)
+        total_steps += estimate_zarr_write_steps(level_shape, chunk_shape)
+    progress_bar = TerminalProgressBar("OME-Zarr write", total_steps)
+
+    try:
+        for level_index, (level_shape, pixel_sizes) in enumerate(
+            zip(pyramid_shapes, pyramid_pixel_sizes)
+        ):
+            level_shape = tuple(int(value) for value in level_shape)
+            outer_chunks = estimate_ome_zarr_chunks(level_shape)
+            print(
+                f"Writing OME-Zarr pyramid level {level_index} with shape {level_shape} "
+                f"and outer chunks {outer_chunks}"
             )
-        else:
-            dataset = zstore.create_dataset(
-                str(level_index),
-                shape=level_shape,
-                chunks=outer_chunks,
-                dtype=np.uint32,
-                overwrite=True,
+            if use_sharding:
+                dataset = zstore.create_array(
+                    str(level_index),
+                    shape=level_shape,
+                    chunks=estimate_ome_zarr_inner_chunks(level_shape),
+                    shards=outer_chunks,
+                    dtype=np.uint32,
+                    serializer=BytesCodec(),
+                    compressors=(
+                        BloscCodec(cname="zstd", clevel=1, shuffle="bitshuffle"),
+                    ),
+                    overwrite=True,
+                )
+            else:
+                dataset = zstore.create_dataset(
+                    str(level_index),
+                    shape=level_shape,
+                    chunks=outer_chunks,
+                    dtype=np.uint32,
+                    overwrite=True,
+                )
+            write_resized_labels_to_zarr(labels_source, dataset, progress_bar=progress_bar)
+            datasets_meta.append(
+                {
+                    "path": str(level_index),
+                    "coordinateTransformations": [
+                        {"type": "scale", "scale": build_ome_zarr_scale(pixel_sizes, level_shape)}
+                    ],
+                }
             )
-        write_resized_labels_to_zarr(labels_source, dataset)
-        datasets_meta.append(
-            {
-                "path": str(level_index),
-                "coordinateTransformations": [
-                    {"type": "scale", "scale": build_ome_zarr_scale(pixel_sizes, level_shape)}
-                ],
-            }
-        )
+    finally:
+        progress_bar.close()
 
     zstore.attrs["multiscales"] = [
         {
@@ -2584,16 +2659,37 @@ def main():
                     result_zarr = zarr.open(str(write_path), mode="r")
                 else:
                     print("Starting distributed_eval")
-                    result_zarr, _ = distributed_eval(
-                        input_zarr=channel_plan.input_zarr,
-                        blocksize=blocksize,
-                        write_path=str(write_path),
-                        preprocessing_steps=channel_plan.preprocessing_steps,
-                        model_kwargs=model_kwargs,
-                        eval_kwargs=eval_kwargs,
-                        cluster_kwargs=cluster_kwargs,
-                        temporary_directory=str(output_dir),
-                    )
+                    try:
+                        result_zarr, _ = distributed_eval(
+                            input_zarr=channel_plan.input_zarr,
+                            blocksize=blocksize,
+                            write_path=str(write_path),
+                            preprocessing_steps=channel_plan.preprocessing_steps,
+                            model_kwargs=model_kwargs,
+                            eval_kwargs=eval_kwargs,
+                            cluster_kwargs=cluster_kwargs,
+                            temporary_directory=str(output_dir),
+                        )
+                    except Exception as error:
+                        if not write_path.exists():
+                            raise
+
+                        recovered_zarr = zarr.open(str(write_path), mode="r")
+                        recovered_shape = tuple(int(value) for value in recovered_zarr.shape)
+                        expected_shape = tuple(int(value) for value in channel_plan.input_zarr.shape)
+                        if recovered_shape != expected_shape:
+                            raise RuntimeError(
+                                f"Distributed evaluation failed and the preserved result at {write_path} "
+                                f"has shape {recovered_shape} instead of the expected {expected_shape}."
+                            ) from error
+
+                        print(
+                            "WARNING: distributed_eval raised an exception after writing a readable "
+                            f"intermediate result at {write_path}. Attempting {args.output_format} export "
+                            "from the preserved segmentation instead of rerunning segmentation."
+                        )
+                        print(f"Recovered distributed_eval exception: {type(error).__name__}: {error}")
+                        result_zarr = recovered_zarr
 
                 pyramid_shapes, pyramid_pixel_sizes = prepare_output_label_specs(
                     result_zarr,
