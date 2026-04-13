@@ -84,6 +84,7 @@ BUILTIN_MODEL_NAMES = {
 class LevelInfo:
     key: str
     array: object
+    axes_names: tuple[str, ...] = ()
     x_factor: float = 1.0
     y_factor: float = 1.0
     z_factor: float = 1.0
@@ -844,6 +845,18 @@ def read_axes_metadata(root, fallback_ndim):
     return infer_axes_names(fallback_ndim)
 
 
+def resolve_channel_axis(array, channel_axis_argument, axes_names=None):
+    if array.ndim <= 3:
+        return None
+    if channel_axis_argument is not None and channel_axis_argument != -1:
+        return normalize_axis(channel_axis_argument, array.ndim)
+    if axes_names:
+        for axis_index, axis_name in enumerate(axes_names):
+            if str(axis_name).lower() == "c":
+                return normalize_axis(axis_index, array.ndim)
+    return normalize_axis(-1, array.ndim)
+
+
 def read_dataset_scale_map(root):
     multiscales = dict(getattr(root, "attrs", {})).get("multiscales", [])
     if not multiscales:
@@ -864,7 +877,7 @@ def read_dataset_scale_map(root):
 
 def build_level_infos(root, root_pixel_sizes):
     if isinstance(root, zarr.Array):
-        return [LevelInfo(key="0", array=root)]
+        return [LevelInfo(key="0", array=root, axes_names=tuple(infer_axes_names(root.ndim)))]
 
     level_keys = sorted((key for key in root.keys() if str(key).isdigit()), key=int)
     if not level_keys:
@@ -883,7 +896,7 @@ def build_level_infos(root, root_pixel_sizes):
     level_infos = []
     for key in level_keys:
         array = root[key]
-        info = LevelInfo(key=str(key), array=array)
+        info = LevelInfo(key=str(key), array=array, axes_names=tuple(axes_names))
         scale = scale_map.get(str(key))
         if scale is not None and base_scale is not None:
             if "x" in axis_lookup:
@@ -1019,9 +1032,7 @@ def resolve_anisotropy(args, chosen_pixel_sizes):
 
 
 def detect_channel_axis(array, channel_axis_argument):
-    if array.ndim <= 3:
-        return None
-    return normalize_axis(channel_axis_argument, array.ndim)
+    return resolve_channel_axis(array, channel_axis_argument)
 
 
 def validate_channel_index(index, channel_count, label):
@@ -1043,8 +1054,8 @@ def stack_two_channels(image, cyto_idx, nuc_idx, channel_axis, crop=None):
     return np.stack((cyto, nuc), axis=-1)
 
 
-def build_channel_plan(array, args):
-    source_channel_axis = detect_channel_axis(array, args.channel_axis)
+def build_channel_plan(array, args, axes_names=None):
+    source_channel_axis = resolve_channel_axis(array, args.channel_axis, axes_names=axes_names)
     if source_channel_axis is None:
         return ChannelPlan(
             input_zarr=array,
@@ -1812,8 +1823,8 @@ def write_output_tiff(output_tiff, labels, pixel_sizes):
     write_output_tiff_with_pyramid(output_tiff, labels, [tuple(labels.shape)], [pixel_sizes])
 
 
-def spatial_shape_from_array(array, channel_axis_argument):
-    channel_axis = detect_channel_axis(array, channel_axis_argument)
+def spatial_shape_from_array(array, channel_axis_argument, axes_names=None):
+    channel_axis = resolve_channel_axis(array, channel_axis_argument, axes_names=axes_names)
     shape = [int(value) for value in array.shape]
     if channel_axis is not None:
         del shape[channel_axis]
@@ -2459,7 +2470,11 @@ def prepare_output_label_specs(labels_source, args, level_infos, selected_level,
     pyramid_shapes = []
     pyramid_pixel_sizes = []
     for level_info in output_level_infos:
-        target_shape = spatial_shape_from_array(level_info.array, args.channel_axis)
+        target_shape = spatial_shape_from_array(
+            level_info.array,
+            args.channel_axis,
+            axes_names=level_info.axes_names,
+        )
         if len(target_shape) != len(source_shape):
             raise ValueError("Output level dimensionality does not match labels.")
 
@@ -2585,7 +2600,11 @@ def main():
         source_array = selected_level.array
         print(f"Processing array shape: {source_array.shape} dtype: {source_array.dtype}")
 
-        channel_plan = build_channel_plan(source_array, args)
+        channel_plan = build_channel_plan(
+            source_array,
+            args,
+            axes_names=selected_level.axes_names,
+        )
         blocksize = resolve_blocksize(
             args,
             channel_plan.input_zarr,
