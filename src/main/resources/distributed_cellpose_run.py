@@ -173,15 +173,24 @@ class Tee:
                 except Exception:
                     pass
             if self.file_handle:
-                self.file_handle.write(message)
-                self.file_handle.flush()
+                try:
+                    self.file_handle.write(message)
+                    self.file_handle.flush()
+                except Exception:
+                    pass
 
     def flush(self):
         with self.lock:
             if self.stream and hasattr(self.stream, "flush"):
-                self.stream.flush()
+                try:
+                    self.stream.flush()
+                except Exception:
+                    pass
             if self.file_handle and hasattr(self.file_handle, "flush"):
-                self.file_handle.flush()
+                try:
+                    self.file_handle.flush()
+                except Exception:
+                    pass
 
 
 def update_log_handlers():
@@ -215,6 +224,17 @@ def setup_persistent_process_log(output_path):
 
     print(f"Persistent process log created at: {log_path}")
     return log_handle, log_path
+
+
+def close_persistent_process_log(log_handle):
+    try:
+        if isinstance(sys.stdout, Tee):
+            sys.stdout = sys.stdout.stream
+        if isinstance(sys.stderr, Tee):
+            sys.stderr = sys.stderr.stream
+        update_log_handlers()
+    finally:
+        log_handle.close()
 
 
 def parse_args():
@@ -2715,7 +2735,7 @@ def main():
 
         print("Done.")
     finally:
-        log_handle.close()
+        close_persistent_process_log(log_handle)
 
 
 if __name__ == "__main__":
