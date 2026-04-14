@@ -61,7 +61,7 @@ cp.run()
 // ============================================================
 
 /*
-def zarrOut = new File(output_directory, "my_image_input.zarr")
+def zarrOut = new File(output_directory, "my_image_input.ome.zarr")
 
 def conv = new ConvertToZarr()
 conv.input_file = new File("/path/to/my_image.czi")

@@ -39,7 +39,7 @@ run("Cellpose Distributed...",
 // ============================================================
 
 /*
-zarr_path = output_directory + File.separator + "my_image_input.zarr";
+zarr_path = output_directory + File.separator + "my_image_input.ome.zarr";
 
 run("Convert to Zarr (for Distributed Cellpose)...",
     "input_file=[/path/to/my_image.czi]" +

@@ -41,7 +41,7 @@ public class ConvertToZarr implements Command {
     @Parameter(required = false, label = "Input file (IMS, OME-TIFF, …; used when no image is open)")
     File input_file;
 
-    @Parameter(label = "Output folder (a .zarr with the input basename is created here)", style = "directory")
+    @Parameter(label = "Output folder (a .ome.zarr with the input basename is created here)", style = "directory")
     File output_folder;
 
     @Parameter(visibility = ItemVisibility.MESSAGE)
@@ -114,7 +114,7 @@ public class ConvertToZarr implements Command {
             return;
         }
 
-        File outputZarr = new File(output_folder, baseName + ".zarr");
+        File outputZarr = new File(output_folder, baseName + ".ome.zarr");
 
         ZarrConversionTaskSettings settings = new ZarrConversionTaskSettings();
         settings.setEnvPath(env_path.getAbsolutePath())
@@ -132,9 +132,9 @@ public class ConvertToZarr implements Command {
         task.setSettings(settings);
         try {
             task.run();
-            ls.info("Zarr written to: " + outputZarr.getAbsolutePath());
+            ls.info("OME-Zarr written to: " + outputZarr.getAbsolutePath());
         } catch (Exception e) {
-            ls.error("Zarr conversion failed: " + e.getMessage());
+            ls.error("OME-Zarr conversion failed: " + e.getMessage());
         } finally {
             if (tempTif != null) tempTif.delete();
         }

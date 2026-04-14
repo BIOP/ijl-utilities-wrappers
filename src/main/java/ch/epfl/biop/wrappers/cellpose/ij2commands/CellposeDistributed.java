@@ -84,7 +84,7 @@ public class CellposeDistributed implements Command {
     @Parameter(required = false, label = "Output name", description = "Optional basename for the result. Leave blank to derive it from the input.")
     String output_name = "";
 
-    @Parameter(required = false, label = "Save Results Directory", style = "directory", description = "Directory used for the final result. For converted non-Zarr inputs, this is also where reusable '<basename>_input.zarr' files are stored when reuse is enabled.")
+    @Parameter(required = false, label = "Save Results Directory", style = "directory", description = "Directory used for the final result. For converted non-Zarr inputs, this is also where reusable '<basename>_input.ome.zarr' files are stored when reuse is enabled.")
     File output_directory;
 
     @Parameter(label = "Blocksize (Z,Y,X) or auto", description = "Processing block size in voxels, for example 64,256,256. If set to auto, Fiji ignores any manual block-size choice and computes it from object size, memory budget, and the selected resolution level.")
@@ -114,7 +114,7 @@ public class CellposeDistributed implements Command {
     @Parameter(label = "Open Dask dashboard", description = "Opens the Dask dashboard in a browser when the run starts. Disable this for quieter or headless runs.")
     boolean show_dashboard = true;
 
-    @Parameter(label = "Reuse existing converted input OME-Zarr", description = "If enabled, an existing '<basename>_input.zarr' in the save directory is reused instead of converting the same source file again. This only matters for non-Zarr file inputs.")
+    @Parameter(label = "Reuse existing converted input OME-Zarr", description = "If enabled, an existing '<basename>_input.ome.zarr' in the save directory is reused instead of converting the same source file again. This only matters for non-Zarr file inputs.")
     boolean reuse_zarr = true;
 
     @Parameter(label = "Cell probability threshold", description = "Cellpose cell-probability threshold. Increase it to be stricter, decrease it to accept weaker objects.")
@@ -173,7 +173,7 @@ public class CellposeDistributed implements Command {
                 File conversionTargetDirectory = (reuse_zarr && output_directory != null && output_directory.exists())
                     ? output_directory
                     : workingDirectory;
-                File convertedInputZarr = new File(conversionTargetDirectory, context.baseName + "_input.zarr");
+                File convertedInputZarr = new File(conversionTargetDirectory, context.baseName + "_input.ome.zarr");
                 if (!convertedInputZarr.exists()) {
                     ZarrConversionTaskSettings conversionSettings = new ZarrConversionTaskSettings()
                         .setEnvPath(env_path.getAbsolutePath())
