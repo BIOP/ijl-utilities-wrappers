@@ -2026,6 +2026,10 @@ def build_ome_zarr_axes(target_shape):
     raise ValueError("Only 2D and 3D label exports are supported.")
 
 
+def annotate_zarr_array_dimensions(zarr_array, axes):
+    zarr_array.attrs["_ARRAY_DIMENSIONS"] = [axis["name"] for axis in axes]
+
+
 def build_ome_zarr_scale(pixel_sizes, target_shape):
     if len(target_shape) == 3:
         return [
@@ -2204,6 +2208,7 @@ def _write_output_ome_zarr_once(output_path, labels_source, pyramid_shapes, pyra
                     dtype=np.uint32,
                     overwrite=True,
                 )
+            annotate_zarr_array_dimensions(dataset, axes)
             write_resized_labels_to_zarr(labels_source, dataset, progress_bar=progress_bar)
             datasets_meta.append(
                 {

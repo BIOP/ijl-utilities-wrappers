@@ -486,6 +486,11 @@ def _write_metadata(zstore, pixel_sizes, axes, datasets_meta, input_name):
     zstore.attrs["physical_pixel_sizes_um"] = pixel_sizes
 
 
+def _annotate_array_dimensions(zarr_array, axes):
+    """Write per-array dimension labels for readers that ignore group metadata."""
+    zarr_array.attrs["_ARRAY_DIMENSIONS"] = [axis["name"] for axis in axes]
+
+
 def _write_ome_zarr(output_path, data, base_chunks, pixel_sizes, n_levels, input_name):
     """
     Write ``data`` as a pyramidal OME-Zarr 0.4 group.
@@ -613,6 +618,7 @@ def _write_ome_zarr(output_path, data, base_chunks, pixel_sizes, n_levels, input
             {"name": "x", "type": "space", "unit": "micrometer"},
         ]
     _write_metadata(store, pixel_sizes, axes, datasets_meta, input_name)
+    _annotate_array_dimensions(arr0, axes)
     # ---------------------------
 
     prev_arr = arr0
@@ -644,6 +650,7 @@ def _write_ome_zarr(output_path, data, base_chunks, pixel_sizes, n_levels, input
             dtype=data.dtype,
             overwrite=True,
         )
+        _annotate_array_dimensions(arr_l, axes)
 
         src_Z = prev_shape[0]
         chunk_z = chunks_l[0]
@@ -812,6 +819,12 @@ def _write_ome_zarr_from_tiff_folder(
     arr0 = zstore.create_dataset(
         "0", shape=full_shape, chunks=chunks0, dtype=dtype, overwrite=True
     )
+    axes = [
+        {"name": "z", "type": "space", "unit": "micrometer"},
+        {"name": "y", "type": "space", "unit": "micrometer"},
+        {"name": "x", "type": "space", "unit": "micrometer"},
+    ]
+    _annotate_array_dimensions(arr0, axes)
 
     chunk_z = chunks0[0]
 
@@ -866,6 +879,7 @@ def _write_ome_zarr_from_tiff_folder(
         arr_l = zstore.create_dataset(
             str(level), shape=out_shape, chunks=chunks_l, dtype=dtype, overwrite=True
         )
+        _annotate_array_dimensions(arr_l, axes)
 
         src_Z = prev_shape[0]
         chunk_z = chunks_l[0]
@@ -893,11 +907,6 @@ def _write_ome_zarr_from_tiff_folder(
         prev_shape = out_shape
 
     # ---- OME-Zarr 0.4 metadata ---------------------------------------------
-    axes = [
-        {"name": "z", "type": "space", "unit": "micrometer"},
-        {"name": "y", "type": "space", "unit": "micrometer"},
-        {"name": "x", "type": "space", "unit": "micrometer"},
-    ]
     zstore.attrs["multiscales"] = [
         {
             "version": "0.4",
@@ -1211,16 +1220,20 @@ def _write_ome_zarr_from_ims(
         )
     else:
         arr0 = zstore["0"]
+    _annotate_array_dimensions(arr0, axes)
 
     for level_idx, _ims_name, _logical_shape, out_shape, chunks_l, storage_chunks_l in pyramid_info:
         if str(level_idx) not in zstore:
-            zstore.create_dataset(
+            arr_l = zstore.create_dataset(
                 str(level_idx),
                 shape=out_shape,
                 chunks=storage_chunks_l,
                 dtype=dtype,
                 overwrite=True,
             )
+        else:
+            arr_l = zstore[str(level_idx)]
+        _annotate_array_dimensions(arr_l, axes)
 
     # Initialize the group attributes ONLY after all arrays are created.
     # This ensures Zarr doesn't try to rename .zattrs while we're writing data.
