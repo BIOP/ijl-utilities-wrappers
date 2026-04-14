@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.Map;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -116,6 +117,20 @@ public class ExecutePythonInConda {
 
     private static String joinShellArguments(List<String> arguments) {
         return arguments.stream().map(ExecutePythonInConda::quoteShellArgument).collect(Collectors.joining(" "));
+    }
+
+    private static void prependWindowsRuntimePath(ProcessBuilder pb, File envRoot) {
+        Map<String, String> environment = pb.environment();
+        String existingPath = environment.getOrDefault("PATH", "");
+        StringBuilder pathBuilder = new StringBuilder();
+        pathBuilder.append(envRoot.getAbsolutePath());
+        pathBuilder.append(File.pathSeparator).append(new File(envRoot, "Scripts").getAbsolutePath());
+        pathBuilder.append(File.pathSeparator).append(new File(envRoot, "Library/bin").getAbsolutePath());
+        pathBuilder.append(File.pathSeparator).append(new File(envRoot, "DLLs").getAbsolutePath());
+        if (!existingPath.isEmpty()) {
+            pathBuilder.append(File.pathSeparator).append(existingPath);
+        }
+        environment.put("PATH", pathBuilder.toString());
     }
 
     public static void execute(String envDirPath, String envType, List<String> arguments , Consumer<InputStream> outputHandler) throws IOException, InterruptedException {
@@ -241,6 +256,9 @@ public class ExecutePythonInConda {
         System.out.println( "Running "+arguments+" with the command in the line below: ");
         System.out.println(String.join(" ", cmd));
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
+        if (IJ.isWindows() && envType.equals("pixi")) {
+            prependWindowsRuntimePath(pb, runtimeEnvRoot);
+        }
 
         Process p = pb.start();
         Thread t = new Thread(Thread.currentThread().getName() + "-" + p.hashCode()) {
