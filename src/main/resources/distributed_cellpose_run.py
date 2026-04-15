@@ -1772,6 +1772,20 @@ def infer_spatial_shape(image, do_3d):
     return tuple(int(value) for value in image.shape[:2])
 
 
+def adapt_eval_kwargs_for_image(image, eval_kwargs):
+    adapted = dict(eval_kwargs)
+    if not adapted.get("do_3D"):
+        return adapted
+
+    if image.ndim == 3:
+        adapted.setdefault("z_axis", 0)
+    elif image.ndim == 4:
+        adapted.setdefault("z_axis", 0)
+        adapted.setdefault("channel_axis", image.ndim - 1)
+
+    return adapted
+
+
 def read_preprocess_and_segment(
     input_zarr,
     crop,
@@ -1789,8 +1803,9 @@ def read_preprocess_and_segment(
     log_file = setup_worker_log_file(worker_logs_directory)
     cellpose.io.logger_setup(stdout_file_replacement=log_file)
     model = cellpose.models.CellposeModel(**model_kwargs)
+    adapted_eval_kwargs = adapt_eval_kwargs_for_image(image, eval_kwargs)
 
-    return model.eval(image, **eval_kwargs)[0].astype(np.uint32)
+    return model.eval(image, **adapted_eval_kwargs)[0].astype(np.uint32)
 
 
 def run_single_block_eval(
