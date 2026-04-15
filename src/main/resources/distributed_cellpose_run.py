@@ -40,6 +40,7 @@ import sys
 import tempfile
 import threading
 import time
+import typing
 import webbrowser
 import xml.etree.ElementTree as ET
 
@@ -1721,6 +1722,7 @@ def load_distributed_segmentation_module(
     cellprob_smooth=0.0,
 ):
     patch_zarr_open_for_cellpose()
+    patch_pillow_compat_for_cellpose_sam()
     import cellpose.contrib.distributed_segmentation as distributed_segmentation
 
     distributed_segmentation._ijl_dask_temp_directory = dask_temp_directory
@@ -1728,6 +1730,16 @@ def load_distributed_segmentation_module(
     patch_distributed_segmentation(distributed_segmentation)
     patch_cellpose_model_behavior(flow3d_smooth=flow3d_smooth, cellprob_smooth=cellprob_smooth)
     return distributed_segmentation
+
+
+def patch_pillow_compat_for_cellpose_sam():
+    try:
+        import PIL._typing as pillow_typing
+    except Exception:
+        return
+
+    if not hasattr(pillow_typing, "_Ink"):
+        pillow_typing._Ink = typing.Any
 
 
 def apply_preprocessing_steps(image, crop, preprocessing_steps):
