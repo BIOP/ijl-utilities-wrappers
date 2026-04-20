@@ -9,16 +9,16 @@ import java.io.IOException;
 import java.net.URL;
 
 @SuppressWarnings({"CanBeFinal", "unused"})
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose>Cellpose ...")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Cellpose ...")
 public class Cellpose extends CellposeAbstractCommand implements Command {
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message4 ="Specify channels to be used for the prediction";
 
-    @Parameter(label = "--chan")
+    @Parameter(label = "--chan", description = "Main channel to segment (0=grayscale, 1=red, 2=green, 3=blue).")
     int ch1 = 0;
 
-    @Parameter(label = "--chan2")
+    @Parameter(label = "--chan2", description = "Optional second channel (e.g., nuclei). -1 if not used.")
     int ch2 = -1;
 
     public void openModelsPage() {

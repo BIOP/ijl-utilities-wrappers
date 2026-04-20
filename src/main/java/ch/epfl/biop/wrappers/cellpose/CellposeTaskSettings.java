@@ -10,7 +10,12 @@ public class CellposeTaskSettings {
     int ch2 = -1;
 
     // value defined from https://cellpose.readthedocs.io/en/latest/api.html
-    float diameter = 30;
+    double diameter = 30;
+    int batch_size = 1;
+    boolean use_tile = true;
+    int tile_size = 0;
+    double flow_threshold = 0.4;
+    double cellprob_threshold = 0.0;
     String additional_flags = "";
 
     public CellposeTaskSettings setEnvPath(String conda_env_path) {
@@ -43,8 +48,33 @@ public class CellposeTaskSettings {
         return this;
     }
 
-    public CellposeTaskSettings setDiameter(float diameter) {
+    public CellposeTaskSettings setDiameter(double diameter) {
         this.diameter = diameter;
+        return this;
+    }
+
+    public CellposeTaskSettings setBatchSize(int batch_size) {
+        this.batch_size = batch_size;
+        return this;
+    }
+
+    public CellposeTaskSettings setUseTile(boolean use_tile) {
+        this.use_tile = use_tile;
+        return this;
+    }
+
+    public CellposeTaskSettings setTileSize(int tile_size) {
+        this.tile_size = tile_size;
+        return this;
+    }
+
+    public CellposeTaskSettings setFlowThreshold(double flow_threshold) {
+        this.flow_threshold = flow_threshold;
+        return this;
+    }
+
+    public CellposeTaskSettings setCellprobThreshold(double cellprob_threshold) {
+        this.cellprob_threshold = cellprob_threshold;
         return this;
     }
 

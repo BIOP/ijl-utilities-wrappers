@@ -52,6 +52,21 @@ To check if it works, you can:
 
 The **Cellpose** wrapper is an ImageJ2 command that enables using a working Cellpose virtual environment (either conda, or venv) from Fiji.
 
+For the distributed Cellpose workflow, including the Fiji GUI fields, the CLI flags, output formats, and practical recommendations, see [README_cellpose_distributed.md](README_cellpose_distributed.md).
+
+The repository also contains a **distributed Cellpose** workflow for large 2D and 3D datasets.
+
+Briefly, the distributed workflow:
+
+- works on Zarr or OME-Zarr inputs, or converts compatible inputs to Zarr first
+- chooses a suitable pyramid level for segmentation
+- splits the image into blocks and runs Cellpose block by block
+- writes the result as OME-TIFF or OME-Zarr
+
+Use this workflow when the dataset is too large for the standard single-image Cellpose command, or when you want better scalability and modern chunked output formats.
+
+For usage details, available options, and practical recommendations, see [README_cellpose_distributed.md](README_cellpose_distributed.md).
+
 Briefly, **Cellpose** wrapper sequentially:
 - saves the current Fiji image in a temporary folder
 - starts the cellpose-env and runs Cellpose with defined parameters

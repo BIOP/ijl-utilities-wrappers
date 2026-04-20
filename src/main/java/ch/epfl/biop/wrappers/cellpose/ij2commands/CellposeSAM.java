@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.net.URL;
 
 @SuppressWarnings({"CanBeFinal", "unused"})
-@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose/Omnipose>Cellpose SAM...")
+@Plugin(type = Command.class, menuPath = "Plugins>BIOP>Cellpose>Cellpose SAM...")
 public class CellposeSAM extends CellposeAbstractCommand implements Command {
 
     public void openModelsPage() {

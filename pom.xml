@@ -80,14 +80,14 @@
 			<roles><role>founder</role></roles>
 			<properties><id>NicoKiaru</id></properties>
 		</contributor>
-		
+
 		<contributor>
 			<name>Romain Guiet</name>
 			<url>http://biop.epfl.ch/INFO_Facility.html</url>
 			<roles><role>founder</role></roles>
 			<properties><id>romainGuiet</id></properties>
 		</contributor>
-		
+
 		<contributor>
 			<name>Olivier Burri</name>
 			<url>http://biop.epfl.ch/INFO_Facility.html</url>
@@ -127,7 +127,7 @@
 			<url>https://maven.scijava.org/content/groups/public</url>
 		</repository>
 	</repositories>
-	
+
 	<properties>
 		<package-name>ch.epfl.biop.wrappers</package-name>
 		<main-class>ch.epfl.biop.DummyCommand</main-class>
@@ -209,6 +209,18 @@
 			<groupId>org.reflections</groupId>
 			<artifactId>reflections</artifactId>
 			<version>${reflections.version}</version>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-api</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-engine</artifactId>
 			<scope>test</scope>
 		</dependency>
 

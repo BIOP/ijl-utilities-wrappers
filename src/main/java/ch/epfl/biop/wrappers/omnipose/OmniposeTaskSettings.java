@@ -10,7 +10,12 @@ public class OmniposeTaskSettings {
     int ch2 = -1;
 
     // value defined from https://omnipose.readthedocs.io/cli.html
-    int diameter = 30;
+    double diameter = 30;
+    int batch_size = 1;
+    boolean use_tile = true;
+    int tile_size = 0;
+    double flow_threshold = 0.4;
+    double cellprob_threshold = 0.0;
     String additional_flags = "";
 
     public OmniposeTaskSettings setEnvPath(String envPath) {
@@ -43,11 +48,36 @@ public class OmniposeTaskSettings {
         return this;
     }
 
-    public OmniposeTaskSettings setDiameter(int diameter) {
+    public OmniposeTaskSettings setDiameter(double diameter) {
         this.diameter = diameter;
         return this;
     }
-    
+
+    public OmniposeTaskSettings setBatchSize(int batch_size) {
+        this.batch_size = batch_size;
+        return this;
+    }
+
+    public OmniposeTaskSettings setUseTile(boolean use_tile) {
+        this.use_tile = use_tile;
+        return this;
+    }
+
+    public OmniposeTaskSettings setTileSize(int tile_size) {
+        this.tile_size = tile_size;
+        return this;
+    }
+
+    public OmniposeTaskSettings setFlowThreshold(double flow_threshold) {
+        this.flow_threshold = flow_threshold;
+        return this;
+    }
+
+    public OmniposeTaskSettings setCellprobThreshold(double cellprob_threshold) {
+        this.cellprob_threshold = cellprob_threshold;
+        return this;
+    }
+
     public OmniposeTaskSettings setAdditionalFlags(String additional_flags) {
         this.additional_flags = additional_flags;
         return this;

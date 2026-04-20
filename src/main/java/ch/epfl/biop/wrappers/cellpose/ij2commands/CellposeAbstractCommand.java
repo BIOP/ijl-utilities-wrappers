@@ -9,7 +9,9 @@ import ij.io.FileSaver;
 import ij.measure.Calibration;
 import ij.plugin.Concatenator;
 import ij.plugin.Duplicator;
+import ij.plugin.HyperStackConverter;
 import ij.plugin.frame.Recorder;
+import ij.process.StackConverter;
 import org.scijava.ItemIO;
 import org.scijava.ItemVisibility;
 import org.scijava.command.Command;
@@ -43,38 +45,53 @@ abstract public class CellposeAbstractCommand implements Command {
     @Parameter
     ImagePlus imp;
 
-    @Parameter(label = "conda environment path" ,style="directory")
+    @Parameter(label = "environment path" ,style="directory", description = "Path to the environment. For Pixi, select either the project root containing pyproject.toml and .pixi, or a specific .pixi/envs/<name> directory.")
     File env_path = new File(default_conda_env_path);
 
-    @Parameter(label= "virtual environment type", choices= {"conda", "venv"})
+    @Parameter(label= "virtual environment type", choices= {"conda", "venv", "pixi"}, description = "Type of virtual environment. For Pixi, the wrapper accepts a project root, the .pixi/envs directory, or a specific .pixi/envs/<name> directory.")
     String env_type = "conda";
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message = "You can use the pretrained model, specify the model name below";
 
-    @Parameter(required = false, label = "--pretrained_model")
+    @Parameter(required = false, label = "--pretrained_model", description = "Cellpose model name (e.g., cyto3, nuclei, etc.).")
     String model = getDefaultModelName();
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message0 ="You can access the list of models by clicking on the button below.";
 
-    @Parameter(label="List of cellpose models", callback="openModelsPage")
+    @Parameter(label="List of cellpose models", callback="openModelsPage", description = "Opens the Cellpose models documentation page.")
     private Button open_models_page_button;
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
     String message1 = "OR To use your own model, specify the path below AND leave --pretrained_model empty";
 
-    @Parameter(required = false, label = "model_path")
+    @Parameter(required = false, label = "model_path", description = "Full path to a custom trained model.")
     File model_path = new File("path/to/own_cellpose_model");
 
     // value defined from https://omnipose.readthedocs.io/en/latest/api.html
-    @Parameter(label = "--diameter", style="format:#.##")
-    float diameter = 30;
+    @Parameter(label = "--diameter", style="format:#.##", description = "Approximate diameter of the objects in pixels. 0 for auto.")
+    double diameter = 30;
+
+    @Parameter(label = "--flow_threshold", description = "Flow error threshold. Typical values: 0.4 (default). Increase for more masks, decrease for fewer.")
+    double flow_threshold = 0.4;
+
+    @Parameter(label = "--cellprob_threshold", description = "Cell probability threshold. Typical values: -6 to 6. Default 0. Decrease to get more masks.")
+    double cellprob_threshold = 0.0;
+
+    @Parameter(label = "--batch_size", description = "Number of images per batch. For Cellpose 3, batch_size 1 is recommended to avoid tiling bugs.")
+    int batch_size = 1;
+
+    @Parameter(label = "--tile", description = "If true, the image is tiled. For images < 2000px, you can try setting this to false to avoid tiling artifacts.")
+    boolean use_tile = true;
+
+    @Parameter(label = "--tile_size", description = "Size of the tiles. If 0, Cellpose defaults (usually 224 or 512) are used.")
+    int tile_size = 0;
 
     @Parameter(visibility= ItemVisibility.MESSAGE)
-    String message2 = "Add more parameters here. For flags: --use_gpu, --do_3D, or for parameters with values: --cellprob_threshold, -6";
+    String message2 = "Add more parameters here. For flags: --use_gpu, --do_3D, --stitch_threshold 0.5";
 
-    @Parameter(required = false, label = "To add more parameters (use comma separated list of flags")
+    @Parameter(required = false, label = "To add more parameters (use comma separated list of flags", description = "Comma-separated list of additional CLI flags supported by Cellpose (e.g., --use_gpu, --do_3D).")
     String additional_flags = "--use_gpu, --do_3D";
 
     @Parameter (visibility=ItemVisibility.MESSAGE)
@@ -122,6 +139,11 @@ abstract public class CellposeAbstractCommand implements Command {
 
         settings.setModel(model_used);
         settings.setDiameter(diameter);
+        settings.setFlowThreshold(flow_threshold);
+        settings.setCellprobThreshold(cellprob_threshold);
+        settings.setBatchSize(batch_size);
+        settings.setUseTile(use_tile);
+        settings.setTileSize(tile_size);
 
         // Call setSettings - will vary depending on using cellpose 3 or cellpose sam
         setSettings(settings);
@@ -167,11 +189,11 @@ abstract public class CellposeAbstractCommand implements Command {
             ArrayList<ImagePlus> imps = new ArrayList<>(impFrames);
             for (int t_idx = 1; t_idx <= impFrames; t_idx++) {
                 ImagePlus cellpose_t_imp = IJ.openImage(cellpose_masks_paths.get(t_idx - 1).toString());
-                // make sure to make a 16-bit imp
+                // make sure to make a 32-bit imp
                 // (issue with time-lapse, first frame have less than 254 objects and latest have more)
                 if (cellpose_t_imp.getBitDepth() != 32 ) {
                     if (cellpose_t_imp.getNSlices() > 1) {
-                        cellpose_t_imp.getStack().setBitDepth(32);
+                        new StackConverter(cellpose_t_imp).convertToGray32();
                     } else {
                         cellpose_t_imp.setProcessor(cellpose_t_imp.getProcessor().convertToFloat());
                     }
@@ -187,6 +209,9 @@ abstract public class CellposeAbstractCommand implements Command {
             scriptModeField.setAccessible(true);
             scriptModeField.set(null, false);
             cellpose_imp = Concatenator.run(impsArray);
+            if (imp.getNFrames() > 1 || imp.getNSlices() > 1) {
+                cellpose_imp = HyperStackConverter.toHyperStack(cellpose_imp, 1, imp.getNSlices(), imp.getNFrames());
+            }
             scriptModeField.set(null, tmpScriptMode);
             cellpose_imp.setCalibration(cal);
             cellpose_imp.setTitle(imp.getShortTitle() + "-cellpose");
