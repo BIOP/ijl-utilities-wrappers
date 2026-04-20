@@ -41,6 +41,7 @@ This is useful when:
 - you want to reuse the same converted input for several segmentation runs
 - you want to inspect the converted pyramid before launching Cellpose
 
+/!\ PLEASE NOTE THAT THIS WAS MAINLY VIBE CODED. IT IS NOT YET FULLY DOCUMENTED OR TESTED, AND THE INTERFACE MAY CHANGE IN THE FUTURE. /!\
 
 ## Preparing input data as OME-Zarr
 
@@ -410,24 +411,24 @@ This section describes the available CLI options in plain language.
 
 ### Input options
 
-| Option | Meaning | Typical use |
-| --- | --- | --- |
-| `--zarr_input` | Path to an existing Zarr or OME-Zarr input | Best choice when data is already prepared |
-| `--tiff_input_folder` | Path to a folder of tiled TIFFs | Use when your input is already tiled on disk |
-| `--tiff_glob` | Restrict which TIFF files are used | Useful when a folder contains extra files |
-| `--tiff_block_pattern` | Regex used to infer tile positions from file names | Expert option for custom TIFF tile naming |
+| Option                 | Meaning                                            | Typical use                                  |
+| ---------------------- | -------------------------------------------------- | -------------------------------------------- |
+| `--zarr_input`         | Path to an existing Zarr or OME-Zarr input         | Best choice when data is already prepared    |
+| `--tiff_input_folder`  | Path to a folder of tiled TIFFs                    | Use when your input is already tiled on disk |
+| `--tiff_glob`          | Restrict which TIFF files are used                 | Useful when a folder contains extra files    |
+| `--tiff_block_pattern` | Regex used to infer tile positions from file names | Expert option for custom TIFF tile naming    |
 
 
 ### Output options
 
-| Option | Meaning | Typical use |
-| --- | --- | --- |
-| `--output_path` | Output labels path | Required |
-| `--output_format` | `ome-tiff` or `ome-zarr` | Choose based on your viewer and downstream workflow |
-| `--output_tiff` | Deprecated old alias for TIFF output | Backward compatibility only |
-| `--output_resolution` | `native` or `level0` | `level0` is usually easiest for downstream use |
-| `--pyramidal_output` | Write a pyramid | Default behavior |
-| `--no_pyramidal_output` | Write only one level | Use only if you explicitly want a single-resolution result |
+| Option                  | Meaning                              | Typical use                                                |
+| ----------------------- | ------------------------------------ | ---------------------------------------------------------- |
+| `--output_path`         | Output labels path                   | Required                                                   |
+| `--output_format`       | `ome-tiff` or `ome-zarr`             | Choose based on your viewer and downstream workflow        |
+| `--output_tiff`         | Deprecated old alias for TIFF output | Backward compatibility only                                |
+| `--output_resolution`   | `native` or `level0`                 | `level0` is usually easiest for downstream use             |
+| `--pyramidal_output`    | Write a pyramid                      | Default behavior                                           |
+| `--no_pyramidal_output` | Write only one level                 | Use only if you explicitly want a single-resolution result |
 
 Notes:
 
@@ -437,72 +438,72 @@ Notes:
 
 ### Model options
 
-| Option | Meaning | Typical use |
-| --- | --- | --- |
-| `--model_type` | Built-in model name | `cyto3`, `nuclei`, `cpsam`, and similar |
-| `--pretrained_model` | Custom model path or explicit model selection | Use for your own trained model |
+| Option               | Meaning                                       | Typical use                             |
+| -------------------- | --------------------------------------------- | --------------------------------------- |
+| `--model_type`       | Built-in model name                           | `cyto3`, `nuclei`, `cpsam`, and similar |
+| `--pretrained_model` | Custom model path or explicit model selection | Use for your own trained model          |
 
 
 ### Size and calibration options
 
-| Option | Meaning | Typical use |
-| --- | --- | --- |
-| `--diameter` | Object diameter in level-0 pixels | Use when working in pixels |
-| `--diameter_um` | Object diameter in micrometers | Preferred when metadata is reliable |
-| `--pixel_size_xy_um` | Override XY pixel size | Use when metadata is missing or wrong |
-| `--pixel_size_z_um` | Override Z pixel size | Important for correct 3D anisotropy |
-| `--anisotropy` | Explicit Z/XY ratio override | Expert override when you want to force anisotropy manually |
+| Option               | Meaning                           | Typical use                                                |
+| -------------------- | --------------------------------- | ---------------------------------------------------------- |
+| `--diameter`         | Object diameter in level-0 pixels | Use when working in pixels                                 |
+| `--diameter_um`      | Object diameter in micrometers    | Preferred when metadata is reliable                        |
+| `--pixel_size_xy_um` | Override XY pixel size            | Use when metadata is missing or wrong                      |
+| `--pixel_size_z_um`  | Override Z pixel size             | Important for correct 3D anisotropy                        |
+| `--anisotropy`       | Explicit Z/XY ratio override      | Expert override when you want to force anisotropy manually |
 
 
 ### Channel options
 
-| Option | Meaning | Typical use |
-| --- | --- | --- |
-| `--channel` | Primary channel, 1-based | Most user-friendly CLI form |
-| `--nucleus_channel` | Secondary channel, 1-based | Use for nucleus-assisted segmentation |
-| `--chan` / `--ch1` | Primary channel, 0-based | Internal-style option |
-| `--chan2` / `--ch2` | Secondary channel, 0-based | Internal-style option |
-| `--channel_axis` | Position of the channel axis in the array | Needed for non-standard array layouts |
+| Option              | Meaning                                   | Typical use                           |
+| ------------------- | ----------------------------------------- | ------------------------------------- |
+| `--channel`         | Primary channel, 1-based                  | Most user-friendly CLI form           |
+| `--nucleus_channel` | Secondary channel, 1-based                | Use for nucleus-assisted segmentation |
+| `--chan` / `--ch1`  | Primary channel, 0-based                  | Internal-style option                 |
+| `--chan2` / `--ch2` | Secondary channel, 0-based                | Internal-style option                 |
+| `--channel_axis`    | Position of the channel axis in the array | Needed for non-standard array layouts |
 
 
 ### Blocking and resolution options
 
-| Option | Meaning | Typical use |
-| --- | --- | --- |
-| `--blocksize` | Processing block size, or `auto` | Leave on `auto` unless tuning manually |
-| `--resolution_level` | Pyramid level to segment | Use `-1` for automatic choice |
+| Option               | Meaning                          | Typical use                            |
+| -------------------- | -------------------------------- | -------------------------------------- |
+| `--blocksize`        | Processing block size, or `auto` | Leave on `auto` unless tuning manually |
+| `--resolution_level` | Pyramid level to segment         | Use `-1` for automatic choice          |
 
 
 ### Cluster and compute options
 
-| Option | Meaning | Typical use |
-| --- | --- | --- |
-| `--auto_cluster` | Automatically choose worker settings | Recommended default |
-| `--n_workers` | Number of workers | Manual cluster tuning |
-| `--ncpus` | CPU cores per worker | Manual cluster tuning |
-| `--memory_per_worker` | Memory limit per worker | Manual cluster tuning |
-| `--use_gpu` | Enable GPU inference | Recommended if a compatible GPU is available |
-| `--do_3D` | Enable 3D Cellpose | Required for volumetric 3D segmentation |
-| `--dask_temp_directory` | Scratch directory for Dask | Useful when the default temp disk is too small or too slow |
-| `--no_open_dask_dashboard` | Do not auto-open the Dask dashboard | Use in headless or quiet runs |
+| Option                     | Meaning                              | Typical use                                                |
+| -------------------------- | ------------------------------------ | ---------------------------------------------------------- |
+| `--auto_cluster`           | Automatically choose worker settings | Recommended default                                        |
+| `--n_workers`              | Number of workers                    | Manual cluster tuning                                      |
+| `--ncpus`                  | CPU cores per worker                 | Manual cluster tuning                                      |
+| `--memory_per_worker`      | Memory limit per worker              | Manual cluster tuning                                      |
+| `--use_gpu`                | Enable GPU inference                 | Recommended if a compatible GPU is available               |
+| `--do_3D`                  | Enable 3D Cellpose                   | Required for volumetric 3D segmentation                    |
+| `--dask_temp_directory`    | Scratch directory for Dask           | Useful when the default temp disk is too small or too slow |
+| `--no_open_dask_dashboard` | Do not auto-open the Dask dashboard  | Use in headless or quiet runs                              |
 
 
 ### Mask filtering and smoothing options
 
-| Option | Meaning | Typical use |
-| --- | --- | --- |
-| `--cellprob_threshold` | Suppress weak masks | Increase to be stricter, decrease to be more permissive |
-| `--min_size` | Remove very small masks | Useful to suppress debris or noise |
-| `--max_size_fraction` | Remove overly large masks | Prevent giant merged masks |
-| `--flow3D_smooth` | Smooth 3D flow field before reconstruction | Helpful for difficult 3D masks |
-| `--cellprob_smooth` | Smooth 3D cell-probability field | Another 3D stabilization option |
-| `--no_resample` | Skip flow/cellprob resampling | Faster, but can reduce mask quality |
+| Option                 | Meaning                                    | Typical use                                             |
+| ---------------------- | ------------------------------------------ | ------------------------------------------------------- |
+| `--cellprob_threshold` | Suppress weak masks                        | Increase to be stricter, decrease to be more permissive |
+| `--min_size`           | Remove very small masks                    | Useful to suppress debris or noise                      |
+| `--max_size_fraction`  | Remove overly large masks                  | Prevent giant merged masks                              |
+| `--flow3D_smooth`      | Smooth 3D flow field before reconstruction | Helpful for difficult 3D masks                          |
+| `--cellprob_smooth`    | Smooth 3D cell-probability field           | Another 3D stabilization option                         |
+| `--no_resample`        | Skip flow/cellprob resampling              | Faster, but can reduce mask quality                     |
 
 
 ### Utility options
 
-| Option | Meaning | Typical use |
-| --- | --- | --- |
+| Option      | Meaning                          | Typical use                                         |
+| ----------- | -------------------------------- | --------------------------------------------------- |
 | `--dry_run` | Print the computed plan and exit | Best option for checking settings before a long run |
 
 
