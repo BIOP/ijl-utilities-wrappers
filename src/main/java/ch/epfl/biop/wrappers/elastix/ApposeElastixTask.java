@@ -54,9 +54,6 @@ import java.util.function.Supplier;
  */
 public class ApposeElastixTask implements ElastixTask {
 
-    /** Maximum number of attempts per registration before giving up. */
-    public static int MAX_TASK_ATTEMPTS = 4;
-
     /**
      * Number of concurrent warm worker processes. For a throughput batch the sweet spot is
      * roughly the number of <em>physical</em> cores, each running a single ITK thread. The JVM
@@ -105,43 +102,23 @@ public class ApposeElastixTask implements ElastixTask {
         inputs.put("n_threads", nThreads);
 
         // Dispatch onto a warm, isolated, single-threaded worker process. Each concurrent run()
-        // borrows its own process, so registrations never contend in shared Python/ITK state —
-        // which both avoids the parallel-batch slowdown and the intermittent lazy-import
-        // 'module itk has no attribute ParameterObject' error seen with threads-in-one-process.
-        Exception lastError = null;
-        for (int attempt = 1; attempt <= MAX_TASK_ATTEMPTS; attempt++) {
-            Service worker = null;
-            boolean reusable = false;
-            try {
-                worker = borrowWorker();
-
-                final Service.Task task = worker.task(getScript(), inputs);
-                if (settings.verbose) {
-                    task.listen(evt -> System.out.println("[itk-elastix] " + evt.message));
-                }
-                task.waitFor(); // auto-starts; throws TaskException if the worker reports failure
-                reusable = true;
-                return;
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                throw ie;
-            } catch (Exception e) {
-                lastError = e;
-                if (settings.verbose) {
-                    System.err.println("[itk-elastix] attempt " + attempt + "/" + MAX_TASK_ATTEMPTS
-                            + " failed: " + e.getMessage());
-                }
-            } finally {
-                if (worker != null) {
-                    // Keep a healthy worker warm for reuse; discard (and let the pool respawn) one
-                    // that errored, since its interpreter state may be compromised.
-                    if (reusable) returnWorker(worker);
-                    else discardWorker(worker);
-                }
+        // borrows its own process, so registrations never contend in shared Python/ITK state,
+        // which avoids the parallel-batch slowdown.
+        Service worker = borrowWorker();
+        boolean reusable = false;
+        try {
+            final Service.Task task = worker.task(getScript(), inputs);
+            if (settings.verbose) {
+                task.listen(evt -> System.out.println("[itk-elastix] " + evt.message));
             }
+            task.waitFor(); // auto-starts; throws TaskException if the worker reports failure
+            reusable = true;
+        } finally {
+            // Keep a healthy worker warm for reuse; discard (and let the pool respawn) one
+            // that errored, since its interpreter state may be compromised.
+            if (reusable) returnWorker(worker);
+            else discardWorker(worker);
         }
-        throw new RuntimeException(
-                "itk-elastix registration failed after " + MAX_TASK_ATTEMPTS + " attempt(s)", lastError);
     }
 
     /**
@@ -338,7 +315,7 @@ public class ApposeElastixTask implements ElastixTask {
      * Borrows an idle warm worker, creating a new one if the pool has not reached {@link #POOL_SIZE},
      * otherwise blocking until one is returned.
      */
-    private static Service borrowWorker() throws Exception {
+    public static Service borrowWorker() throws Exception {
         while (true) {
             Service idle = WORKER_POOL.pollFirst();
             if (idle != null) return idle;
@@ -364,12 +341,12 @@ public class ApposeElastixTask implements ElastixTask {
     }
 
     /** Returns a healthy worker to the pool for reuse. */
-    private static void returnWorker(Service worker) {
+    public static void returnWorker(Service worker) {
         WORKER_POOL.offerFirst(worker);
     }
 
     /** Discards a worker that errored, freeing a pool slot so a fresh one can be created. */
-    private static void discardWorker(Service worker) {
+    public static void discardWorker(Service worker) {
         WORKERS_CREATED.decrementAndGet();
         try {
             worker.close();

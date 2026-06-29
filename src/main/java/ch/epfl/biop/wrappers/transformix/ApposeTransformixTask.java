@@ -5,7 +5,6 @@ import org.apposed.appose.Service;
 
 import java.util.HashMap;
 import java.util.Map;
-import static ch.epfl.biop.wrappers.elastix.ApposeElastixTask.getElastixApposeService;
 
 /**
  * Appose-based implementation of {@link TransformixTask} using itk-elastix.
@@ -52,14 +51,26 @@ public class ApposeTransformixTask implements TransformixTask {
             script = getPointsScript();
         }
 
-        try (Service python = getElastixApposeService()) {
-            final Service.Task task = python.task(script, inputs);
+        // Borrow a warm worker from the shared itk-elastix pool. The worker's init script
+        // (ApposeElastixTask.getInitScript) already ran 'import itk'/'import os' once, before
+        // the ITK thread pool was built and with the threading env in place — so the task script
+        // must NOT import itk itself. Importing itk lazily inside a task, in a parallel context,
+        // races on submodule loading ('module itk has no attribute ...') and skips the threading
+        // setup; reusing the warm worker is what avoids that.
+        Service worker = ApposeElastixTask.borrowWorker();
+        boolean reusable = false;
+        try {
+            final Service.Task task = worker.task(script, inputs);
             if (settings.verbose) {
                 task.listen(evt -> System.out.println("[itk-transformix] " + evt.message));
             }
-            task.start();
-            task.waitFor();
-
+            task.waitFor(); // auto-starts; throws TaskException if the worker reports failure
+            reusable = true;
+        } finally {
+            // Keep a healthy worker warm for reuse; discard (and let the pool respawn) one
+            // that errored, since its interpreter state may be compromised.
+            if (reusable) ApposeElastixTask.returnWorker(worker);
+            else ApposeElastixTask.discardWorker(worker);
         }
     }
 
