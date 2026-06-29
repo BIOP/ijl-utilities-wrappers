@@ -139,7 +139,7 @@
 		<releaseProfiles>sign,deploy-to-scijava</releaseProfiles>
 		<doclint>none</doclint>
 		<reflections.version>0.10.2</reflections.version>
-        <appose.version>0.10.0</appose.version>
+        <appose.version>0.12.0</appose.version>
 	</properties>
 
 	<dependencies>

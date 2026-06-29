@@ -403,7 +403,8 @@ public class ApposeElastixTask implements ElastixTask {
         if (CACHED_ENV == null) CACHED_ENV = Appose
                 .pixi()
                 .channels("conda-forge")
-                .conda("appose", "python==3.11", "numpy", "psutil")
+                .conda("python==3.11", "numpy", "psutil")
+                .pypi("appose @ git+https://github.com/apposed/appose-python@e44d688e0aac65b048978ddb40e18aef5afa6c96")
                 // 0.23.x+ adds GIL-release protections relevant to in-process parallelism and
                 // matches-or-beats the CLI on single jobs; 0.21.0 predates those fixes.
                 // (Note: the forum's "0.23.3" was never released — 0.23.0 then 0.24.0/0.25.x.)
@@ -413,7 +414,7 @@ public class ApposeElastixTask implements ElastixTask {
                 // Pool beats Platform for small images; never TBB (defaults to ~1024 work units).
                 // The init script also sets this before 'import itk' for belt-and-suspenders.
                 .env("ITK_GLOBAL_DEFAULT_THREADER", "Pool")
-                .name("itk-elastix-v4")   // bump name to force rebuild after itk-elastix + threader change
+                .name("itk-elastix-v6")   // bump name to force rebuild after itk-elastix + threader change
                 .logDebug()
                 .build();
 
