@@ -33,7 +33,7 @@ Each wrapper follows a four-layer pattern:
 - **Windows**: `cmd.exe /c conda activate ... && python -m ...`
 - **Mac/Linux**: bash with direct path resolution, sets `DYLD_LIBRARY_PATH` / `LD_LIBRARY_PATH`
 
-DeepSlice is migrating to **Appose** (`DefaultDeepSliceTask`) for modern Python process communication instead of subprocess shelling.
+Several wrappers are moving to **Appose** for modern Python process communication instead of subprocess shelling: DeepSlice (`DefaultDeepSliceTask`), and Elastix/Transformix via the optional `itk-elastix` backend (`ApposeElastixTask` / `ApposeTransformixTask`). The Appose environment is provisioned with pixi and cached per JVM.
 
 ### Convertible Object Framework
 
@@ -43,7 +43,9 @@ DeepSlice is migrating to **Appose** (`DefaultDeepSliceTask`) for modern Python 
 
 ### Elastix/Transformix
 
-Native executable wrappers (not Python). `Elastix.java` and `Transformix.java` manage executable paths stored in ImageJ preferences, with OS-specific library path setup.
+Two interchangeable backends behind the same `ElastixTask` / `TransformixTask` contract:
+- **CLI** (`DefaultElastixTask` / `DefaultTransformixTask`) — native executable wrappers (not Python). `Elastix.java` and `Transformix.java` manage executable paths stored in ImageJ preferences, with OS-specific library path setup.
+- **Appose** (`ApposeElastixTask` / `ApposeTransformixTask`) — drop-in replacements that run `itk-elastix` in a pooled, single-threaded Appose worker process; no external elastix binary or PATH configuration needed. Output contract (`TransformParameters.N.txt`, `result.tif`, `outputpoints.txt`) is identical to the CLI. `ApposeTransformixTask` borrows from `ApposeElastixTask`'s warm worker pool.
 
 ## Key Packages
 

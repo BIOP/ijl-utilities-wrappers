@@ -2,7 +2,6 @@ package ch.epfl.biop.wrappers.transformix.ij2commands;
 
 import ch.epfl.biop.fiji.imageplusutils.ImagePlusFunctions;
 import ch.epfl.biop.wrappers.elastix.RegisterHelper;
-import ch.epfl.biop.wrappers.transformix.ApposeTransformixTask;
 import ch.epfl.biop.wrappers.transformix.DefaultTransformixTask;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;

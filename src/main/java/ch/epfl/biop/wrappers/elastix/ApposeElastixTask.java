@@ -26,40 +26,20 @@ import java.util.function.Supplier;
  * folder contains {@code TransformParameters.0.txt}, {@code TransformParameters.1.txt}, etc.</p>
  *
  * <p>Supports multi-channel registration: when multiple fixed/moving images are provided,
- * they are passed to itk-elastix via {@code ElastixRegistrationMethod.SetFixedImage(img, index)}.</p>
+ * they are passed to itk-elastix via {@code ElastixRegistrationMethod.AddFixedImage(...)}.</p>
  *
- * <h2>Parallel throughput model</h2>
- *
- * <p>The CLI is fast for many-small-jobs workloads because <em>each job is a separate OS
- * process</em> with a fully isolated ITK thread pool, allocator, and threader state. This
- * class mirrors that with a pool of <b>warm, isolated, single-threaded worker processes</b>
- * (see {@link #borrowWorker()} / {@link #returnWorker(Service)}):</p>
- * <ul>
- *   <li>Each worker is a persistent Appose Python process that imports {@code itk} <b>once</b>
- *       and processes registrations one at a time — amortizing the (non-trivial) {@code import itk}
- *       cost while keeping CLI-like process isolation.</li>
- *   <li>ITK threading state is fixed <b>at import time</b> in the init script
- *       ({@link #getInitScript()}): the {@code Pool} threader (never {@code Platform}/{@code TBB}
- *       for small images) and {@code SetGlobalDefaultNumberOfThreads(1)}, both <em>before</em> the
- *       ITK thread pool is constructed lazily on first use.</li>
- *   <li>Per-job thread count is set via {@code ElastixRegistrationMethod.SetNumberOfThreads(...)}
- *       — elastix silently ignores {@code NumberOfThreads} as a parameter-map key.</li>
- *   <li>Default is <b>1 thread per job</b> with parallelism <em>across</em> jobs
- *       ({@link #POOL_SIZE} concurrent workers), which is what saturates the CPU for a throughput
- *       batch without oversubscription.</li>
- * </ul>
- *
- * <p>Rationale and benchmarks:
- * <a href="https://discourse.itk.org/t/8x-slower-registration-with-itk-elastix-python-api-vs-elastix-cli-minimal-reproducible-example/7736">ITK Discourse thread</a>.</p>
+ * <p>Registrations are dispatched onto a pool of warm, single-threaded worker processes
+ * ({@link #borrowWorker()} / {@link #returnWorker(Service)}). Each worker imports {@code itk}
+ * once and processes registrations one at a time, so the import cost is amortized while every
+ * concurrent job keeps the isolation of its own process. Parallelism comes from running
+ * {@link #POOL_SIZE} workers, each single-threaded, rather than many threads per process.</p>
  */
 public class ApposeElastixTask implements ElastixTask {
 
     /**
-     * Number of concurrent warm worker processes. For a throughput batch the sweet spot is
-     * roughly the number of <em>physical</em> cores, each running a single ITK thread. The JVM
-     * only exposes logical processors, so this defaults to {@link Runtime#availableProcessors()};
-     * on hyperthreaded machines you may get closer to CLI throughput by lowering it to the
-     * physical-core count, e.g. {@code -Delastix.appose.workers=8}.
+     * Number of concurrent warm worker processes. Defaults to {@link Runtime#availableProcessors()};
+     * override with {@code -Delastix.appose.workers=N} (e.g. the physical-core count on
+     * hyperthreaded machines).
      */
     public static volatile int POOL_SIZE = Integer.getInteger(
             "elastix.appose.workers",
@@ -102,8 +82,7 @@ public class ApposeElastixTask implements ElastixTask {
         inputs.put("n_threads", nThreads);
 
         // Dispatch onto a warm, isolated, single-threaded worker process. Each concurrent run()
-        // borrows its own process, so registrations never contend in shared Python/ITK state,
-        // which avoids the parallel-batch slowdown.
+        // borrows its own process, so registrations never contend in shared Python/ITK state.
         Service worker = borrowWorker();
         boolean reusable = false;
         try {
@@ -122,16 +101,9 @@ public class ApposeElastixTask implements ElastixTask {
     }
 
     /**
-     * Worker initialization script, run <b>once</b> per worker process before any task.
-     *
-     * <p>Fixes ITK threading state at import time, which is the only point where it is honored:
-     * the ITK thread pool is built lazily on first use from these globals.</p>
-     * <ul>
-     *   <li>{@code ITK_GLOBAL_DEFAULT_THREADER=Pool} — for small (≈256px) images Pool beats
-     *       Platform, and TBB must be avoided (it defaults to ~1024 work units, pure overhead here).</li>
-     *   <li>{@code SetGlobalDefaultNumberOfThreads(1)} — one ITK thread per process; parallelism
-     *       comes from running many worker processes, not many threads per process.</li>
-     * </ul>
+     * Worker initialization script, run once per worker process before any task.
+     * Fixes ITK threading state at import time (the only point where it is honored): the {@code Pool}
+     * threader and a single ITK thread per process. Parallelism comes from running many workers.
      */
     private static String getInitScript() {
         return ""
@@ -148,30 +120,8 @@ public class ApposeElastixTask implements ElastixTask {
         return ""
                 + "import shutil\n"
                 + "import tempfile\n"
-                + "import sys\n"
                 + "import os\n"
                 + "import itk\n"
-                + "\n"
-                // Report both logical and physical core counts for diagnostics.
-                // psutil.cpu_count(logical=False) gives physical cores; os.cpu_count() includes HT.
-                + "try:\n"
-                + "    import psutil as _psutil\n"
-                + "    _physical_cores = _psutil.cpu_count(logical=False) or os.cpu_count()\n"
-                + "except ImportError:\n"
-                + "    _physical_cores = None\n"
-                + "print(f'[itk-elastix] Python {sys.version}, logical_cpus={os.cpu_count()}, physical_cores={_physical_cores}')\n"
-                + "try:\n"
-                + "    import itk_elastix; print(f'[itk-elastix] itk-elastix pkg version: {itk_elastix.__version__}')\n"
-                + "except Exception: pass\n"
-                // Report GIL status: sys._is_gil_enabled() is only available in Python 3.13+
-                // Free-threaded Python (GIL disabled) requires: python-freethreading conda package
-                // + PYTHON_GIL=0 env var at launch. Note: itk-elastix PyPI wheels may not yet
-                // provide cp313t (free-threaded) builds; ITK C++ already releases the GIL anyway.
-                + "try:\n"
-                + "    gil_active = sys._is_gil_enabled()\n"
-                + "except AttributeError:\n"
-                + "    gil_active = True  # Python < 3.13: GIL always active\n"
-                + "task.update(f'GIL active: {gil_active}')\n"
                 + "\n"
                 + "task.update(f'Loading {len(fixed_image_paths)} fixed and {len(moving_image_paths)} moving image(s)...')\n"
                 + "fixed_images = [itk.imread(p, itk.F) for p in fixed_image_paths]\n"
@@ -187,30 +137,17 @@ public class ApposeElastixTask implements ElastixTask {
                 + "    param_obj = itk.ParameterObject.New()\n"
                 + "    param_obj.ReadParameterFile(pf)\n"
                 + "\n"
-                + "    pm = param_obj.GetParameterMap(0)\n"
                 // Thread count per job. Default is 1 (throughput model: 1 thread/job, parallelism
-                // across worker processes). A caller may request more via ElastixTaskSettings.nThreads,
-                // in which case it is applied below through erm.SetNumberOfThreads(...).
-                //
+                // across worker processes). A caller may request more via ElastixTaskSettings.nThreads.
                 // NB: we deliberately do NOT set pm['NumberOfThreads'] — elastix silently ignores
-                // NumberOfThreads as a parameter-map key (https://discourse.itk.org/t/.../7736/16).
-                // The thread count must be set on the registration object instead.
+                // NumberOfThreads as a parameter-map key. The thread count is set on the registration
+                // object below via SetNumberOfThreads(...).
                 + "    effective_threads = n_threads if n_threads > 0 else 1\n"
-                // Do NOT add MaximumNumberOfSamplingAttempts here — CLI doesn't set it either,
-                // and we want the two paths to be as identical as possible.
-                + "    param_obj.SetParameterMap(0, pm)\n"
-                + "    task.update(f'Stage {stage_idx}: using {effective_threads} thread(s)')\n"
-                // Dump the full parameter map so we can verify itk-elastix sees the same params as the CLI.
-                + "    task.update(f'Stage {stage_idx}: param dump: {dict(pm)}')\n"
                 + "\n"
-                // Use a temp directory for this stage's output
                 + "    stage_dir = tempfile.mkdtemp(prefix=f'elastix_stage{stage_idx}_')\n"
-                + "\n"
                 + "    task.update(f'Stage {stage_idx}: running registration ({len(fixed_images)} channel(s))...')\n"
                 + "\n"
                 // Use the object API for all cases (single- and multi-channel alike).
-                // SetLogToFile(True) writes elastix.log to stage_dir — read it after registration
-                // to see BSpline grid schedule, per-level iteration counts, and any warnings.
                 + "    ImageType = type(fixed_images[0])\n"
                 + "    erm = itk.ElastixRegistrationMethod[ImageType, ImageType].New()\n"
                 + "    if multi_channel:\n"
@@ -224,38 +161,12 @@ public class ApposeElastixTask implements ElastixTask {
                 + "        erm.SetFixedImage(fixed_images[0])\n"
                 + "        erm.SetMovingImage(moving_images[0])\n"
                 + "    erm.SetParameterObject(param_obj)\n"
-                // Set the thread count on the registration object — the API elastix actually honors.
                 + "    erm.SetNumberOfThreads(effective_threads)\n"
                 + "    erm.SetOutputDirectory(stage_dir)\n"
                 + "    erm.SetLogToConsole(False)\n"
-                // SetLogToFile writes stage_dir/elastix.log — captured below for diagnostics
-                + "    erm.SetLogToFile(True)\n"
                 + "    if prev_transform_path is not None:\n"
                 + "        erm.SetInitialTransformParameterFileName(prev_transform_path)\n"
-                + "    import time as _time\n"
-                + "    _t0 = _time.perf_counter()\n"
                 + "    erm.UpdateLargestPossibleRegion()\n"
-                + "    _dt = _time.perf_counter() - _t0\n"
-                + "    task.update(f'Stage {stage_idx}: UpdateLargestPossibleRegion took {_dt:.1f}s')\n"
-                + "    result_params = erm.GetTransformParameterObject()\n"
-                + "\n"
-                // Print BSpline grid dimensions from the output transform to verify the grid
-                // that itk-elastix actually built (should be ~12×12 for 256px / 20-voxel spacing).
-                + "    try:\n"
-                + "        out_pm = result_params.GetParameterMap(0)\n"
-                + "        task.update(f'Stage {stage_idx}: result GridSize={out_pm.get(\"GridSize\",\"?\")}')\n"
-                + "        task.update(f'Stage {stage_idx}: result GridSpacing={out_pm.get(\"GridSpacing\",\"?\")}')\n"
-                + "    except Exception as _e:\n"
-                + "        task.update(f'Stage {stage_idx}: could not read result grid info: {_e}')\n"
-                + "\n"
-                // Capture the elastix log (contains BSpline grid schedule, per-level timing,
-                // iteration counts, and any warnings about parameter interpretation).
-                + "    _log_path = os.path.join(stage_dir, 'elastix.log')\n"
-                + "    if os.path.exists(_log_path):\n"
-                + "        with open(_log_path, 'r', errors='replace') as _lf:\n"
-                + "            task.update(f'Stage {stage_idx}: elastix.log:\\n' + _lf.read())\n"
-                + "    else:\n"
-                + "        task.update(f'Stage {stage_idx}: elastix.log not found in {stage_dir}')\n"
                 + "\n"
                 // Move TransformParameters.0.txt from stage temp dir to final location
                 + "    src = os.path.join(stage_dir, 'TransformParameters.0.txt')\n"
@@ -264,19 +175,16 @@ public class ApposeElastixTask implements ElastixTask {
                 + "\n"
                 // Post-process the transform file to fix compatibility with CLI transformix:
                 // 1. Fix InitialTransformParametersFileName path (itk-elastix wrote temp dir path)
-                // 2. Normalize "float32" -> "float" (itk-elastix writes "float32", CLI expects "float")
+                // 2. Normalize itk-elastix pixel-type names to CLI elastix names
                 + "    with open(dst, 'r') as f:\n"
                 + "        content = f.read()\n"
                 + "\n"
-                // Fix InitialTransformParametersFileName to point to the renamed file in output_folder
                 + "    if stage_idx > 0 and prev_transform_path is not None:\n"
                 + "        prev_final = os.path.join(output_folder, f'TransformParameters.{stage_idx - 1}.txt')\n"
-                // Replace both forward-slash and backslash variants of the old path
                 + "        content = content.replace(prev_transform_path.replace(os.sep, '/'), prev_final)\n"
                 + "        content = content.replace(prev_transform_path.replace('/', os.sep), prev_final)\n"
                 + "        content = content.replace(prev_transform_path, prev_final)\n"
                 + "\n"
-                // Normalize itk-elastix pixel type names to CLI elastix names
                 + "    content = content.replace('\"float32\"', '\"float\"')\n"
                 + "    content = content.replace('\"int16\"', '\"short\"')\n"
                 + "    content = content.replace('\"uint16\"', '\"unsigned short\"')\n"
@@ -299,7 +207,7 @@ public class ApposeElastixTask implements ElastixTask {
     // A bounded pool (up to POOL_SIZE) of persistent, single-threaded Appose worker processes.
     // Each run() borrows one exclusively, submits one registration, and returns it warm — so the
     // 'import itk' cost is paid once per worker rather than once per registration, while every
-    // concurrent job still gets the CLI-like isolation of its own OS process.
+    // concurrent job still gets the isolation of its own OS process.
     // -----------------------------------------------------------------------------------------
 
     private static final BlockingDeque<Service> WORKER_POOL = new LinkedBlockingDeque<>();
@@ -380,18 +288,14 @@ public class ApposeElastixTask implements ElastixTask {
         if (CACHED_ENV == null) CACHED_ENV = Appose
                 .pixi()
                 .channels("conda-forge")
-                .conda("python==3.11", "numpy", "psutil")
+                .conda("python==3.11", "numpy")
                 .pypi("appose @ git+https://github.com/apposed/appose-python@e44d688e0aac65b048978ddb40e18aef5afa6c96")
-                // 0.23.x+ adds GIL-release protections relevant to in-process parallelism and
-                // matches-or-beats the CLI on single jobs; 0.21.0 predates those fixes.
-                // (Note: the forum's "0.23.3" was never released — 0.23.0 then 0.24.0/0.25.x.)
-                // See https://discourse.itk.org/t/.../7736/31
                 .pypi("itk-elastix==0.25.3")
-                .env("NSLOTS", "1") // See https://discourse.itk.org/t/8x-slower-registration-with-itk-elastix-python-api-vs-elastix-cli-minimal-reproducible-example/7736/15
+                .env("NSLOTS", "1")
                 // Pool beats Platform for small images; never TBB (defaults to ~1024 work units).
                 // The init script also sets this before 'import itk' for belt-and-suspenders.
                 .env("ITK_GLOBAL_DEFAULT_THREADER", "Pool")
-                .name("itk-elastix-v6")   // bump name to force rebuild after itk-elastix + threader change
+                .name("itk-elastix-v6")
                 .logDebug()
                 .build();
 
